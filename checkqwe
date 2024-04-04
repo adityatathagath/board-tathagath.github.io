@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Navbar</title>
+    <!-- Include Tailwind CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Include Tailwind CSS Dark Mode Plugin -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss-dark-mode@2.0.2/dist/dark-mode.min.css" rel="stylesheet">
+</head>
+
+<body class="flex flex-col min-h-screen bg-white dark:bg-gray-900">
+    <nav class="flex justify-between items-center px-6 py-4 bg-gray-100 dark:bg-gray-800 rounded-lg shadow-lg">
+        <!-- Left side logo -->
+        <div class="flex items-center">
+            <img src="logo.png" alt="Logo" class="h-8 w-8 mr-2">
+            <span class="text-xl font-bold text-gray-800 dark:text-gray-200">Ecodamus</span>
+        </div>
+        <!-- Right side dark mode button -->
+        <div class="flex items-center">
+            <button id="darkModeToggle"
+                class="focus:outline-none bg-gray-200 dark:bg-gray-700 rounded-full p-2">
+                <svg class="h-6 w-6 text-gray-800 dark:text-gray-200" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                    <circle cx="12" cy="12" r="5" fill="currentColor"></circle>
+                </svg>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main content here -->
+
+    <!-- Footer -->
+    <footer class="mt-auto py-4 px-6 bg-gray-100 dark:bg-gray-800 text-center text-gray-600 dark:text-gray-300">
+        Made with ❤️ in MR
+    </footer>
+
+    <!-- JavaScript for dark mode toggle -->
+    <script>
+        const darkModeToggle = document.getElementById('darkModeToggle');
+
+        darkModeToggle.addEventListener('click', () => {
+            document.body.classList.toggle('dark');
+        });
+    </script>
+</body>
+
+</html>
