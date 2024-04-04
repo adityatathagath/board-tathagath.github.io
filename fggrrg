@@ -1,0 +1,37 @@
+<nav class="flex items-center justify-between flex-wrap bg-gray-800 p-6">
+  <!-- Navbar content here -->
+
+  <!-- Dark mode button -->
+  <div class="flex items-center">
+    <!-- Your existing navbar items -->
+
+    <!-- Dark mode toggle button -->
+    <button id="darkModeToggle"
+      class="flex items-center px-3 py-2 border rounded text-gray-300 border-gray-400 hover:text-white hover:border-white dark:text-white dark:border-gray-600 focus:outline-none">
+      <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd"
+          d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm0-2a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM5.707 8.293a1 1 0 0 1 1.414-1.414L10 8.586l2.879-2.88a1 1 0 0 1 1.414 1.414L11.414 10l2.88 2.879a1 1 0 1 1-1.414 1.414L10 11.414l-2.879 2.88a1 1 0 0 1-1.414-1.414L8.586 10 5.707 7.121a1 1 0 0 1 0-1.414z"
+          clip-rule="evenodd" />
+      </svg>
+      <span class="ml-1">Dark Mode</span>
+    </button>
+  </div>
+</nav>
+
+<!-- JavaScript for dark mode toggle -->
+<script>
+  const darkModeToggle = document.getElementById('darkModeToggle');
+  const body = document.body;
+
+  darkModeToggle.addEventListener('click', () => {
+    body.classList.toggle('dark');
+    localStorage.theme = body.classList.contains('dark') ? 'dark' : 'light';
+  });
+
+  // On page load or when changing themes, best to add inline in `head` to avoid FOUC
+  if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    body.classList.add('dark');
+  } else {
+    body.classList.remove('dark');
+  }
+</script>
