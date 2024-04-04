@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ecodamus - A Game of Predictions</title>
+    <!-- Include Tailwind CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        @keyframes ticker {
+            0% {
+                transform: translateX(100%);
+            }
+            100% {
+                transform: translateX(-100%);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Navigation bar -->
+    <nav class="bg-gray-900 text-white p-4 flex justify-between items-center">
+        <!-- Logo -->
+        <div>
+            <img src="your-logo.png" alt="Logo" class="h-8">
+        </div>
+        <!-- Title -->
+        <div class="text-lg font-semibold">ECODAMUS</div>
+        <!-- Dark mode button -->
+        <div>
+            <button id="darkModeToggle" class="bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded-md">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9a7 7 0 00-14 0v11a3 3 0 003 3h8a3 3 0 003-3V9z"/>
+                </svg>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Stock ticker -->
+    <div class="bg-gray-200 text-gray-800 py-2 overflow-hidden">
+        <div class="flex p-2 gap-4 animate-ticker">
+            <!-- Placeholder for stock ticker items (replace with dynamic data) -->
+            <span class="bg-white px-3 py-1 rounded-md">Stock A: $100 (+1.5%)</span>
+            <span class="bg-white px-3 py-1 rounded-md">Stock B: $150 (-0.8%)</span>
+            <span class="bg-white px-3 py-1 rounded-md">Stock C: $80 (+2.3%)</span>
+            <!-- Add more stock ticker items as needed -->
+        </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="container mx-auto mt-8 grid grid-cols-1 md:grid-cols-3 gap-8">
+        <!-- Participants word cloud -->
+        <div class="bg-white rounded-lg shadow-md p-4 opacity-0 animate-fadeIn">
+            <h2 class="text-lg font-semibold mb-4">Participants</h2>
+            <!-- Placeholder for word cloud (replace with actual word cloud) -->
+            <div class="flex flex-wrap gap-2">
+                <!-- Random participant names -->
+                <?php
+                    $participants = ["John", "Alice", "Bob", "Emily", "Charlie", "Emma", "David", "Olivia", "Sophia", "Michael", "Ella", "William", "Mia", "James", "Isabella", "Alexander", "Amelia", "Henry", "Charlotte", "Liam", "Ava", "Benjamin", "Harper", "Ethan", "Evelyn", "Daniel", "Abigail", "Matthew", "Grace", "Joseph", "Sophie", "Andrew", "Chloe", "Lucas", "Zoe", "Jackson", "Lily", "Samuel", "Megan", "Gabriel", "Madison", "Nathan", "Natalie", "Dylan", "Sarah"];
+                    for ($i = 0; $i < 45; $i++) {
+                        echo '<span class="bg-blue-200 px-2 py-1 rounded-lg">' . $participants[array_rand($participants)] . '</span>';
+                    }
+                ?>
+            </div>
+        </div>
+
+        <!-- Table 1 (placeholder) -->
+        <div class="bg-white rounded-lg shadow-md p-4 opacity-0 animate-fadeIn" style="animation-delay: 0.5s;">
+            <h2 class="text-lg font-semibold mb-4">Table 1</h2>
+            <!-- Placeholder for table content (replace with actual data) -->
+            <table class="w-full">
+                <thead>
+                    <tr>
+                        <th>Column 1</th>
+                        <th>Column 2</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Random table data -->
+                    <?php
+                        for ($i = 0; $i < 15; $i++) {
+                            echo '<tr><td>Data ' . ($i + 1) . '</td><td>Data ' . ($i + 2) . '</td></tr>';
+                        }
+                    ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Table 2 (placeholder) -->
+        <div class="bg-white rounded-lg shadow-md p-4 opacity-0 animate-fadeIn" style="animation-delay: 1s;">
+            <h2 class="text-lg font-semibold mb-4">Table 2</h2>
+            <!-- Placeholder for table content (replace with actual data) -->
+            <table class="w-full">
+                <thead>
+                    <tr>
+                        <th>Column 1</th>
+                        <th>Column 2</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Random table data -->
+                    <?php
+                        for ($i = 0; $i < 15; $i++) {
+                            echo '<tr><td>Data ' . ($i + 16) . '</td><td>Data ' . ($i + 17) . '</td></tr>';
+                        }
+                    ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- JavaScript for dark mode toggle -->
+    <script>
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        const body = document.body;
+
+        darkModeToggle.addEventListener('click', () => {
+            body.classList.toggle('dark');
+        });
+    </script>
+
+    <!-- JavaScript for stock ticker animation -->
+    <script>
+        const tickerItems = document.querySelectorAll('.animate-ticker > span');
+        tickerItems.forEach((item, index) => {
+            item.style.animation = `ticker 10s linear infinite ${index * 2}s`;
+        });
+    </script>
+
+    <!-- JavaScript for fade-in animation -->
+   
