@@ -1,0 +1,24 @@
+<div class="overflow-hidden bg-gray-900 text-white">
+  <div class="flex p-2 space-x-4">
+    <!-- Ticker content -->
+    <div class="animate-ticker">
+      <!-- Add your stock ticker items here -->
+      <span class="px-4 py-2 bg-green-500 rounded">AAPL $150.23</span>
+      <span class="px-4 py-2 bg-red-500 rounded">GOOGL $2800.45</span>
+      <span class="px-4 py-2 bg-blue-500 rounded">AMZN $3456.78</span>
+      <!-- Repeat or add more ticker items as needed -->
+    </div>
+  </div>
+</div>
+
+<style>
+  @keyframes ticker {
+    0% { transform: translateX(100%); }
+    100% { transform: translateX(-100%); }
+  }
+
+  .animate-ticker {
+    animation: ticker 20s linear infinite;
+    white-space: nowrap;
+  }
+</style>
