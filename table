@@ -19,38 +19,64 @@
 
 
 
-// Sample data
-const data = [
-    { rank: 1, name: 'John', score: 95 },
-    { rank: 2, name: 'Emma', score: 90 },
-    // Add more data here...
-  ];
-  
-  // Function to render table data
-  function renderTable(data) {
-    const tableBody = document.getElementById('tableBody');
-    tableBody.innerHTML = '';
-  
-    for (let i = 0; i < Math.min(data.length, 15); i++) {
-      const row = document.createElement('tr');
+// Function to render table data
+function renderTable(data) {
+  const tableBody = document.getElementById('tableBody');
+  tableBody.innerHTML = '';
+
+  for (let i = 0; i < Math.min(data.length, 15); i++) {
+    const row = document.createElement('tr');
+    if (i < 3) {
+      let trophyIcon;
+      switch (i) {
+        case 0:
+          trophyIcon = '🥇'; // Gold trophy for rank 1
+          break;
+        case 1:
+          trophyIcon = '🥈'; // Silver trophy for rank 2
+          break;
+        case 2:
+          trophyIcon = '🥉'; // Bronze trophy for rank 3
+          break;
+      }
+      row.innerHTML = `
+        <td class="px-6 py-4 whitespace-nowrap">${trophyIcon} ${data[i].rank}</td>
+        <td class="px-6 py-4 whitespace-nowrap">${data[i].name}</td>
+        <td class="px-6 py-4 whitespace-nowrap">${data[i].score}</td>
+      `;
+    } else {
       row.innerHTML = `
         <td class="px-6 py-4 whitespace-nowrap">${data[i].rank}</td>
         <td class="px-6 py-4 whitespace-nowrap">${data[i].name}</td>
         <td class="px-6 py-4 whitespace-nowrap">${data[i].score}</td>
       `;
-      tableBody.appendChild(row);
     }
+    row.addEventListener('mouseenter', () => {
+      row.classList.add('bg-gray-100');
+    });
+    row.addEventListener('mouseleave', () => {
+      row.classList.remove('bg-gray-100');
+    });
+    tableBody.appendChild(row);
   }
-  
-  // Initial render
-  renderTable(data);
-  
-  // Function to handle search
-  document.getElementById('searchInput').addEventListener('input', function() {
-    const searchText = this.value.toLowerCase();
-    const filteredData = data.filter(item =>
-      item.name.toLowerCase().includes(searchText)
-    );
-    renderTable(filteredData);
-  });
-  
+}
+
+// Sample data
+const data = [
+  { rank: 1, name: 'John', score: 95 },
+  { rank: 2, name: 'Emma', score: 90 },
+  { rank: 3, name: 'Alice', score: 85 },
+  // Add more data here...
+];
+
+// Initial render
+renderTable(data);
+
+// Function to handle search
+document.getElementById('searchInput').addEventListener('input', function() {
+  const searchText = this.value.toLowerCase();
+  const filteredData = data.filter(item =>
+    item.name.toLowerCase().includes(searchText)
+  );
+  renderTable(filteredData);
+});
