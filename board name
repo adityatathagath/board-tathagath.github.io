@@ -1,69 +1,115 @@
-<div id="nameBox" class="relative w-96 h-60 border border-gray-300 overflow-hidden flex justify-center items-center">
-  <!-- Participant names will be dynamically added here -->
-</div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Populate Name Box</title>
+    <!-- Include Tailwind CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .name {
+            position: absolute;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div id="nameBox" class="relative w-80 h-80 border border-gray-600 bg-white">
+        <!-- Names will be dynamically added here -->
+    </div>
 
+    <script>
+        // Example data of names
+        const names = ['John', 'Emily', 'Michael', 'Sophia', 'William'];
 
-<style>
-  .name {
-    font-size: 1rem; /* Set initial font size */
-    animation: bulgeUpDown 4s infinite; /* Adjust animation speed as needed */
-    position: absolute;
-  }
+        // Object to store initial positions of names
+        const initialPositions = {};
 
-  @keyframes bulgeUpDown {
-    0%, 100% {
-      transform: translateY(0) scale(1);
-    }
-    25% {
-      transform: translateY(-10px) scale(1.2); /* Adjust bulging size as needed */
-    }
-    75% {
-      transform: translateY(10px) scale(1.2); /* Adjust bulging size as needed */
-    }
-  }
-</style>
+        // Function to generate random position within box boundaries without overlapping
+        function getRandomPositionWithoutOverlap(nameBox, nameElement, existingPositions) {
+            const maxAttempts = 100; // Maximum number of attempts to find a non-overlapping position
+            const padding = 10; // Padding value in pixels
 
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                const left = Math.max(Math.random() * (nameBox.offsetWidth - nameElement.offsetWidth - padding * 2), padding);
+                const top = Math.max(Math.random() * (nameBox.offsetHeight - nameElement.offsetHeight - padding * 2), padding);
 
+                // Check for collisions with existing positions
+                let collision = false;
+                for (const existingPosition of Object.values(existingPositions)) {
+                    if (
+                        left < existingPosition.left + existingPosition.width &&
+                        left + nameElement.offsetWidth > existingPosition.left &&
+                        top < existingPosition.top + existingPosition.height &&
+                        top + nameElement.offsetHeight > existingPosition.top
+                    ) {
+                        collision = true;
+                        break;
+                    }
+                }
 
+                if (!collision) {
+                    return { left, top };
+                }
+            }
 
-// Example data of names
-const names = ['John', 'Emily', 'Michael', 'Sophia', 'William'];
+            // If maximum attempts reached without finding a non-overlapping position, fallback to random position
+            return {
+                left: Math.max(Math.random() * (nameBox.offsetWidth - nameElement.offsetWidth), 0),
+                top: Math.max(Math.random() * (nameBox.offsetHeight - nameElement.offsetHeight), 0)
+            };
+        }
 
-// Object to store initial positions of names
-const initialPositions = {};
+        // Function to populate name box with participant names without overlapping and with styles
+        function populateNameBox() {
+            const nameBox = document.getElementById('nameBox');
+            nameBox.innerHTML = ''; // Clear existing content
 
-// Function to populate name box with participant names
-function populateNameBox() {
-  const nameBox = document.getElementById('nameBox');
-  nameBox.innerHTML = ''; // Clear existing content
+            // Loop through names and add them to the name box with initial positions and animation
+            names.forEach((name, index) => {
+                const nameElement = document.createElement('div');
+                nameElement.classList.add('name');
+                nameElement.classList.add('text-xl'); // Example Tailwind CSS class
 
-  // Loop through names and add them to the name box with initial positions and animation
-  names.forEach((name, index) => {
-    const nameElement = document.createElement('div');
-    nameElement.textContent = name;
-    nameElement.classList.add('name');
+                // Split the name into two halves
+                const midpoint = Math.ceil(name.length / 2);
+                const firstHalf = name.slice(0, midpoint);
+                const secondHalf = name.slice(midpoint);
 
-    // Apply initial position if available, otherwise generate random position within box boundaries
-    const position = initialPositions[name] || {
-      left: Math.max(Math.random() * (nameBox.offsetWidth - nameElement.offsetWidth), 0),
-      top: Math.max(Math.random() * (nameBox.offsetHeight - nameElement.offsetHeight), 0)
-    };
+                // Create spans for each half and apply styles
+                const firstSpan = document.createElement('span');
+                firstSpan.textContent = firstHalf;
+                firstSpan.classList.add('text-sky-500'); // Tailwind CSS color class
 
-    // Store initial position
-    initialPositions[name] = position;
+                const secondSpan = document.createElement('span');
+                secondSpan.textContent = secondHalf;
+                secondSpan.classList.add('text-navy-500'); // Tailwind CSS color class
 
-    // Apply position and animation
-    nameElement.style.left = `${position.left}px`;
-    nameElement.style.top = `${position.top}px`;
-    nameElement.style.animationDelay = `${index * 0.5}s`; // Adjust delay between animations
+                // Append spans to name element
+                nameElement.appendChild(firstSpan);
+                nameElement.appendChild(secondSpan);
 
-    nameBox.appendChild(nameElement);
-  });
-}
+                // Apply position and animation without overlapping
+                const { left, top } = getRandomPositionWithoutOverlap(nameBox, nameElement, initialPositions);
 
-// Populate name box initially
-populateNameBox();
+                // Store initial position and size
+                const position = { left, top, width: nameElement.offsetWidth, height: nameElement.offsetHeight };
+                initialPositions[name] = position;
 
-// Optionally, update the name box periodically with new data
-// Example: Update name box every 5 seconds
-setInterval(populateNameBox, 5000);
+                // Apply position and animation
+                nameElement.style.left = `${position.left}px`;
+                nameElement.style.top = `${position.top}px`;
+                nameElement.style.animationDelay = `${index * 0.5}s`; // Adjust delay between animations
+
+                nameBox.appendChild(nameElement);
+            });
+        }
+
+        // Populate name box initially
+        populateNameBox();
+
+        // Optionally, update the name box periodically with new data
+        // Example: Update name box every 5 seconds
+        setInterval(populateNameBox, 5000);
+    </script>
+</body>
+</html>
