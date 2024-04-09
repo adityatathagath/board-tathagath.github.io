@@ -1,0 +1,19 @@
+// Make an AJAX request to the Flask route
+fetch('/get_excel_data')
+    .then(response => response.json())
+    .then(data => {
+        // Access and use the values of different keys
+        var key1Value = data['key1'];
+        var key2Value = data['key2'];
+        var key3Value = data['key3'];
+
+        // Use the values as needed
+        console.log('Value of key1:', key1Value);
+        console.log('Value of key2:', key2Value);
+        console.log('Value of key3:', key3Value);
+
+        // Perform any further operations with the values
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
