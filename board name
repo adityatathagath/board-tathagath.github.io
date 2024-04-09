@@ -1,0 +1,69 @@
+<div id="nameBox" class="relative w-96 h-60 border border-gray-300 overflow-hidden flex justify-center items-center">
+  <!-- Participant names will be dynamically added here -->
+</div>
+
+
+<style>
+  .name {
+    font-size: 1rem; /* Set initial font size */
+    animation: bulgeUpDown 4s infinite; /* Adjust animation speed as needed */
+    position: absolute;
+  }
+
+  @keyframes bulgeUpDown {
+    0%, 100% {
+      transform: translateY(0) scale(1);
+    }
+    25% {
+      transform: translateY(-10px) scale(1.2); /* Adjust bulging size as needed */
+    }
+    75% {
+      transform: translateY(10px) scale(1.2); /* Adjust bulging size as needed */
+    }
+  }
+</style>
+
+
+
+
+// Example data of names
+const names = ['John', 'Emily', 'Michael', 'Sophia', 'William'];
+
+// Object to store initial positions of names
+const initialPositions = {};
+
+// Function to populate name box with participant names
+function populateNameBox() {
+  const nameBox = document.getElementById('nameBox');
+  nameBox.innerHTML = ''; // Clear existing content
+
+  // Loop through names and add them to the name box with initial positions and animation
+  names.forEach((name, index) => {
+    const nameElement = document.createElement('div');
+    nameElement.textContent = name;
+    nameElement.classList.add('name');
+
+    // Apply initial position if available, otherwise generate random position within box boundaries
+    const position = initialPositions[name] || {
+      left: Math.max(Math.random() * (nameBox.offsetWidth - nameElement.offsetWidth), 0),
+      top: Math.max(Math.random() * (nameBox.offsetHeight - nameElement.offsetHeight), 0)
+    };
+
+    // Store initial position
+    initialPositions[name] = position;
+
+    // Apply position and animation
+    nameElement.style.left = `${position.left}px`;
+    nameElement.style.top = `${position.top}px`;
+    nameElement.style.animationDelay = `${index * 0.5}s`; // Adjust delay between animations
+
+    nameBox.appendChild(nameElement);
+  });
+}
+
+// Populate name box initially
+populateNameBox();
+
+// Optionally, update the name box periodically with new data
+// Example: Update name box every 5 seconds
+setInterval(populateNameBox, 5000);
