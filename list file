@@ -67,3 +67,17 @@
     </tbody>
   </table>
 </div>
+
+
+
+<script>
+  // Example of dynamically adding table rows
+  const tbody = document.getElementById('tbody');
+  const participantNames = ["Participant 1", "Participant 2", "Participant 3", "Participant 4", "Participant 5"];
+
+  participantNames.forEach(name => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td class="px-6 py-4 whitespace-no-wrap">${name}</td>`;
+    tbody.appendChild(row);
+  });
+</script>
