@@ -1,0 +1,30 @@
+<blockquote class="relative bg-gray-100 border-l-4 border-gray-500 p-4 my-4">
+  <div class="text-gray-600 animate-wave">
+    <!-- Quote content -->
+    "This is a quote. Lorem ipsum dolor sit amet, consectetur adipiscing elit."
+  </div>
+  <footer class="mt-2 text-gray-500">
+    <!-- Quote attribution -->
+    - John Doe
+  </footer>
+</blockquote>
+
+
+
+@keyframes wave {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-wave {
+  animation: wave 3s linear infinite;
+  background: linear-gradient(to right, #ccc 0%, #ddd 50%, #ccc 100%);
+  background-size: 200% 100%;
+}
