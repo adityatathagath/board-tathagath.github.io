@@ -152,3 +152,57 @@
     })
     .catch(error => console.error('Error fetching participant names:', error));
 </script>
+
+
+
+
+
+
+
+
+<div class="bg-white rounded-lg shadow-md p-6 w-80">
+  <h2 class="text-xl font-bold mb-4">Participants</h2>
+  <div id="participantContainer" class="grid grid-cols-2 gap-4">
+    <!-- Participant names will be dynamically added here -->
+  </div>
+</div>
+
+<script>
+  function getRandomPosition(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  function getRandomColor() {
+    const colors = ["bg-navyBlue", "bg-skyBlue"];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }
+
+  function createParticipantDiv(participant) {
+    const participantDiv = document.createElement('div');
+    participantDiv.classList.add('participant', getRandomColor(), 'text-white', 'rounded-lg', 'p-2', 'flex', 'items-center', 'justify-center', 'transition-transform', 'duration-500', 'transform', 'hover:scale-110');
+    participantDiv.style.position = 'absolute';
+    participantDiv.textContent = participant;
+    participantDiv.style.top = getRandomPosition(0, window.innerHeight - 50) + 'px';
+    participantDiv.style.left = getRandomPosition(0, window.innerWidth - 200) + 'px';
+    document.getElementById('participantContainer').appendChild(participantDiv);
+  }
+
+  function animateParticipants() {
+    const participants = document.querySelectorAll('.participant');
+    participants.forEach(participant => {
+      participant.classList.toggle('scale-90');
+    });
+  }
+
+  setInterval(animateParticipants, 1000);
+
+  // Fetch participant names from Flask backend
+  fetch('/participants')
+    .then(response => response.json())
+    .then(data => {
+      data.forEach(participant => {
+        createParticipantDiv(participant);
+      });
+    })
+    .catch(error => console.error('Error fetching participant names:', error));
+</script>
