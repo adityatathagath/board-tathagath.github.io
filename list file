@@ -32,3 +32,39 @@
     </script>
 </body>
 </html>
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vertical Moving List</title>
+    <!-- Include Tailwind CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="h-32 overflow-hidden relative">
+        <ul id="participantList" class="list-none p-0 m-0 absolute top-0 animate-scroll">
+            <!-- List items will be added dynamically here -->
+        </ul>
+    </div>
+
+    <script>
+        // Example list of participant names in JavaScript
+        const participantNames = ['John', 'Emily', 'Michael', 'Sophia', 'William'];
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const participantList = document.getElementById('participantList');
+            participantNames.forEach(name => {
+                const listItem = document.createElement('li');
+                listItem.textContent = name;
+                listItem.classList.add('py-2'); // Add Tailwind CSS class for padding
+                participantList.appendChild(listItem);
+            });
+        });
+    </script>
+</body>
+</html>
