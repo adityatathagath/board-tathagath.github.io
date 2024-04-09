@@ -113,3 +113,17 @@
     </script>
 </body>
 </html>
+
+
+
+
+<div class="bg-white rounded-lg shadow-md p-6 w-80">
+  <h2 class="text-xl font-bold mb-4">Participants</h2>
+  <div class="grid grid-cols-2 gap-4">
+    {% for participant in participant_names %}
+    <div class="participant bg-navyBlue text-white rounded-lg p-2 flex items-center justify-center transition-transform duration-300 transform hover:scale-110">
+      {{ participant }}
+    </div>
+    {% endfor %}
+  </div>
+</div>
