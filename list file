@@ -1,37 +1,46 @@
-<div class="scroll-container overflow-hidden h-40">
-  <ul id="scrollList" class="list-none m-0 p-0">
-    <!-- Your list items will be dynamically added here -->
-  </ul>
+ <div id="container" class="overflow-hidden h-40">
+  <table id="table" class="min-w-full divide-y divide-gray-200">
+    <thead>
+      <tr>
+        <th class="px-6 py-3 bg-gray-50 text-left text-xs leading-4 font-medium text-gray-500 uppercase tracking-wider">Name</th>
+      </tr>
+    </thead>
+    <tbody id="tbody">
+      <!-- Table rows will be dynamically added here -->
+    </tbody>
+  </table>
 </div>
 
+
+
 <style>
-  @keyframes scroll {
+  @keyframes moveTable {
     0% {
-      transform: translateY(0);
+      transform: translateY(0%);
     }
     100% {
-      transform: translateY(-100%);
+      transform: translateY(calc(-100% + 100px)); /* Adjust the value based on table row height */
     }
   }
 
-  .scroll-container {
-    animation: scroll 20s linear infinite;
+  #table {
+    animation: moveTable 10s linear infinite;
   }
 
-  .scroll-container:hover {
+  #container:hover #table {
     animation-play-state: paused;
   }
 </style>
 
 
 <script>
-  // Example of dynamically adding list items
-  const scrollList = document.getElementById('scrollList');
-  const listItemTexts = ["Item 1", "Item 2", "Item 3", "Item 4", "Item 5"];
-  
-  listItemTexts.forEach(text => {
-    const listItem = document.createElement('li');
-    listItem.textContent = text;
-    scrollList.appendChild(listItem);
+  // Example of dynamically adding table rows
+  const tbody = document.getElementById('tbody');
+  const participantNames = ["Participant 1", "Participant 2", "Participant 3", "Participant 4", "Participant 5"];
+
+  participantNames.forEach(name => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td class="px-6 py-4 whitespace-no-wrap">${name}</td>`;
+    tbody.appendChild(row);
   });
 </script>
