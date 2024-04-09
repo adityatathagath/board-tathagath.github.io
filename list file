@@ -1,70 +1,37 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vertical Moving List</title>
-    <!-- Include Tailwind CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-</head>
-<body>
-    <div class="h-32 overflow-hidden relative">
-        <ul id="participantList" class="list-none p-0 m-0 absolute top-0 animate-scroll">
-            <!-- List items will be added dynamically here -->
-        </ul>
-    </div>
+<div class="scroll-container overflow-hidden h-40">
+  <ul id="scrollList" class="list-none m-0 p-0">
+    <!-- Your list items will be dynamically added here -->
+  </ul>
+</div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            fetch('/participantnames')
-                .then(response => response.json())
-                .then(data => {
-                    const participantList = document.getElementById('participantList');
-                    data.forEach(name => {
-                        const listItem = document.createElement('li');
-                        listItem.textContent = name;
-                        listItem.classList.add('py-2'); // Add Tailwind CSS class for padding
-                        participantList.appendChild(listItem);
-                    });
-                })
-                .catch(error => console.error('Error fetching participant names:', error));
-        });
-    </script>
-</body>
-</html>
+<style>
+  @keyframes scroll {
+    0% {
+      transform: translateY(0);
+    }
+    100% {
+      transform: translateY(-100%);
+    }
+  }
+
+  .scroll-container {
+    animation: scroll 20s linear infinite;
+  }
+
+  .scroll-container:hover {
+    animation-play-state: paused;
+  }
+</style>
 
 
-
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vertical Moving List</title>
-    <!-- Include Tailwind CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-</head>
-<body>
-    <div class="h-32 overflow-hidden relative">
-        <ul id="participantList" class="list-none p-0 m-0 absolute top-0 animate-scroll">
-            <!-- List items will be added dynamically here -->
-        </ul>
-    </div>
-
-    <script>
-        // Example list of participant names in JavaScript
-        const participantNames = ['John', 'Emily', 'Michael', 'Sophia', 'William'];
-
-        document.addEventListener('DOMContentLoaded', function () {
-            const participantList = document.getElementById('participantList');
-            participantNames.forEach(name => {
-                const listItem = document.createElement('li');
-                listItem.textContent = name;
-                listItem.classList.add('py-2'); // Add Tailwind CSS class for padding
-                participantList.appendChild(listItem);
-            });
-        });
-    </script>
-</body>
-</html>
+<script>
+  // Example of dynamically adding list items
+  const scrollList = document.getElementById('scrollList');
+  const listItemTexts = ["Item 1", "Item 2", "Item 3", "Item 4", "Item 5"];
+  
+  listItemTexts.forEach(text => {
+    const listItem = document.createElement('li');
+    listItem.textContent = text;
+    scrollList.appendChild(listItem);
+  });
+</script>
