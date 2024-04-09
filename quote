@@ -28,3 +28,24 @@
   background: linear-gradient(to right, #ccc 0%, #ddd 50%, #ccc 100%);
   background-size: 200% 100%;
 }
+
+
+
+@keyframes wave {
+  0% {
+    text-fill-color: cyan;
+    background-clip: text;
+  }
+  50% {
+    text-fill-color: navy;
+    background-clip: text;
+  }
+  100% {
+    text-fill-color: red;
+    background-clip: text;
+  }
+}
+
+.animate-wave {
+  animation: wave 3s linear infinite;
+}
