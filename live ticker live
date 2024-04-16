@@ -1,0 +1,49 @@
+<div id="liveTicker" class="relative overflow-hidden bg-gray-200 w-full h-20 flex items-center">
+  <div class="live-indicator absolute left-0 h-full flex items-center pl-4">
+    <span class="text-green-500 font-bold mr-2">Live</span>
+    <div id="dot" class="w-2 h-2 bg-red-500 rounded-full"></div>
+  </div>
+  <div id="tickerContainer" class="ticker-container flex">
+    <div id="tickerItems" class="ticker-items">
+      <!-- Your ticker items go here -->
+      <div class="ticker-item">Item 1</div>
+      <div class="ticker-item">Item 2</div>
+      <div class="ticker-item">Item 3</div>
+      <!-- Repeat more ticker items as needed -->
+    </div>
+  </div>
+</div>
+
+
+.ticker-container {
+  overflow: hidden;
+  flex: 1;
+}
+
+.ticker-items {
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.ticker-item {
+  display: inline-block;
+  padding: 0 20px; /* Adjust padding as needed */
+}
+
+.live-indicator {
+  width: auto;
+  padding-right: 10px; /* Adjust padding as needed */
+}
+
+#dot {
+  animation: dotAnimation 1s ease-in-out infinite alternate;
+}
+
+@keyframes dotAnimation {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
