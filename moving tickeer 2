@@ -1,0 +1,38 @@
+<div class="relative overflow-hidden bg-gray-200 rounded-full w-full h-20">
+  <div class="absolute top-0 bottom-0 right-20 left-20 flex space-x-4 animate-ticker">
+    <!-- Your ticker items go here -->
+    <div class="bg-white rounded-md p-2">Item 1</div>
+    <div class="bg-white rounded-md p-2">Item 2</div>
+    <div class="bg-white rounded-md p-2">Item 3</div>
+    <!-- Repeat more ticker items as needed -->
+  </div>
+</div>
+
+
+@keyframes ticker {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes ticker-reverse {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-ticker {
+  animation: ticker 10s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ticker {
+    animation: none;
+  }
+}
