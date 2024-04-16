@@ -15,9 +15,12 @@
 }
 
 
+
+
+
 function startTicker() {
   const tickerItems = document.getElementById('tickerItems');
-  const tickerContainerWidth = document.querySelector('.ticker-container').offsetWidth;
+  const tickerContainerWidth = document.getElementById('tickerContainer').offsetWidth;
   const tickerItemsWidth = tickerItems.offsetWidth;
 
   let position = tickerContainerWidth;
