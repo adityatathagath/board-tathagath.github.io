@@ -1,0 +1,18 @@
+// List of quotes
+const quotes = [
+  "The only way to do great work is to love what you do. - Steve Jobs",
+  "Innovation distinguishes between a leader and a follower. - Steve Jobs",
+  "Success is not final, failure is not fatal: It is the courage to continue that counts. - Winston Churchill",
+  "The only thing necessary for the triumph of evil is for good men to do nothing. - Edmund Burke",
+  "The best way to predict the future is to invent it. - Alan Kay"
+];
+
+// Function to randomly select a quote and display it
+function displayRandomQuote() {
+  const randomIndex = Math.floor(Math.random() * quotes.length);
+  const quoteElement = document.getElementById('quote');
+  quoteElement.textContent = quotes[randomIndex];
+}
+
+// Display a random quote when the page loads
+document.addEventListener('DOMContentLoaded', displayRandomQuote);
