@@ -7,12 +7,15 @@ const quotes = [
   "The best way to predict the future is to invent it. - Alan Kay"
 ];
 
-// Function to randomly select a quote and display it
-function displayRandomQuote() {
+// Function to update the quote every 8 seconds
+function updateQuote() {
   const randomIndex = Math.floor(Math.random() * quotes.length);
   const quoteElement = document.getElementById('quote');
   quoteElement.textContent = quotes[randomIndex];
 }
 
 // Display a random quote when the page loads
-document.addEventListener('DOMContentLoaded', displayRandomQuote);
+updateQuote();
+
+// Update the quote every 8 seconds
+setInterval(updateQuote, 8000);
