@@ -135,3 +135,44 @@ document.getElementById('startQuizBtn').addEventListener('click', () => {
   // Start displaying quiz questions
   displayQuestion();
 });
+
+
+
+
+const questions = [
+  {
+    question: "True or False: Market risk refers to the risk of loss due to fluctuations in the overall market, such as economic downturns or geopolitical events.",
+    options: ["True", "False"],
+    correctAnswer: 0 // Index of the correct answer (True)
+  },
+  {
+    question: "True or False: Diversification can eliminate all investment risk from a portfolio.",
+    options: ["True", "False"],
+    correctAnswer: 1 // Index of the correct answer (False)
+  },
+  {
+    question: "True or False: Interest rate risk affects the value of bonds inversely; when interest rates rise, bond prices fall.",
+    options: ["True", "False"],
+    correctAnswer: 0 // Index of the correct answer (True)
+  },
+  {
+    question: "Which of the following is NOT a type of investment risk?",
+    options: ["Credit risk", "Inflation risk", "Opportunity risk", "Currency risk"],
+    correctAnswer: 2 // Index of the correct answer (Opportunity risk)
+  },
+  {
+    question: "What is the primary purpose of beta in portfolio management?",
+    options: ["To measure a stock's volatility relative to the market", "To estimate the expected return of a stock", "To assess a company's financial leverage", "To determine the intrinsic value of a stock"],
+    correctAnswer: 0 // Index of the correct answer (To measure a stock's volatility relative to the market)
+  },
+  {
+    question: "Which of the following strategies is used to mitigate currency risk in international investing?",
+    options: ["Arbitrage", "Hedging", "Speculation", "Diversification"],
+    correctAnswer: 1 // Index of the correct answer (Hedging)
+  },
+  {
+    question: "Which of the following is a common measure of credit risk for bonds?",
+    options: ["Sharpe ratio", "Price-to-earnings ratio", "Credit rating", "Beta coefficient"],
+    correctAnswer: 2 // Index of the correct answer (Credit rating)
+  }
+];
