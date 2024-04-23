@@ -176,3 +176,103 @@ const questions = [
     correctAnswer: 2 // Index of the correct answer (Credit rating)
   }
 ];
+
+
+
+
+
+
+
+
+
+
+// Function to select a random subset of questions
+function selectRandomQuestions(numQuestions) {
+  const shuffledQuestions = questions.sort(() => Math.random() - 0.5); // Shuffle questions array
+  return shuffledQuestions.slice(0, numQuestions); // Select the first 'numQuestions' questions
+}
+
+// Define global variables
+const numQuestionsToShow = 5; // Number of questions to show each time
+let currentQuestionIndex = 0;
+let userScore = 0;
+let userAnswers = [];
+let selectedQuestions = []; // Store the selected questions
+
+// Event listener for starting the quiz
+document.getElementById('startQuizBtn').addEventListener('click', () => {
+  // Hide game information section
+  document.getElementById('quizSection').classList.remove('hidden');
+  document.getElementById('startQuizBtn').classList.add('hidden');
+  // Select random questions
+  selectedQuestions = selectRandomQuestions(numQuestionsToShow);
+  // Start displaying quiz questions
+  displayQuestion();
+});
+
+// Function to display quiz questions
+function displayQuestion() {
+  // Check if all questions have been answered
+  if (currentQuestionIndex >= selectedQuestions.length) {
+    // End of quiz, display leaderboard
+    displayLeaderboard();
+    return;
+  }
+
+  // Display current question
+  const currentQuestion = selectedQuestions[currentQuestionIndex];
+  const quizSection = document.getElementById('quizSection');
+  quizSection.innerHTML = `
+    <h2 class="text-xl font-bold mb-4">${currentQuestion.question}</h2>
+    <div class="mb-4">
+      ${currentQuestion.options.map((option, index) => `
+        <input type="radio" id="option${index}" name="answer" value="${index}">
+        <label for="option${index}" class="ml-2">${option}</label><br>
+      `).join('')}
+    </div>
+    <button id="submitAnswerBtn" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Submit Answer</button>
+  `;
+
+  // Add event listener for submitting answers
+  document.getElementById('submitAnswerBtn').addEventListener('click', submitAnswer);
+}
+
+// Function to submit user answer
+function submitAnswer() {
+  // Get selected answer
+  const selectedAnswer = document.querySelector('input[name="answer"]:checked');
+  if (!selectedAnswer) {
+    // No answer selected, display error message
+    alert('Please select an answer before submitting.');
+    return;
+  }
+
+  // Record user answer
+  userAnswers.push(parseInt(selectedAnswer.value));
+
+  // Update user score
+  if (userAnswers[userAnswers.length - 1] === selectedQuestions[currentQuestionIndex].correctAnswer) {
+    userScore += 2; // Add 2 points for correct answer
+  } else {
+    userScore -= 0.75; // Deduct 0.75 points for incorrect answer
+  }
+
+  // Move to the next question
+  currentQuestionIndex++;
+  displayQuestion();
+}
+
+// Function to display leaderboard
+function displayLeaderboard() {
+  // Calculate user's final score
+  const finalScore = userScore.toFixed(2);
+
+  // Display leaderboard
+  const leaderboardSection = document.getElementById('leaderboardSection');
+  leaderboardSection.innerHTML = `
+    <h2 class="text-2xl font-bold mb-4">Leaderboard</h2>
+    <p class="text-lg mb-2">Your final score: ${finalScore}</p>
+    <!-- Leaderboard will be generated dynamically here -->
+  `;
+  leaderboardSection.classList.remove('hidden');
+}
