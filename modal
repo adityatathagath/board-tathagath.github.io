@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Modal</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/1.6.0/flowbite.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="flex items-center justify-center min-h-screen bg-gray-100">
+
+    <button id="openModalButton" class="px-4 py-2 bg-blue-600 text-white rounded">Open Image Modal</button>
+
+    <!-- Modal -->
+    <div id="imageModal" class="fixed inset-0 flex items-center justify-center bg-gray-900 bg-opacity-75 hidden">
+        <div class="relative p-4 bg-white rounded-lg shadow-lg">
+            <button id="closeModalButton" class="absolute top-2 right-2 text-gray-600 hover:text-gray-900">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+            <img src="https://via.placeholder.com/600x400" alt="Modal Image" class="border-4 border-gray-300 shadow-lg">
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/1.6.0/flowbite.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const openModalButton = document.getElementById('openModalButton');
+            const closeModalButton = document.getElementById('closeModalButton');
+            const imageModal = document.getElementById('imageModal');
+
+            openModalButton.addEventListener('click', () => {
+                imageModal.classList.remove('hidden');
+            });
+
+            closeModalButton.addEventListener('click', () => {
+                imageModal.classList.add('hidden');
+            });
+
+            imageModal.addEventListener('click', (event) => {
+                if (event.target === imageModal) {
+                    imageModal.classList.add('hidden');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
