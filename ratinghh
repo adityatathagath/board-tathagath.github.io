@@ -18,7 +18,9 @@
             <button class="rating-button" data-value="4">★</button>
             <button class="rating-button" data-value="5">★</button>
         </div>
-        <p class="mt-4" id="current-rating">Current rating: <span id="rating-value">0</span></p>
+        <p class="mt-4">Current rating: <span id="rating-value">0</span></p>
+        <p>Total ratings: <span id="total-ratings">0</span></p>
+        <p>Average rating: <span id="average-rating">0</span></p>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/1.6.0/flowbite.min.js"></script>
@@ -26,13 +28,16 @@
         document.addEventListener('DOMContentLoaded', () => {
             const ratingButtons = document.querySelectorAll('.rating-button');
             const ratingValue = document.getElementById('rating-value');
+            const totalRatings = document.getElementById('total-ratings');
+            const averageRating = document.getElementById('average-rating');
 
             fetch('/api/rating')
                 .then(response => response.json())
                 .then(data => {
-                    const currentRating = data.rating;
-                    ratingValue.textContent = currentRating;
-                    updateRatingDisplay(currentRating);
+                    ratingValue.textContent = data.current_rating;
+                    totalRatings.textContent = data.total_ratings;
+                    averageRating.textContent = data.average_rating.toFixed(2);
+                    updateRatingDisplay(data.current_rating);
                 });
 
             ratingButtons.forEach(button => {
@@ -47,8 +52,10 @@
                     })
                     .then(response => response.json())
                     .then(data => {
-                        ratingValue.textContent = data.rating;
-                        updateRatingDisplay(data.rating);
+                        ratingValue.textContent = data.current_rating;
+                        totalRatings.textContent = data.total_ratings;
+                        averageRating.textContent = data.average_rating.toFixed(2);
+                        updateRatingDisplay(data.current_rating);
                     });
                 });
             });
@@ -74,17 +81,22 @@ import json
 import os
 
 app = Flask(__name__)
-RATING_FILE = 'rating.json'
+RATING_FILE = 'ratings.json'
 
-def read_rating():
+def read_ratings():
     if not os.path.exists(RATING_FILE):
-        return {"rating": 0}
+        return []
     with open(RATING_FILE, 'r') as file:
         return json.load(file)
 
-def write_rating(data):
+def write_ratings(data):
     with open(RATING_FILE, 'w') as file:
         json.dump(data, file)
+
+def calculate_average(ratings):
+    if not ratings:
+        return 0
+    return sum(ratings) / len(ratings)
 
 @app.route('/')
 def index():
@@ -92,18 +104,33 @@ def index():
 
 @app.route('/api/rating', methods=['GET', 'POST'])
 def rating():
+    ratings = read_ratings()
+    
     if request.method == 'GET':
-        return jsonify(read_rating())
+        current_rating = ratings[-1] if ratings else 0
+        average_rating = calculate_average(ratings)
+        total_ratings = len(ratings)
+        return jsonify({
+            'current_rating': current_rating,
+            'average_rating': average_rating,
+            'total_ratings': total_ratings
+        })
     
     if request.method == 'POST':
         new_rating = request.json.get('rating')
         if not new_rating:
             return jsonify({"error": "Invalid rating value"}), 400
         
-        data = read_rating()
-        data['rating'] = int(new_rating)
-        write_rating(data)
-        return jsonify(data)
+        new_rating = int(new_rating)
+        ratings.append(new_rating)
+        write_ratings(ratings)
+        average_rating = calculate_average(ratings)
+        total_ratings = len(ratings)
+        return jsonify({
+            'current_rating': new_rating,
+            'average_rating': average_rating,
+            'total_ratings': total_ratings
+        })
 
 if __name__ == '__main__':
     app.run(debug=True)
