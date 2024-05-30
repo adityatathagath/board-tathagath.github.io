@@ -1,0 +1,109 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rating Feature</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/1.6.0/flowbite.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="flex items-center justify-center min-h-screen bg-gray-100">
+    <div class="p-6 bg-white rounded shadow-lg">
+        <h2 class="text-2xl font-semibold mb-4">Rate Our Website</h2>
+        <div class="flex items-center space-x-4" id="rating">
+            <button class="rating-button" data-value="1">★</button>
+            <button class="rating-button" data-value="2">★</button>
+            <button class="rating-button" data-value="3">★</button>
+            <button class="rating-button" data-value="4">★</button>
+            <button class="rating-button" data-value="5">★</button>
+        </div>
+        <p class="mt-4" id="current-rating">Current rating: <span id="rating-value">0</span></p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/1.6.0/flowbite.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const ratingButtons = document.querySelectorAll('.rating-button');
+            const ratingValue = document.getElementById('rating-value');
+
+            fetch('/api/rating')
+                .then(response => response.json())
+                .then(data => {
+                    const currentRating = data.rating;
+                    ratingValue.textContent = currentRating;
+                    updateRatingDisplay(currentRating);
+                });
+
+            ratingButtons.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const value = e.target.getAttribute('data-value');
+                    fetch('/api/rating', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ rating: value })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        ratingValue.textContent = data.rating;
+                        updateRatingDisplay(data.rating);
+                    });
+                });
+            });
+
+            function updateRatingDisplay(value) {
+                ratingButtons.forEach(button => {
+                    if (button.getAttribute('data-value') <= value) {
+                        button.classList.add('text-yellow-500');
+                    } else {
+                        button.classList.remove('text-yellow-500');
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
+
+
+
+from flask import Flask, render_template, request, jsonify
+import json
+import os
+
+app = Flask(__name__)
+RATING_FILE = 'rating.json'
+
+def read_rating():
+    if not os.path.exists(RATING_FILE):
+        return {"rating": 0}
+    with open(RATING_FILE, 'r') as file:
+        return json.load(file)
+
+def write_rating(data):
+    with open(RATING_FILE, 'w') as file:
+        json.dump(data, file)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/api/rating', methods=['GET', 'POST'])
+def rating():
+    if request.method == 'GET':
+        return jsonify(read_rating())
+    
+    if request.method == 'POST':
+        new_rating = request.json.get('rating')
+        if not new_rating:
+            return jsonify({"error": "Invalid rating value"}), 400
+        
+        data = read_rating()
+        data['rating'] = int(new_rating)
+        write_rating(data)
+        return jsonify(data)
+
+if __name__ == '__main__':
+    app.run(debug=True)
