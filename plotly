@@ -1,0 +1,54 @@
+import pandas as pd
+import plotly.graph_objects as go
+
+# Sample data
+data = {
+    'issuer': ['Issuer1', 'Issuer2', 'Issuer3', 'Issuer4', 'Issuer5'],
+    'csr': [15000, 30000, 5000, 20000, 10000],
+    'node': [12000, 25000, 7000, 22000, 11000]
+}
+
+# Create DataFrame
+df = pd.DataFrame(data)
+print("Original DataFrame:")
+print(df)
+
+# Create the scatter plot
+fig = go.Figure()
+
+# Add scatter plot for 'csr' column
+fig.add_trace(go.Scatter(
+    x=df['issuer'],
+    y=df['csr'],
+    mode='markers',
+    name='CSR',
+    marker=dict(color='blue', size=10),
+    text=df['csr'],  # Hover text
+    hoverinfo='text+name'
+))
+
+# Add scatter plot for 'node' column
+fig.add_trace(go.Scatter(
+    x=df['issuer'],
+    y=df['node'],
+    mode='markers',
+    name='Node',
+    marker=dict(color='red', size=10),
+    text=df['node'],  # Hover text
+    hoverinfo='text+name'
+))
+
+# Update layout for better visualization
+fig.update_layout(
+    title='Interactive Scatter Plot of CSR and Node by Issuer',
+    xaxis_title='Issuer',
+    yaxis_title='Values',
+    yaxis=dict(
+        tick0=0,
+        dtick=5000
+    ),
+    hovermode='closest'
+)
+
+# Show the plot
+fig.show()
