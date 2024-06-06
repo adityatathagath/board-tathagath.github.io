@@ -1,0 +1,144 @@
+STATICFILES_DIRS = [BASE_DIR / "static"]
+
+# Ensure you have 'django.contrib.staticfiles' in INSTALLED_APPS
+INSTALLED_APPS = [
+    ...
+    'django.contrib.staticfiles',
+    ...
+]
+
+# Add Tailwind CSS to installed apps
+INSTALLED_APPS += [
+    'tailwind',
+    'theme',
+]
+
+# Add theme app
+TAILWIND_APP_NAME = 'theme'
+
+# Add Flowbite JS
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+    BASE_DIR / "node_modules/flowbite"
+]
+
+
+npx tailwindcss -i ./static/css/styles.css -o ./static/css/output.css --watch
+
+
+
+base.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="{% static 'css/output.css' %}" rel="stylesheet">
+    <script src="{% static 'flowbite/flowbite.js' %}"></script>
+    <title>{% block title %}My Website{% endblock %}</title>
+</head>
+<body class="bg-gray-100">
+    <nav class="bg-blue-600 p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="text-white text-xl">My Website</div>
+            <div>
+                <a href="{% url 'page1' %}" class="text-white px-4 py-2 {% if request.path == '/page1/' %}bg-blue-800{% endif %}">Page 1</a>
+                <a href="{% url 'page2' %}" class="text-white px-4 py-2 {% if request.path == '/page2/' %}bg-blue-800{% endif %}">Page 2</a>
+                <a href="{% url 'page3' %}" class="text-white px-4 py-2 {% if request.path == '/page3/' %}bg-blue-800{% endif %}">Page 3</a>
+            </div>
+        </div>
+    </nav>
+    <div class="container mx-auto py-8">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>
+
+
+page.html
+
+{% extends 'base.html' %}
+
+{% block title %}Page 1{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Page 1</h1>
+<form method="post" action="{% url 'fetch_data' %}">
+    {% csrf_token %}
+    <div class="mb-4">
+        <label for="primary_batch_id" class="block text-gray-700">Primary Batch ID:</label>
+        <input type="text" name="primary_batch_id" id="primary_batch_id" required class="w-full p-2 border border-gray-300 rounded">
+    </div>
+    <div class="mb-4">
+        <label for="secondary_batch_id" class="block text-gray-700">Secondary Batch ID:</label>
+        <input type="text" name="secondary_batch_id" id="secondary_batch_id" required class="w-full p-2 border border-gray-300 rounded">
+    </div>
+    <div class="mb-4">
+        <label for="data_list" class="block text-gray-700">Data List:</label>
+        <input type="text" name="data_list" id="data_list" disabled class="w-full p-2 border border-gray-300 rounded">
+    </div>
+    <div class="mb-4">
+        <label class="block text-gray-700">Options:</label>
+        <div>
+            <input type="radio" name="option" value="option1" class="mr-2"> Option 1
+        </div>
+        <div>
+            <input type="radio" name="option" value="option2" class="mr-2"> Option 2
+        </div>
+    </div>
+    <div class="flex space-x-4">
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded">Fetch</button>
+        <button type="submit" formaction="{% url 'generate_report' %}" class="bg-green-600 text-white px-4 py-2 rounded">Generate Report</button>
+    </div>
+</form>
+{% endblock %}
+
+
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('', views.page1, name='page1'),
+    path('page2/', views.page2, name='page2'),
+    path('page3/', views.page3, name='page3'),
+    path('fetch_data/', views.fetch_data, name='fetch_data'),
+    path('generate_report/', views.generate_report, name='generate_report'),
+]
+
+
+from django.contrib import admin
+from django.urls import path, include
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('', include('my_app.urls')),
+]
+
+
+
+from django.shortcuts import render
+from django.http import HttpResponse
+
+def page1(request):
+    return render(request, 'my_app/page1.html')
+
+def page2(request):
+    return render(request, 'my_app/page2.html')
+
+def page3(request):
+    return render(request, 'my_app/page3.html')
+
+def fetch_data(request):
+    if request.method == 'POST':
+        primary_batch_id = request.POST['primary_batch_id']
+        secondary_batch_id = request.POST['secondary_batch_id']
+        # Fetch data logic
+        return HttpResponse("Data fetched successfully.")
+
+def generate_report(request):
+    if request.method == 'POST':
+        primary_batch_id = request.POST['primary_batch_id']
+        secondary_batch_id = request.POST['secondary_batch_id']
+        # Generate report logic
+        return HttpResponse("Report generated successfully.")
