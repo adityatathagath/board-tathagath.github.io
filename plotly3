@@ -1,0 +1,115 @@
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from sklearn.linear_model import LinearRegression
+import numpy as np
+
+# Sample data
+data = {
+    'issuer': ['Issuer1', 'Issuer2', 'Issuer3', 'Issuer4', 'Issuer5', 'Issuer6', 'Issuer7'],
+    'csr': [15000, 30000, 5000, 20000, 10000, 35000, 4000],
+    'node': [12000, 25000, 7000, 22000, 11000, 27000, 8000]
+}
+
+# Create DataFrame
+df = pd.DataFrame(data)
+print("Original DataFrame:")
+print(df)
+
+# Function to find outliers using the IQR method
+def find_outliers(series):
+    Q1 = series.quantile(0.25)
+    Q3 = series.quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+    return series[(series < lower_bound) | (series > upper_bound)]
+
+csr_outliers = find_outliers(df['csr'])
+node_outliers = find_outliers(df['node'])
+
+# Function to fit a linear regression and get the line data
+def get_regression_line(x, y):
+    x_numeric = np.arange(len(x)).reshape(-1, 1)  # Convert x to numeric index
+    model = LinearRegression().fit(x_numeric, y)
+    y_pred = model.predict(x_numeric)
+    return y_pred
+
+# Create subplots
+fig = make_subplots(rows=1, cols=2, subplot_titles=("Issuer vs Node", "Issuer vs CSR"))
+
+# Scatter plot for 'node' column
+fig.add_trace(go.Scatter(
+    x=df['issuer'],
+    y=df['node'],
+    mode='markers',
+    name='Node',
+    marker=dict(color='blue', size=10),
+    text=df['node'],  # Hover text
+    hoverinfo='text+name'
+), row=1, col=1)
+
+# Highlight outliers in 'node' column
+fig.add_trace(go.Scatter(
+    x=df.loc[node_outliers.index, 'issuer'],
+    y=node_outliers,
+    mode='markers',
+    name='Node Outliers',
+    marker=dict(color='red', size=10, symbol='x'),
+    text=node_outliers,  # Hover text
+    hoverinfo='text+name'
+), row=1, col=1)
+
+# Add regression line for 'node' column
+node_regression_line = get_regression_line(df['issuer'], df['node'])
+fig.add_trace(go.Scatter(
+    x=df['issuer'],
+    y=node_regression_line,
+    mode='lines',
+    name='Node Regression Line',
+    line=dict(color='blue', dash='dash')
+), row=1, col=1)
+
+# Scatter plot for 'csr' column
+fig.add_trace(go.Scatter(
+    x=df['issuer'],
+    y=df['csr'],
+    mode='markers',
+    name='CSR',
+    marker=dict(color='green', size=10),
+    text=df['csr'],  # Hover text
+    hoverinfo='text+name'
+), row=1, col=2)
+
+# Highlight outliers in 'csr' column
+fig.add_trace(go.Scatter(
+    x=df.loc[csr_outliers.index, 'issuer'],
+    y=csr_outliers,
+    mode='markers',
+    name='CSR Outliers',
+    marker=dict(color='red', size=10, symbol='x'),
+    text=csr_outliers,  # Hover text
+    hoverinfo='text+name'
+), row=1, col=2)
+
+# Add regression line for 'csr' column
+csr_regression_line = get_regression_line(df['issuer'], df['csr'])
+fig.add_trace(go.Scatter(
+    x=df['issuer'],
+    y=csr_regression_line,
+    mode='lines',
+    name='CSR Regression Line',
+    line=dict(color='green', dash='dash')
+), row=1, col=2)
+
+# Update layout for better visualization
+fig.update_layout(
+    title='Interactive Scatter Plots with Outliers and Regression Lines',
+    xaxis_title='Issuer',
+    yaxis_title='Values',
+    hovermode='closest',
+    showlegend=True
+)
+
+# Show the plot
+fig.show()
