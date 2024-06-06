@@ -142,3 +142,31 @@ def generate_report(request):
         secondary_batch_id = request.POST['secondary_batch_id']
         # Generate report logic
         return HttpResponse("Report generated successfully.")
+
+
+
+
+from django.shortcuts import render
+from django.http import HttpResponse, FileResponse
+from . import your_script  # Import your existing Python code
+
+def index(request):
+    return render(request, 'report_generator/index.html')
+
+def fetch_data(request):
+    if request.method == 'POST':
+        input1 = request.POST['input1']
+        input2 = request.POST['input2']
+        
+        data = your_script.fetch_data(input1, input2)
+        return render(request, 'report_generator/index.html', {'data': data})
+    return render(request, 'report_generator/index.html')
+
+def create_report(request):
+    if request.method == 'POST':
+        data = request.POST['data']
+        
+        report_path = your_script.create_report(data)
+        response = FileResponse(open(report_path, 'rb'), as_attachment=True, filename='report.xlsx')
+        return response
+    return render(request, 'report_generator/index.html')
