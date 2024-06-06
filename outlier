@@ -1,0 +1,96 @@
+import pandas as pd
+import plotly.graph_objects as go
+
+# Sample data
+data = {
+    'issuer': ['Issuer1', 'Issuer2', 'Issuer3', 'Issuer4', 'Issuer5'],
+    'csr': [15000, 30000, 5000, 20000, 10000],
+    'node': [12000, 25000, 7000, 22000, 11000]
+}
+
+# Create DataFrame
+df = pd.DataFrame(data)
+print("Original DataFrame:")
+print(df)
+
+# Calculate the minimum and maximum values from the combined 'csr' and 'node' columns
+min_value = min(df['csr'].min(), df['node'].min())
+max_value = max(df['csr'].max(), df['node'].max())
+
+# Function to find outliers using the IQR method
+def find_outliers(series):
+    Q1 = series.quantile(0.25)
+    Q3 = series.quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+    return series[(series < lower_bound) | (series > upper_bound)]
+
+csr_outliers = find_outliers(df['csr'])
+node_outliers = find_outliers(df['node'])
+
+# Create the scatter plot
+fig = go.Figure()
+
+# Add scatter plot for 'csr' column
+fig.add_trace(go.Scatter(
+    x=df['issuer'],
+    y=df['csr'],
+    mode='markers',
+    name='CSR',
+    marker=dict(color='blue', size=10),
+    text=df['csr'],  # Hover text
+    hoverinfo='text+name'
+))
+
+# Highlight outliers in 'csr' column
+fig.add_trace(go.Scatter(
+    x=df.loc[csr_outliers.index, 'issuer'],
+    y=csr_outliers,
+    mode='markers',
+    name='CSR Outliers',
+    marker=dict(color='red', size=10, symbol='x'),
+    text=csr_outliers,  # Hover text
+    hoverinfo='text+name'
+))
+
+# Add scatter plot for 'node' column
+fig.add_trace(go.Scatter(
+    x=df['issuer'],
+    y=df['node'],
+    mode='markers',
+    name='Node',
+    marker=dict(color='red', size=10),
+    text=df['node'],  # Hover text
+    hoverinfo='text+name'
+))
+
+# Highlight outliers in 'node' column
+fig.add_trace(go.Scatter(
+    x=df.loc[node_outliers.index, 'issuer'],
+    y=node_outliers,
+    mode='markers',
+    name='Node Outliers',
+    marker=dict(color='red', size=10, symbol='x'),
+    text=node_outliers,  # Hover text
+    hoverinfo='text+name'
+))
+
+# Update layout for better visualization
+fig.update_layout(
+    title='Interactive Scatter Plot of CSR and Node by Issuer',
+    xaxis_title='Issuer',
+    yaxis_title='Values',
+    yaxis=dict(
+        range=[min_value, max_value],  # Set the range for the y-axis
+        tick0=min_value - (min_value % 5000),
+        dtick=5000
+    ),
+    hovermode='closest'
+)
+
+# Export the plot as an HTML file
+fig.write_html("interactive_plot.html")
+
+# Show the plot
+fig.show()
