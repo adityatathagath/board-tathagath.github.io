@@ -1,96 +1,252 @@
-import pandas as pd
-import plotly.graph_objects as go
+Certainly! Let's create the same application using Flask, Tailwind CSS, and Flowbite. Below are the steps to set up the Flask application with the required functionality.
 
-# Sample data
-data = {
-    'issuer': ['Issuer1', 'Issuer2', 'Issuer3', 'Issuer4', 'Issuer5'],
-    'csr': [15000, 30000, 5000, 20000, 10000],
-    'node': [12000, 25000, 7000, 22000, 11000]
+### Step-by-Step Guide
+
+#### 1. Install Flask
+
+First, create a virtual environment and install Flask:
+
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+pip install flask
+```
+
+#### 2. Install Node.js and npm
+
+Download and install Node.js from the [official website](https://nodejs.org/). npm is included with Node.js.
+
+#### 3. Initialize npm and Install Dependencies
+
+Inside your project directory, initialize npm and install the required packages:
+
+```bash
+npm init -y
+npm install tailwindcss postcss autoprefixer flowbite
+npx tailwindcss init
+```
+
+#### 4. Configure Tailwind CSS
+
+Update `tailwind.config.js`:
+
+```javascript
+module.exports = {
+  content: [
+    './templates/**/*.html',
+    './node_modules/flowbite/**/*.js'
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [
+    require('flowbite/plugin')
+  ],
 }
+```
 
-# Create DataFrame
-df = pd.DataFrame(data)
-print("Original DataFrame:")
-print(df)
+Create `postcss.config.js` at the root of your project:
 
-# Calculate the minimum and maximum values from the combined 'csr' and 'node' columns
-min_value = min(df['csr'].min(), df['node'].min())
-max_value = max(df['csr'].max(), df['node'].max())
+```javascript
+module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+```
 
-# Function to find outliers using the IQR method
-def find_outliers(series):
-    Q1 = series.quantile(0.25)
-    Q3 = series.quantile(0.75)
-    IQR = Q3 - Q1
-    lower_bound = Q1 - 1.5 * IQR
-    upper_bound = Q3 + 1.5 * IQR
-    return series[(series < lower_bound) | (series > upper_bound)]
+Create `static/css/styles.css`:
 
-csr_outliers = find_outliers(df['csr'])
-node_outliers = find_outliers(df['node'])
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
 
-# Create the scatter plot
-fig = go.Figure()
+#### 5. Create Flask Application
 
-# Add scatter plot for 'csr' column
-fig.add_trace(go.Scatter(
-    x=df['issuer'],
-    y=df['csr'],
-    mode='markers',
-    name='CSR',
-    marker=dict(color='blue', size=10),
-    text=df['csr'],  # Hover text
-    hoverinfo='text+name'
-))
+Create a file structure like this:
 
-# Highlight outliers in 'csr' column
-fig.add_trace(go.Scatter(
-    x=df.loc[csr_outliers.index, 'issuer'],
-    y=csr_outliers,
-    mode='markers',
-    name='CSR Outliers',
-    marker=dict(color='red', size=10, symbol='x'),
-    text=csr_outliers,  # Hover text
-    hoverinfo='text+name'
-))
+```
+flask_project/
+├── app.py
+├── static/
+│   ├── css/
+│   │   └── styles.css
+├── templates/
+│   ├── base.html
+│   ├── page1.html
+│   ├── page2.html
+│   ├── page3.html
+├── tailwind.config.js
+├── postcss.config.js
+└── package.json
+```
 
-# Add scatter plot for 'node' column
-fig.add_trace(go.Scatter(
-    x=df['issuer'],
-    y=df['node'],
-    mode='markers',
-    name='Node',
-    marker=dict(color='red', size=10),
-    text=df['node'],  # Hover text
-    hoverinfo='text+name'
-))
+#### 6. Write Flask Code
 
-# Highlight outliers in 'node' column
-fig.add_trace(go.Scatter(
-    x=df.loc[node_outliers.index, 'issuer'],
-    y=node_outliers,
-    mode='markers',
-    name='Node Outliers',
-    marker=dict(color='red', size=10, symbol='x'),
-    text=node_outliers,  # Hover text
-    hoverinfo='text+name'
-))
+**`app.py`**:
 
-# Update layout for better visualization
-fig.update_layout(
-    title='Interactive Scatter Plot of CSR and Node by Issuer',
-    xaxis_title='Issuer',
-    yaxis_title='Values',
-    yaxis=dict(
-        range=[min_value, max_value],  # Set the range for the y-axis
-        tick0=min_value - (min_value % 5000),
-        dtick=5000
-    ),
-    hovermode='closest'
-)
+```python
+from flask import Flask, render_template, request, redirect, url_for
 
-# Export the plot as an HTML file
-fig.write_html("interactive_plot.html")
+app = Flask(__name__)
 
-# Show the plot
-fig.show()
+@app.route('/')
+def page1():
+    return render_template('page1.html')
+
+@app.route('/page2')
+def page2():
+    return render_template('page2.html')
+
+@app.route('/page3')
+def page3():
+    return render_template('page3.html')
+
+@app.route('/fetch_data', methods=['POST'])
+def fetch_data():
+    primary_batch_id = request.form['primary_batch_id']
+    secondary_batch_id = request.form['secondary_batch_id']
+    # Fetch data logic
+    return "Data fetched successfully."
+
+@app.route('/generate_report', methods=['POST'])
+def generate_report():
+    primary_batch_id = request.form['primary_batch_id']
+    secondary_batch_id = request.form['secondary_batch_id']
+    # Generate report logic
+    return "Report generated successfully."
+
+if __name__ == '__main__':
+    app.run(debug=True)
+```
+
+#### 7. Create Templates
+
+Create the necessary templates:
+
+**`templates/base.html`**:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="{{ url_for('static', filename='css/output.css') }}" rel="stylesheet">
+    <script src="{{ url_for('static', filename='flowbite/flowbite.js') }}"></script>
+    <title>{% block title %}My Website{% endblock %}</title>
+</head>
+<body class="bg-gray-100">
+    <nav class="bg-blue-600 p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="text-white text-xl">My Website</div>
+            <div>
+                <a href="{{ url_for('page1') }}" class="text-white px-4 py-2 {% if request.path == '/' %}bg-blue-800{% endif %}">Page 1</a>
+                <a href="{{ url_for('page2') }}" class="text-white px-4 py-2 {% if request.path == '/page2' %}bg-blue-800{% endif %}">Page 2</a>
+                <a href="{{ url_for('page3') }}" class="text-white px-4 py-2 {% if request.path == '/page3' %}bg-blue-800{% endif %}">Page 3</a>
+            </div>
+        </div>
+    </nav>
+    <div class="container mx-auto py-8">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>
+```
+
+**`templates/page1.html`**:
+
+```html
+{% extends 'base.html' %}
+
+{% block title %}Page 1{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Page 1</h1>
+<form method="post" action="{{ url_for('fetch_data') }}">
+    <div class="mb-4">
+        <label for="primary_batch_id" class="block text-gray-700">Primary Batch ID:</label>
+        <input type="text" name="primary_batch_id" id="primary_batch_id" required class="w-full p-2 border border-gray-300 rounded">
+    </div>
+    <div class="mb-4">
+        <label for="secondary_batch_id" class="block text-gray-700">Secondary Batch ID:</label>
+        <input type="text" name="secondary_batch_id" id="secondary_batch_id" required class="w-full p-2 border border-gray-300 rounded">
+    </div>
+    <div class="mb-4">
+        <label for="data_list" class="block text-gray-700">Data List:</label>
+        <input type="text" name="data_list" id="data_list" disabled class="w-full p-2 border border-gray-300 rounded">
+    </div>
+    <div class="mb-4">
+        <label class="block text-gray-700">Options:</label>
+        <div>
+            <input type="radio" name="option" value="option1" class="mr-2"> Option 1
+        </div>
+        <div>
+            <input type="radio" name="option" value="option2" class="mr-2"> Option 2
+        </div>
+    </div>
+    <div class="flex space-x-4">
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded">Fetch</button>
+        <button type="submit" formaction="{{ url_for('generate_report') }}" class="bg-green-600 text-white px-4 py-2 rounded">Generate Report</button>
+    </div>
+</form>
+{% endblock %}
+```
+
+**`templates/page2.html`** and **`templates/page3.html`**:
+
+These are similar to `page1.html`, just update the title and heading.
+
+```html
+{% extends 'base.html' %}
+
+{% block title %}Page 2{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Page 2</h1>
+<form method="post" action="{{ url_for('fetch_data') }}">
+    <div class="mb-4">
+        <label for="primary_batch_id" class="block text-gray-700">Primary Batch ID:</label>
+        <input type="text" name="primary_batch_id" id="primary_batch_id" required class="w-full p-2 border border-gray-300 rounded">
+    </div>
+    <div class="mb-4">
+        <label for="secondary_batch_id" class="block text-gray-700">Secondary Batch ID:</label>
+        <input type="text" name="secondary_batch_id" id="secondary_batch_id" required class="w-full p-2 border border-gray-300 rounded">
+    </div>
+    <div class="mb-4">
+        <label for="data_list" class="block text-gray-700">Data List:</label>
+        <input type="text" name="data_list" id="data_list" disabled class="w-full p-2 border border-gray-300 rounded">
+    </div>
+    <div class="mb-4">
+        <label class="block text-gray-700">Options:</label>
+        <div>
+            <input type="radio" name="option" value="option1" class="mr-2"> Option 1
+        </div>
+        <div>
+            <input type="radio" name="option" value="option2" class="mr-2"> Option 2
+        </div>
+    </div>
+    <div class="flex space-x-4">
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded">Fetch</button>
+        <button type="submit" formaction="{{ url_for('generate_report') }}" class="bg-green-600 text-white px-4 py-2 rounded">Generate Report</button>
+    </div>
+</form>
+{% endblock %}
+```
+
+#### 8. Build Tailwind CSS
+
+Run the Tailwind build process using the script defined in `package.json`:
+
+```bash
+npx tailwindcss -i ./static/css/styles.css -o ./static/css/output.css --watch
+```
+
+This command will compile your `styles.css` and output the result to `static/css/output.css`.
+
+#### 9. Run the Flask Server
+
+Finally, run the Flask development
