@@ -243,3 +243,50 @@ def create_report(request):
     </div>
 </form>
 {% endblock %}
+
+
+
+
+
+
+
+
+
+
+
+
+{% extends 'my_app/base.html' %}
+
+{% block title %}Page 1{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Page 1</h1>
+<form method="post" action="{% url 'fetch_data' %}">
+    {% csrf_token %}
+    <div class="mb-4">
+        <label for="primary_batch_id" class="block text-gray-700">Primary Batch ID:</label>
+        <input type="text" name="primary_batch_id" id="primary_batch_id" required class="w-full p-2 border border-gray-300 rounded">
+    </div>
+    <div class="mb-4">
+        <label for="secondary_batch_id" class="block text-gray-700">Secondary Batch ID:</label>
+        <input type="text" name="secondary_batch_id" id="secondary_batch_id" required class="w-full p-2 border border-gray-300 rounded">
+    </div>
+    <div class="mb-4">
+        <label for="data_list" class="block text-gray-700">Data List:</label>
+        <input type="text" name="data_list" id="data_list" disabled class="w-full p-2 border border-gray-300 rounded">
+    </div>
+    <div class="mb-4">
+        <label class="block text-gray-700">Options:</label>
+        <div>
+            <input type="radio" name="option" value="option1" class="mr-2"> Option 1
+        </div>
+        <div>
+            <input type="radio" name="option" value="option2" class="mr-2"> Option 2
+        </div>
+    </div>
+    <div class="flex space-x-4">
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded">Fetch</button>
+        <button type="submit" formaction="{% url 'generate_report' %}" class="bg-green-600 text-white px-4 py-2 rounded">Generate Report</button>
+    </div>
+</form>
+{% endblock %}
