@@ -1,0 +1,58 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Assuming your dataframe is named df and has the columns: 'issuerid', 'allocated', 'delta'
+# For demonstration, let's create a sample dataframe
+np.random.seed(0)
+df = pd.DataFrame({
+    'issuerid': np.arange(1, 6001),
+    'allocated': np.random.randn(6000) * 100 + 1000,  # example values
+    'delta': np.random.randn(6000) * 50 + 500          # example values
+})
+
+# Detect outliers using IQR method for 'allocated'
+Q1_allocated = df['allocated'].quantile(0.25)
+Q3_allocated = df['allocated'].quantile(0.75)
+IQR_allocated = Q3_allocated - Q1_allocated
+outliers_allocated = (df['allocated'] < (Q1_allocated - 1.5 * IQR_allocated)) | (df['allocated'] > (Q3_allocated + 1.5 * IQR_allocated))
+
+# Detect outliers using IQR method for 'delta'
+Q1_delta = df['delta'].quantile(0.25)
+Q3_delta = df['delta'].quantile(0.75)
+IQR_delta = Q3_delta - Q1_delta
+outliers_delta = (df['delta'] < (Q1_delta - 1.5 * IQR_delta)) | (df['delta'] > (Q3_delta + 1.5 * IQR_delta))
+
+# Combine the outliers for 'allocated' and 'delta'
+df['outlier'] = outliers_allocated | outliers_delta
+
+# 1. Scatter plot with transparency
+plt.figure(figsize=(14, 8))
+plt.scatter(df['issuerid'], df['allocated'], alpha=0.1, label='Allocated')
+plt.scatter(df['issuerid'], df['delta'], alpha=0.1, label='Delta', color='orange')
+plt.scatter(df[df['outlier']]['issuerid'], df[df['outlier']]['allocated'], color='red', label='Outliers Allocated')
+plt.scatter(df[df['outlier']]['issuerid'], df[df['outlier']]['delta'], color='purple', label='Outliers Delta')
+plt.xlabel('IssuerID')
+plt.ylabel('Values')
+plt.title('Scatter Plot with Outliers')
+plt.legend()
+plt.show()
+
+# 2. Hexbin plot for allocated
+plt.figure(figsize=(14, 8))
+plt.hexbin(df['issuerid'], df['allocated'], gridsize=50, cmap='Blues', mincnt=1)
+plt.colorbar(label='Count')
+plt.xlabel('IssuerID')
+plt.ylabel('Allocated')
+plt.title('Hexbin Plot for Allocated')
+plt.show()
+
+# 3. Hexbin plot for delta
+plt.figure(figsize=(14, 8))
+plt.hexbin(df['issuerid'], df['delta'], gridsize=50, cmap='Oranges', mincnt=1)
+plt.colorbar(label='Count')
+plt.xlabel('IssuerID')
+plt.ylabel('Delta')
+plt.title('Hexbin Plot for Delta')
+plt.show()
