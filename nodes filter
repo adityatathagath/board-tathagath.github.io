@@ -1,0 +1,34 @@
+import pandas as pd
+import os
+
+# Define the folder where your Excel files are located
+folder_path = 'path_to_your_folder'
+
+# List to store individual DataFrames
+dataframes = []
+
+# Iterate over all files in the folder
+for file_name in os.listdir(folder_path):
+    if file_name.endswith('.xlsx') or file_name.endswith('.xls'):
+        file_path = os.path.join(folder_path, file_name)
+        
+        # Load the Excel file
+        df = pd.read_excel(file_path)
+        
+        # Select the specific columns you need
+        df = df[['node', 'delta', 'value']]  # Adjust column names as needed
+        
+        # Filter rows where the 'value' column is 'credit'
+        df = df[df['value'] == 'credit']
+        
+        # Append the DataFrame to the list
+        dataframes.append(df)
+
+# Concatenate all DataFrames into one
+merged_df = pd.concat(dataframes, ignore_index=True)
+
+# Remove duplicates based on the combination of 'node' and 'delta' columns
+final_df = merged_df.drop_duplicates(subset=['node', 'delta'])
+
+# Save the final DataFrame to a new Excel file
+final_df.to_excel('merged_data.xlsx', index=False)
