@@ -1,54 +1,55 @@
 import pandas as pd
-import plotly.graph_objects as go
+import numpy as np
+import plotly.express as px
+import plotly.graph_objs as go
+from plotly.subplots import make_subplots
+from sklearn.ensemble import IsolationForest
 
-# Sample data
-data = {
-    'issuer': ['Issuer1', 'Issuer2', 'Issuer3', 'Issuer4', 'Issuer5'],
-    'csr': [15000, 30000, 5000, 20000, 10000],
-    'node': [12000, 25000, 7000, 22000, 11000]
-}
+# Assuming your dataframe is named df and has the columns: 'issuerid', 'allocated', 'delta'
+# For demonstration, let's create a sample dataframe
+np.random.seed(0)
+df = pd.DataFrame({
+    'issuerid': np.arange(1, 6001),
+    'allocated': np.random.randn(6000) * 100 + 1000,  # example values
+    'delta': np.random.randn(6000) * 50 + 500          # example values
+})
 
-# Create DataFrame
-df = pd.DataFrame(data)
-print("Original DataFrame:")
-print(df)
+# Isolation Forest model
+iso_forest = IsolationForest(contamination=0.01, random_state=0)
 
-# Create the scatter plot
-fig = go.Figure()
+# Fit the model
+df['allocated_outlier'] = iso_forest.fit_predict(df[['allocated']])
+df['delta_outlier'] = iso_forest.fit_predict(df[['delta']])
 
-# Add scatter plot for 'csr' column
+# Create subplots
+fig = make_subplots(rows=2, cols=1, shared_xaxes=True, subplot_titles=('Isolation Forest Outliers for Allocated', 'Isolation Forest Outliers for Delta'))
+
+# Scatter plot for 'allocated'
 fig.add_trace(go.Scatter(
-    x=df['issuer'],
-    y=df['csr'],
-    mode='markers',
-    name='CSR',
-    marker=dict(color='blue', size=10),
-    text=df['csr'],  # Hover text
-    hoverinfo='text+name'
-))
+    x=df['issuerid'], 
+    y=df['allocated'], 
+    mode='markers', 
+    marker=dict(color=np.where(df['allocated_outlier'] == -1, 'red', 'blue'), opacity=0.5),
+    name='Allocated'
+), row=1, col=1)
 
-# Add scatter plot for 'node' column
+# Scatter plot for 'delta'
 fig.add_trace(go.Scatter(
-    x=df['issuer'],
-    y=df['node'],
-    mode='markers',
-    name='Node',
-    marker=dict(color='red', size=10),
-    text=df['node'],  # Hover text
-    hoverinfo='text+name'
-))
+    x=df['issuerid'], 
+    y=df['delta'], 
+    mode='markers', 
+    marker=dict(color=np.where(df['delta_outlier'] == -1, 'red', 'orange'), opacity=0.5),
+    name='Delta'
+), row=2, col=1)
 
-# Update layout for better visualization
+# Update layout
 fig.update_layout(
-    title='Interactive Scatter Plot of CSR and Node by Issuer',
-    xaxis_title='Issuer',
+    height=800, 
+    title='Interactive Isolation Forest Outliers for Allocated and Delta',
+    xaxis_title='IssuerID',
     yaxis_title='Values',
-    yaxis=dict(
-        tick0=0,
-        dtick=5000
-    ),
-    hovermode='closest'
+    hovermode='x unified'
 )
 
-# Show the plot
+# Show the figure
 fig.show()
