@@ -1,0 +1,95 @@
+from flask import Flask, render_template, request
+
+app = Flask(__name__)
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        batch_id_primary = request.form.get('batch_id_primary')
+        batch_id_secondary = request.form.get('batch_id_secondary')
+        node_id = request.form.get('node_id')
+        selectable_option = request.form.get('selectable_option')
+        consolidation_type = request.form.get('consolidation_type')
+        
+        # Process the form data as needed
+        return f"Received: {batch_id_primary}, {batch_id_secondary}, {node_id}, {selectable_option}, {consolidation_type}"
+
+    return render_template('index.html')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Example</title>
+    <!-- Include TailwindCSS from CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Include Flowbite -->
+    <script src="https://unpkg.com/flowbite@1.6.5/dist/flowbite.js"></script>
+</head>
+<body class="bg-gray-100 p-6">
+    <div class="container mx-auto bg-white p-6 rounded shadow">
+        <form method="POST">
+            <div class="mb-4">
+                <label for="batch_id_primary" class="block text-gray-700">Batch ID Primary:</label>
+                <input type="text" id="batch_id_primary" name="batch_id_primary" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+            </div>
+            <div class="mb-4">
+                <label for="batch_id_secondary" class="block text-gray-700">Batch ID Secondary:</label>
+                <input type="text" id="batch_id_secondary" name="batch_id_secondary" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+            </div>
+            <div class="mb-4">
+                <label for="node_id" class="block text-gray-700">Node ID (Integers only):</label>
+                <input type="number" id="node_id" name="node_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" oninput="toggleSelectableOptions()">
+            </div>
+            <div class="mb-4">
+                <label for="selectable_option" class="block text-gray-700">Selectable Option:</label>
+                <select id="selectable_option" name="selectable_option" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" onchange="toggleNodeID()">
+                    <option value="">Select an option</option>
+                    <option value="option1">Option 1</option>
+                    <option value="option2">Option 2</option>
+                </select>
+            </div>
+            <div class="mb-4">
+                <label class="block text-gray-700">Consolidation Type:</label>
+                <div class="flex items-center">
+                    <input type="radio" id="type1" name="consolidation_type" value="type1" class="mr-2">
+                    <label for="type1" class="mr-4">Type 1</label>
+                    <input type="radio" id="type2" name="consolidation_type" value="type2" class="mr-2">
+                    <label for="type2">Type 2</label>
+                </div>
+            </div>
+            <div class="mb-4">
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded">Fetch</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        function toggleSelectableOptions() {
+            const nodeIDInput = document.getElementById('node_id');
+            const selectableOption = document.getElementById('selectable_option');
+            if (nodeIDInput.value !== "") {
+                selectableOption.disabled = true;
+            } else {
+                selectableOption.disabled = false;
+            }
+        }
+
+        function toggleNodeID() {
+            const nodeIDInput = document.getElementById('node_id');
+            const selectableOption = document.getElementById('selectable_option');
+            if (selectableOption.value !== "") {
+                nodeIDInput.disabled = true;
+            } else {
+                nodeIDInput.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
