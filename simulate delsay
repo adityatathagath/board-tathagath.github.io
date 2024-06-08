@@ -1,0 +1,191 @@
+from flask import Flask, render_template, request, jsonify
+import time  # Simulating API call delay
+
+app = Flask(__name__)
+
+def fetch_df(batch_id_primary, batch_id_secondary, node_id, selectable_option, consolidation_type):
+    # Simulating data fetching via API
+    time.sleep(5)  # Simulate API call delay
+    return {
+        'status': 'success',
+        'data': {
+            'batch_id_primary': batch_id_primary,
+            'batch_id_secondary': batch_id_secondary,
+            'node_id': node_id,
+            'selectable_option': selectable_option,
+            'consolidation_type': consolidation_type
+        }
+    }
+
+@app.route('/fetch_data', methods=['POST'])
+def fetch_data():
+    batch_id_primary = request.form.get('batch_id_primary')
+    batch_id_secondary = request.form.get('batch_id_secondary')
+    node_id = request.form.get('node_id')
+    selectable_option = request.form.get('selectable_option')
+    consolidation_type = request.form.get('consolidation_type')
+
+    # Call the fetch_df function
+    result = fetch_df(batch_id_primary, batch_id_secondary, node_id, selectable_option, consolidation_type)
+    return jsonify(result)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Example</title>
+    <!-- Include TailwindCSS from CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Include Flowbite -->
+    <script src="https://unpkg.com/flowbite@1.6.5/dist/flowbite.js"></script>
+</head>
+<body class="bg-gray-100 p-6">
+    <div class="container mx-auto bg-white p-6 rounded shadow">
+        <form id="dataForm" onsubmit="handleSubmit(event)">
+            <div class="mb-4">
+                <label for="batch_id_primary" class="block text-gray-700">Batch ID Primary:</label>
+                <input type="text" id="batch_id_primary" name="batch_id_primary" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" required>
+            </div>
+            <div class="mb-4">
+                <label for="batch_id_secondary" class="block text-gray-700">Batch ID Secondary:</label>
+                <input type="text" id="batch_id_secondary" name="batch_id_secondary" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" required>
+            </div>
+            <div class="mb-4">
+                <label for="node_id" class="block text-gray-700">Node ID (Integers only):</label>
+                <input type="number" id="node_id" name="node_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" oninput="toggleSelectableOptions()" required>
+            </div>
+            <div class="mb-4">
+                <label for="selectable_option" class="block text-gray-700">Selectable Option:</label>
+                <select id="selectable_option" name="selectable_option" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" onchange="toggleNodeID()" required>
+                    <option value="">Select an option</option>
+                    <option value="option1">Option 1</option>
+                    <option value="option2">Option 2</option>
+                </select>
+            </div>
+            <div class="mb-4">
+                <label class="block text-gray-700">Consolidation Type:</label>
+                <div class="flex items-center">
+                    <input type="radio" id="type1" name="consolidation_type" value="type1" class="mr-2" required>
+                    <label for="type1" class="mr-4">Type 1</label>
+                    <input type="radio" id="type2" name="consolidation_type" value="type2" class="mr-2">
+                    <label for="type2">Type 2</label>
+                </div>
+            </div>
+            <div class="mb-4">
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded">Fetch</button>
+            </div>
+        </form>
+        <div id="loading" class="hidden">
+            <div class="flex justify-center items-center">
+                <div class="loader"></div>
+                <p class="ml-4">Loading...</p>
+            </div>
+        </div>
+        <div id="result" class="hidden mt-4 p-4 bg-green-100 rounded">
+            <p id="result-content"></p>
+        </div>
+    </div>
+
+    <script>
+        function toggleSelectableOptions() {
+            const nodeIDInput = document.getElementById('node_id');
+            const selectableOption = document.getElementById('selectable_option');
+            if (nodeIDInput.value !== "") {
+                selectableOption.disabled = true;
+            } else {
+                selectableOption.disabled = false;
+            }
+        }
+
+        function toggleNodeID() {
+            const nodeIDInput = document.getElementById('node_id');
+            const selectableOption = document.getElementById('selectable_option');
+            if (selectableOption.value !== "") {
+                nodeIDInput.disabled = true;
+            } else {
+                nodeIDInput.disabled = false;
+            }
+        }
+
+        async function handleSubmit(event) {
+            event.preventDefault();
+
+            // Disable the form
+            const form = document.getElementById('dataForm');
+            for (let element of form.elements) {
+                element.disabled = true;
+            }
+
+            // Show loading spinner
+            const loading = document.getElementById('loading');
+            loading.classList.remove('hidden');
+
+            const formData = new FormData(form);
+
+            try {
+                // Fetch data
+                const response = await fetch('/fetch_data', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const data = await response.json();
+
+                // Handle the response data
+                const resultContent = document.getElementById('result-content');
+                resultContent.textContent = `Received: ${JSON.stringify(data.data)}`;
+
+                // Show result
+                const result = document.getElementById('result');
+                result.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error:', error);
+            } finally {
+                // Hide loading spinner and re-enable the form
+                loading.classList.add('hidden');
+                for (let element of form.elements) {
+                    element.disabled = false;
+                }
+            }
+        }
+    </script>
+
+    <style>
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            width: 24px;
+            height: 24px;
+            -webkit-animation: spin 2s linear infinite; /* Safari */
+            animation: spin 2s linear infinite;
+        }
+
+        /* Safari */
+        @-webkit-keyframes spin {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</body>
+</html>
+
