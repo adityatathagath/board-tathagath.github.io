@@ -6,57 +6,37 @@
     <title>Multilevel Dropdown with Flowbite</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://unpkg.com/flowbite@1.4.7/dist/flowbite.min.css" rel="stylesheet">
-    <style>
-        .dropdown-content {
-            display: none;
-            position: absolute;
-            background-color: #f9f9f9;
-            min-width: 160px;
-            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-            z-index: 1;
-        }
-        .dropdown-content a {
-            color: black;
-            padding: 12px 16px;
-            text-decoration: none;
-            display: block;
-        }
-        .dropdown-content a:hover {
-            background-color: #f1f1f1;
-        }
-        .dropdown:hover .dropdown-content {
-            display: block;
-        }
-        .dropdown-submenu {
-            position: relative;
-        }
-        .dropdown-submenu .dropdown-content {
-            top: 0;
-            left: 100%;
-            margin-left: 1px;
-        }
-    </style>
 </head>
 <body class="bg-gray-100 p-10">
 
-<div class="dropdown">
-    <button class="bg-blue-500 text-white px-4 py-2 rounded">Dropdown</button>
-    <div class="dropdown-content">
-        <div class="dropdown-submenu">
-            <a href="#">Option 1</a>
-            <div class="dropdown-content">
-                <a href="#" onclick="selectOption('Option 1-1')">Option 1-1</a>
-                <a href="#" onclick="selectOption('Option 1-2')">Option 1-2</a>
+<div class="relative inline-block text-left">
+    <button class="inline-flex justify-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50" id="menu-button" aria-expanded="true" aria-haspopup="true">
+        Dropdown
+        <svg class="-mr-1 ml-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M10 3a1 1 0 01.707.293l3.75 3.75a1 1 0 01-1.414 1.414L10 5.414l-3.043 3.043a1 1 0 11-1.414-1.414l3.75-3.75A1 1 0 0110 3z" clip-rule="evenodd" />
+        </svg>
+    </button>
+
+    <div id="dropdown-menu" class="hidden origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
+        <div class="py-1" role="none">
+            <button class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onclick="selectOption('Option 1')">
+                Option 1
+                <span class="float-right" onclick="toggleSubMenu(event, 'submenu1')">▶</span>
+            </button>
+            <div id="submenu1" class="hidden pl-4">
+                <button class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onclick="selectOption('Option 1-1')">Option 1-1</button>
+                <button class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onclick="selectOption('Option 1-2')">Option 1-2</button>
             </div>
-        </div>
-        <div class="dropdown-submenu">
-            <a href="#">Option 2</a>
-            <div class="dropdown-content">
-                <a href="#" onclick="selectOption('Option 2-1')">Option 2-1</a>
-                <a href="#" onclick="selectOption('Option 2-2')">Option 2-2</a>
+            <button class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onclick="selectOption('Option 2')">
+                Option 2
+                <span class="float-right" onclick="toggleSubMenu(event, 'submenu2')">▶</span>
+            </button>
+            <div id="submenu2" class="hidden pl-4">
+                <button class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onclick="selectOption('Option 2-1')">Option 2-1</button>
+                <button class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onclick="selectOption('Option 2-2')">Option 2-2</button>
             </div>
+            <button class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onclick="selectOption('Option 3')">Option 3</button>
         </div>
-        <a href="#" onclick="selectOption('Option 3')">Option 3</a>
     </div>
 </div>
 
@@ -66,8 +46,37 @@
 </div>
 
 <script>
+    // Function to select option and display it in the text box
     function selectOption(option) {
         document.getElementById('selectedOption').value = option;
+        closeDropdowns();
+    }
+
+    // Function to toggle the visibility of submenus
+    function toggleSubMenu(event, submenuId) {
+        event.stopPropagation(); // Prevent event from triggering parent click events
+        var submenu = document.getElementById(submenuId);
+        submenu.classList.toggle('hidden');
+    }
+
+    // Function to close all submenus
+    function closeDropdowns() {
+        document.querySelectorAll('.dropdown-content').forEach((submenu) => {
+            submenu.classList.add('hidden');
+        });
+    }
+
+    // Toggle dropdown menu visibility
+    document.getElementById('menu-button').addEventListener('click', function () {
+        document.getElementById('dropdown-menu').classList.toggle('hidden');
+    });
+
+    // Close the dropdown if the user clicks outside of it
+    window.onclick = function(event) {
+        if (!event.target.matches('#menu-button')) {
+            document.getElementById('dropdown-menu').classList.add('hidden');
+            closeDropdowns();
+        }
     }
 </script>
 
