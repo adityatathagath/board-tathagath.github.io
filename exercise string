@@ -1,0 +1,88 @@
+Got it! Here are the exercises without using functions:
+
+### Exercise 1: Personal Details
+Write a Python program that takes a user's name, age, and city of residence as inputs and prints them in the following format:
+
+```plaintext
+Hello, [Name]! You are [Age] years old and live in [City].
+```
+
+**Example:**
+```python
+name = input("Enter your name: ")
+age = input("Enter your age: ")
+city = input("Enter your city of residence: ")
+
+print(f"Hello, {name}! You are {age} years old and live in {city}.")
+```
+
+### Exercise 2: Currency Formatter
+Write a Python program that takes a float number representing an amount of money and formats it as a currency string.
+
+**Example:**
+```python
+amount = 1234.567
+formatted_amount = f"${amount:,.2f}"
+print(formatted_amount)  # Output: $1,234.57
+```
+
+### Exercise 3: Table of Squares and Cubes
+Write a Python program that prints a table of numbers from 1 to 10, along with their squares and cubes. Use string formatting to align the columns.
+
+**Example:**
+```python
+print(f"{'Number':<8}{'Square':<8}{'Cube':<8}")
+for number in range(1, 11):
+    square = number ** 2
+    cube = number ** 3
+    print(f"{number:<8}{square:<8}{cube:<8}")
+```
+
+### Exercise 4: Date Formatter
+Write a Python program that takes a date in the format `YYYY-MM-DD` and prints it in the format `Month Day, Year`.
+
+**Example:**
+```python
+date_str = "2024-06-21"
+year, month, day = date_str.split("-")
+months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+formatted_date = f"{months[int(month)-1]} {int(day)}, {year}"
+print(formatted_date)  # Output: June 21, 2024
+```
+
+### Exercise 5: Right-Justified String
+Write a Python program that takes a string and an integer width, and prints the string right-justified in a field of the given width.
+
+**Example:**
+```python
+text = "Hello"
+width = 10
+print(f"{text:>{width}}")  # Output: "     Hello"
+```
+
+### Exercise 6: Time Formatter
+Write a Python program that takes an integer number of seconds and converts it to a string formatted as `HH:MM:SS`.
+
+**Example:**
+```python
+seconds = 3661
+hours = seconds // 3600
+minutes = (seconds % 3600) // 60
+remaining_seconds = seconds % 60
+formatted_time = f"{hours:02}:{minutes:02}:{remaining_seconds:02}"
+print(formatted_time)  # Output: "01:01:01"
+```
+
+### Exercise 7: Email Formatter
+Write a Python program that takes a user's first name, last name, and domain, and creates an email address in the format `firstname.lastname@domain`.
+
+**Example:**
+```python
+first_name = "Jane"
+last_name = "Doe"
+domain = "example.com"
+email = f"{first_name.lower()}.{last_name.lower()}@{domain}"
+print(email)  # Output: jane.doe@example.com
+```
+
+These exercises should help you practice string formatting in Python.
