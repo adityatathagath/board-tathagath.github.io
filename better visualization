@@ -1,90 +1,59 @@
-Sure! I'll create interactive plots using Plotly for the following methods:
-1. Box Plots
-2. Isolation Forest
-3. DBSCAN
-4. Local Outlier Factor (LOF)
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Searchable List</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+  <div class="max-w-md mx-auto bg-white shadow-md rounded-lg p-6">
+    <h1 class="text-2xl font-bold mb-4">Search List</h1>
+    <input type="text" id="searchInput" placeholder="Search by name or ID" class="w-full p-2 border rounded mb-4">
+    <ul id="dataList" class="divide-y divide-gray-200">
+      <!-- List items will be dynamically inserted here -->
+    </ul>
+    <div class="mt-4">
+      <label for="selectedId" class="block text-sm font-medium text-gray-700">Selected ID:</label>
+      <input type="text" id="selectedId" readonly class="w-full p-2 border rounded mt-1">
+    </div>
+  </div>
 
-Here's how you can do it:
+  <script>
+    const data = [
+      { name: 'Alice', id: '1' },
+      { name: 'Bob', id: '2' },
+      { name: 'Charlie', id: '3' },
+      // Add more data as needed
+    ];
 
-### 1. Interactive Box Plots
+    const searchInput = document.getElementById('searchInput');
+    const dataList = document.getElementById('dataList');
+    const selectedId = document.getElementById('selectedId');
 
-```python
-import plotly.express as px
+    function renderList(filteredData) {
+      dataList.innerHTML = '';
+      filteredData.forEach(item => {
+        const listItem = document.createElement('li');
+        listItem.className = 'p-2 cursor-pointer hover:bg-gray-100 flex justify-between';
+        listItem.innerHTML = `<span>${item.name}</span><span>${item.id}</span>`;
+        listItem.addEventListener('click', () => {
+          selectedId.value = item.id;
+        });
+        dataList.appendChild(listItem);
+      });
+    }
 
-# Box plot for allocated
-fig_box_allocated = px.box(df, x='issuerid', y='allocated', title='Box Plot for Allocated')
-fig_box_allocated.show()
+    function filterData(event) {
+      const query = event.target.value.toLowerCase();
+      const filteredData = data.filter(item => item.name.toLowerCase().includes(query) || item.id.includes(query));
+      renderList(filteredData);
+    }
 
-# Box plot for delta
-fig_box_delta = px.box(df, x='issuerid', y='delta', title='Box Plot for Delta')
-fig_box_delta.show()
-```
+    searchInput.addEventListener('input', filterData);
 
-### 2. Interactive Isolation Forest
-
-```python
-from sklearn.ensemble import IsolationForest
-
-# Isolation Forest model
-iso_forest = IsolationForest(contamination=0.01, random_state=0)
-
-# Fit the model
-df['allocated_outlier'] = iso_forest.fit_predict(df[['allocated']])
-df['delta_outlier'] = iso_forest.fit_predict(df[['delta']])
-
-# Visualizing outliers using Isolation Forest
-fig_iso_allocated = px.scatter(df, x='issuerid', y='allocated', color='allocated_outlier', title='Isolation Forest Outliers for Allocated')
-fig_iso_allocated.show()
-
-fig_iso_delta = px.scatter(df, x='issuerid', y='delta', color='delta_outlier', title='Isolation Forest Outliers for Delta')
-fig_iso_delta.show()
-```
-
-### 3. Interactive DBSCAN
-
-```python
-from sklearn.cluster import DBSCAN
-
-# DBSCAN model
-dbscan_allocated = DBSCAN(eps=3, min_samples=5)
-dbscan_delta = DBSCAN(eps=3, min_samples=5)
-
-# Fit the model
-df['allocated_cluster'] = dbscan_allocated.fit_predict(df[['allocated']])
-df['delta_cluster'] = dbscan_delta.fit_predict(df[['delta']])
-
-# Visualizing outliers using DBSCAN
-fig_dbscan_allocated = px.scatter(df, x='issuerid', y='allocated', color='allocated_cluster', title='DBSCAN Outliers for Allocated')
-fig_dbscan_allocated.show()
-
-fig_dbscan_delta = px.scatter(df, x='issuerid', y='delta', color='delta_cluster', title='DBSCAN Outliers for Delta')
-fig_dbscan_delta.show()
-```
-
-### 4. Interactive Local Outlier Factor (LOF)
-
-```python
-from sklearn.neighbors import LocalOutlierFactor
-
-# LOF model
-lof = LocalOutlierFactor(n_neighbors=20, contamination=0.01)
-
-# Fit the model and predict outliers
-df['lof_allocated'] = lof.fit_predict(df[['allocated']])
-df['lof_delta'] = lof.fit_predict(df[['delta']])
-
-# Visualizing outliers using LOF
-fig_lof_allocated = px.scatter(df, x='issuerid', y='allocated', color='lof_allocated', title='LOF Outliers for Allocated')
-fig_lof_allocated.show()
-
-fig_lof_delta = px.scatter(df, x='issuerid', y='delta', color='lof_delta', title='LOF Outliers for Delta')
-fig_lof_delta.show()
-```
-
-### Summary:
-- **Interactive Box Plots**: Provides a clear indication of the data distribution and highlights outliers.
-- **Interactive Isolation Forest**: Shows outliers detected by the Isolation Forest algorithm.
-- **Interactive DBSCAN**: Displays clusters and outliers detected by the DBSCAN algorithm.
-- **Interactive LOF**: Highlights outliers based on the Local Outlier Factor method.
-
-These interactive plots will help you better visualize and identify outliers in your data.
+    // Initial render
+    renderList(data);
+  </script>
+</body>
+</html>
