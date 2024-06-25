@@ -1,115 +1,81 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Collapsible List</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    .arrow {
-      cursor: pointer;
-    }
-    .hidden {
-      display: none;
-    }
-  </style>
-</head>
-<body class="bg-gray-100 p-8">
-  <div class="max-w-md mx-auto bg-white shadow-md rounded-lg p-6">
-    <h1 class="text-2xl font-bold mb-4">Collapsible List</h1>
-    <div class="flex mb-4">
-      <input type="text" id="searchInput" placeholder="Search by name" class="flex-1 p-2 border rounded">
-      <button id="clearButton" class="ml-2 p-2 bg-red-500 text-white rounded">Clear</button>
-    </div>
-    <div id="scrollContainer" class="divide-y divide-gray-200 overflow-y-auto max-h-60 relative">
-      <ul id="collapsibleList" class="absolute inset-0">
-        <!-- List items will be dynamically inserted here -->
-      </ul>
-    </div>
-    <div class="mt-4">
-      <label for="selectedId" class="block text-sm font-medium text-gray-700">Selected ID:</label>
-      <input type="text" id="selectedId" readonly class="w-full p-2 border rounded mt-1">
-    </div>
-  </div>
+To achieve this functionality using Tailwind CSS and JavaScript, you'll need to create a collapsible list with nested elements and handle click events to show/hide child elements and display the `id` in a textbox when a non-arrow element is clicked. Here's a basic outline of how you can approach this:
 
-  <script>
-    const data = [
-      { "name": "Item 1", "id": "1", "level": 3 },
-      { "name": "Item 2", "id": "2", "level": 4 },
-      { "name": "Item 3", "id": "3", "level": 4 },
-      { "name": "Item 4", "id": "4", "level": 5 },
-      { "name": "Item 5", "id": "5", "level": 6 },
-      { "name": "Item 6", "id": "6", "level": 6 },
-      { "name": "Item 7", "id": "7", "level": 7 },
-      { "name": "Item 8", "id": "8", "level": 8 },
-      { "name": "Item 9", "id": "9", "level": 8 }
-    ];
+### HTML Structure
 
-    const searchInput = document.getElementById('searchInput');
-    const clearButton = document.getElementById('clearButton');
-    const collapsibleList = document.getElementById('collapsibleList');
-    const selectedId = document.getElementById('selectedId');
-
-    function createListItem(item) {
-      const listItem = document.createElement('li');
-      listItem.className = 'p-2 border-b';
-      listItem.style.height = '50px';
-      listItem.innerHTML = `
-        <div class="flex justify-between items-center cursor-pointer">
-          <span onclick="handleItemClick('${item.id}')">${item.name} (ID: ${item.id}, Level: ${item.level})</span>
-          <svg class="w-5 h-5 text-gray-500 arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" onclick="toggleCollapse(event, '${item.id}', ${item.level})">
-            <path fill-rule="evenodd" d="M5.293 9.293a1 1 0 011.414 0L10 12.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-          </svg>
+```html
+<div class="space-y-2">
+    <!-- Level 3 -->
+    <div class="flex items-center">
+        <div class="cursor-pointer">
+            <span class="arrow-icon">▶</span> <!-- Arrow icon for collapse/expand -->
+            <span class="level-item" data-id="41253">Macro</span> <!-- Display name, store id in data attribute -->
         </div>
-        <ul id="children-${item.id}" class="hidden pl-4"></ul>
-      `;
-      return listItem;
-    }
+    </div>
+    <div class="ml-4"> <!-- Nested items under Level 3 -->
+        <div class="flex items-center">
+            <div class="cursor-pointer">
+                <span class="arrow-icon">▶</span>
+                <span class="level-item" data-id="4125032">Macrosc</span>
+            </div>
+        </div>
+        <!-- More items under Level 4 -->
+        <div class="ml-4">
+            <div class="flex items-center">
+                <div class="cursor-pointer">
+                    <span class="arrow-icon">▶</span>
+                    <span class="level-item" data-id="4125037474">Macronddnnd</span>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    function buildTree(data, parentElement = collapsibleList) {
-      const fragment = document.createDocumentFragment();
-      data.forEach(item => {
-        const listItem = createListItem(item);
-        fragment.appendChild(listItem);
-      });
-      parentElement.innerHTML = ''; // Clear the list before building
-      parentElement.appendChild(fragment);
-    }
+    <!-- Repeat structure for other levels as needed -->
+</div>
 
-    function toggleCollapse(event, id, level) {
-      event.stopPropagation();
-      const children = document.getElementById(`children-${id}`);
-      if (children.classList.contains('hidden')) {
-        const nextLevel = level + 1;
-        const childData = data.filter(item => item.level === nextLevel);
-        buildTree(childData, children);
-        children.classList.remove('hidden');
-      } else {
-        children.classList.add('hidden');
-        children.innerHTML = ''; // Clear children to save memory
-      }
-    }
+<!-- Textbox to display clicked item's ID -->
+<div>
+    <input type="text" id="selected-id" class="border-gray-300 border p-2 mt-4 w-full" readonly>
+</div>
+```
 
-    function handleItemClick(id) {
-      selectedId.value = id;
-    }
+### JavaScript (with jQuery for simplicity)
 
-    function filterData(event) {
-      const query = event.target.value.toLowerCase();
-      const filteredData = data.filter(item => item.name.toLowerCase().includes(query) && item.level === 3);
-      buildTree(filteredData);
-    }
+```javascript
+$(document).ready(function() {
+    // Handle click on arrow icons to toggle visibility of child items
+    $('.arrow-icon').click(function() {
+        $(this).toggleClass('rotate-90'); // Add a rotation effect
+        $(this).parent().next().toggle(); // Toggle visibility of nested items
+    });
 
-    function clearSearch() {
-      searchInput.value = '';
-      buildTree(data.filter(item => item.level === 3));
-    }
+    // Handle click on level items (excluding arrows) to display ID in textbox
+    $('.level-item').click(function() {
+        var id = $(this).data('id'); // Retrieve ID from data attribute
+        $('#selected-id').val(id); // Display ID in textbox
+    });
+});
+```
 
-    searchInput.addEventListener('input', filterData);
-    clearButton.addEventListener('click', clearSearch);
+### CSS (using Tailwind classes)
 
-    // Initial render
-    buildTree(data.filter(item => item.level === 3));
-  </script>
-</body>
-</html>
+```css
+.arrow-icon {
+    width: 1rem; /* Adjust size as needed */
+}
+
+.rotate-90 {
+    transform: rotate(90deg); /* Rotate arrow for visual indication of expand/collapse */
+}
+```
+
+### Explanation:
+
+1. **HTML Structure**: Each level (`3`, `4`, `5`, etc.) is represented as a nested `div`. The `arrow-icon` and `level-item` classes are used for arrows and level names, respectively. Each `level-item` contains a `data-id` attribute with the corresponding ID.
+
+2. **JavaScript**: 
+   - Clicking on `arrow-icon` toggles the visibility of nested items (`ml-4` divs).
+   - Clicking on `level-item` displays its `data-id` in the textbox (`#selected-id`).
+
+3. **CSS**: Utilizes Tailwind CSS classes for styling, including spacing and borders.
+
+Make sure to include the necessary Tailwind CSS file in your project for these classes to work properly. Adjust the structure and styles as per your project's requirements and design preferences.
