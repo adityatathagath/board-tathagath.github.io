@@ -44,41 +44,31 @@
     function generateCollapsibleList(data, container) {
         var html = '';
 
-        // Filter data for level 3 initially visible items
-        var level3Data = data.filter(function(item) {
-            return item.level === 3;
+        // Group items by their level
+        var levels = {};
+        data.forEach(function(item) {
+            if (!levels[item.level]) {
+                levels[item.level] = [];
+            }
+            levels[item.level].push(item);
         });
 
-        // Generate HTML for level 3 items
-        level3Data.forEach(function(item) {
-            html += '<div class="flex items-center">';
-            html += '<div class="cursor-pointer">';
-            html += '<span class="arrow-icon">▶</span>';
-            html += '<span class="level-item" data-id="' + item.id + '">' + item.name + '</span>';
-            html += '</div>';
-            html += '</div>';
-            html += '<div class="ml-4 hidden">'; // Initially hidden nested items
-            html += '</div>';
+        // Generate HTML for each level
+        Object.keys(levels).sort().forEach(function(level) {
+            levels[level].forEach(function(item) {
+                html += '<div class="flex items-center">';
+                html += '<div class="cursor-pointer">';
+                html += '<span class="arrow-icon" onclick="toggleCollapse(this)">▶</span>';
+                html += '<span class="level-item" data-id="' + item.id + '">' + item.name + '</span>';
+                html += '</div>';
+                html += '</div>';
+                html += '<div class="ml-4 hidden">'; // Initially hidden nested items
+                html += '</div>';
+            });
         });
 
         // Append generated HTML to the container
         container.innerHTML = html;
-
-        // Add event listeners after HTML is populated
-        var arrowIcons = container.querySelectorAll('.arrow-icon');
-        arrowIcons.forEach(function(icon) {
-            icon.addEventListener('click', function() {
-                toggleCollapse(this);
-            });
-        });
-
-        var levelItems = container.querySelectorAll('.level-item');
-        levelItems.forEach(function(item) {
-            item.addEventListener('click', function() {
-                var id = this.getAttribute('data-id');
-                document.getElementById('selected-id').value = id;
-            });
-        });
     }
 
     // Function to toggle collapse/expand of nested items
@@ -86,6 +76,12 @@
         icon.classList.toggle('rotate-90');
         var nestedItems = icon.parentElement.nextElementSibling;
         nestedItems.classList.toggle('hidden');
+    }
+
+    // Function to handle item clicks and display ID in textbox
+    function handleItemClick(item) {
+        var id = item.getAttribute('data-id');
+        document.getElementById('selected-id').value = id;
     }
 
     // Call function to generate the collapsible list after the DOM is fully loaded
