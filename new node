@@ -63,7 +63,7 @@
 
     function createListItem(item) {
       const listItem = document.createElement('li');
-      listItem.className = 'p-2';
+      listItem.className = 'p-2 border-b';
       listItem.style.height = `${ROW_HEIGHT}px`;
       listItem.innerHTML = `
         <div class="flex justify-between items-center cursor-pointer">
@@ -89,6 +89,7 @@
       }
       collapsibleList.innerHTML = ''; // Clear the list before building
       collapsibleList.appendChild(fragment);
+      console.log('Tree built successfully'); // Debugging line
     }
 
     function toggleCollapse(event, id) {
