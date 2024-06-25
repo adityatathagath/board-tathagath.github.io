@@ -1,8 +1,14 @@
-To dynamically generate a collapsible list based on your JSON data using JavaScript (jQuery for simplicity) and Tailwind CSS, you can follow these steps:
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collapsible List Example</title>
+    <!-- Include Tailwind CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="p-4">
 
-### HTML Structure
-
-```html
 <div id="collapsible-list" class="space-y-2">
     <!-- This will be populated dynamically -->
 </div>
@@ -11,12 +17,8 @@ To dynamically generate a collapsible list based on your JSON data using JavaScr
 <div>
     <input type="text" id="selected-id" class="border-gray-300 border p-2 mt-4 w-full" readonly>
 </div>
-```
 
-### JavaScript (jQuery)
-
-```javascript
-$(document).ready(function() {
+<script>
     // Sample JSON data (replace with your actual data)
     var data = [
         {"name": "Macro", "id": 41253, "level": 3},
@@ -60,38 +62,29 @@ $(document).ready(function() {
         });
 
         // Append generated HTML to the container
-        container.html(html);
+        container.innerHTML = html;
 
-        // Event handlers for collapsible arrows and item clicks
-        container.find('.arrow-icon').click(function() {
-            $(this).toggleClass('rotate-90');
-            $(this).parent().next().toggle();
+        // Add event listeners for collapsible arrows and item clicks
+        var arrowIcons = container.querySelectorAll('.arrow-icon');
+        arrowIcons.forEach(function(icon) {
+            icon.addEventListener('click', function() {
+                this.classList.toggle('rotate-90');
+                this.parentElement.nextElementSibling.classList.toggle('hidden');
+            });
         });
 
-        container.find('.level-item').click(function() {
-            var id = $(this).data('id');
-            $('#selected-id').val(id);
+        var levelItems = container.querySelectorAll('.level-item');
+        levelItems.forEach(function(item) {
+            item.addEventListener('click', function() {
+                var id = this.getAttribute('data-id');
+                document.getElementById('selected-id').value = id;
+            });
         });
     }
 
     // Call function to generate the collapsible list
-    generateCollapsibleList(data, $('#collapsible-list'));
-});
-```
+    generateCollapsibleList(data, document.getElementById('collapsible-list'));
+</script>
 
-### CSS (Tailwind CSS Classes)
-
-Ensure you have Tailwind CSS included in your project or add the necessary classes based on your project's configuration.
-
-### Explanation:
-
-1. **HTML Structure**: The `#collapsible-list` div will be populated dynamically by JavaScript based on the JSON data. Each item's `name` and `id` are displayed, and clicking an item (other than arrows) will display its `id` in the textbox.
-
-2. **JavaScript**:
-   - **Data**: Replace the `data` variable with your actual JSON data.
-   - **generateCollapsibleList Function**: Dynamically generates HTML for each level (`3`, `4`, `5`, etc.) based on the grouped JSON data.
-   - **Event Handlers**: Handles click events for collapsible arrows (`arrow-icon`) to toggle visibility of nested items and for `level-item` clicks to display the `id` in the textbox.
-
-3. **CSS**: Assumes Tailwind CSS classes for styling, adjust as per your project's design requirements.
-
-This approach ensures that the collapsible list is generated automatically based on your JSON data, making it scalable and efficient even with a large dataset. Adjust the styling and functionality as needed for your specific application.
+</body>
+</html>
