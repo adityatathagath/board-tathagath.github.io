@@ -1,53 +1,97 @@
-const listContainer = document.querySelector('.collapse-list ul');
-const selectedIdInput = document.getElementById('selected-id');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual Collapsible List</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .arrow {
+      cursor: pointer;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 p-8">
+  <div class="max-w-md mx-auto bg-white shadow-md rounded-lg p-6">
+    <h1 class="text-2xl font-bold mb-4">Manual Collapsible List</h1>
+    <div id="scrollContainer" class="divide-y divide-gray-200 overflow-y-auto max-h-60 relative">
+      <ul id="collapsibleList" class="absolute inset-0">
+        <!-- List items will be dynamically inserted here -->
+      </ul>
+    </div>
+    <div class="mt-4">
+      <label for="selectedId" class="block text-sm font-medium text-gray-700">Selected ID:</label>
+      <input type="text" id="selectedId" readonly class="w-full p-2 border rounded mt-1">
+    </div>
+  </div>
 
-function createListItem(macro) {
-  const listItem = document.createElement('li');
-  listItem.classList.add('list-item');
+  <script>
+    const data = [
+      { id: '1', name: 'Parent 1', children: [
+        { id: '2', name: 'Child 1.1', children: [
+          { id: '4', name: 'Grandchild 1.1.1', children: [] },
+          { id: '5', name: 'Grandchild 1.1.2', children: [] }
+        ] },
+        { id: '3', name: 'Child 1.2', children: [] }
+      ] },
+      { id: '6', name: 'Parent 2', children: [
+        { id: '7', name: 'Child 2.1', children: [] },
+        { id: '8', name: 'Child 2.2', children: [
+          { id: '9', name: 'Grandchild 2.2.1', children: [] }
+        ] }
+      ] }
+    ];
 
-  const toggle = document.createElement('span');
-  toggle.classList.add('list-item-toggle', 'cursor-pointer', 'transition', 'duration-200', 'ease-in-out');
-  toggle.textContent = '>';
-  toggle.addEventListener('click', () => toggleListItem(listItem));
-  listItem.appendChild(toggle);
+    const collapsibleList = document.getElementById('collapsibleList');
+    const selectedId = document.getElementById('selectedId');
 
-  const content = document.createElement('span');
-  content.classList.add('list-item-content', 'cursor-pointer', 'hover:text-gray-600');
-  content.textContent = macro.name;
-  content.addEventListener('click', () => updateSelectedId(macro.id));
-  listItem.appendChild(content);
+    function createListItem(item) {
+      const listItem = document.createElement('li');
+      listItem.className = 'p-2 border-b';
+      listItem.style.height = '50px';
+      listItem.innerHTML = `
+        <div class="flex justify-between items-center cursor-pointer">
+          <span onclick="handleItemClick('${item.id}')">${item.name} (ID: ${item.id})</span>
+          ${item.children.length > 0 ? `
+            <svg class="w-5 h-5 text-gray-500 arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" onclick="toggleCollapse(event, '${item.id}')">
+              <path fill-rule="evenodd" d="M5.293 9.293a1 1 0 011.414 0L10 12.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+            </svg>` : ''}
+        </div>
+        <ul id="children-${item.id}" class="hidden pl-4">
+          <!-- Children will be dynamically inserted here -->
+        </ul>
+      `;
+      return listItem;
+    }
 
-  const listBody = document.createElement('div');
-  listBody.classList.add('list-body', 'hidden');
+    function buildTree(data, parentElement = collapsibleList) {
+      const fragment = document.createDocumentFragment();
+      data.forEach(item => {
+        const listItem = createListItem(item);
+        fragment.appendChild(listItem);
+      });
+      parentElement.appendChild(fragment);
+    }
 
-  // Only show list body initially for level 3 items
-  listBody.classList.toggle('hidden', macro.level !== 3);
+    function toggleCollapse(event, id) {
+      event.stopPropagation();
+      const children = document.getElementById(`children-${id}`);
+      if (children.classList.contains('hidden')) {
+        children.classList.remove('hidden');
+      } else {
+        children.classList.add('hidden');
+      }
+    }
 
-  // Filter child data from yourJsonData based on current macro ID
-  const childMacros = yourJsonData.filter(child => child.id.toString().startsWith(macro.id.toString()) && child.level === macro.level + 1);
-  for (const childMacro of childMacros) {
-    listBody.appendChild(createListItem(childMacro));
-  }
+    function handleItemClick(id) {
+      selectedId.value = id;
+    }
 
-  listItem.appendChild(listBody);
-
-  return listItem;
-}
-
-function toggleListItem(listItem) {
-  const listBody = listItem.querySelector('.list-body');
-  listBody.classList.toggle('hidden');
-  toggle.textContent = listBody.classList.contains('hidden') ? '>' : '^';
-}
-
-function updateSelectedId(id) {
-  selectedIdInput.value = id;
-}
-
-// Replace with your actual JSON data
-const yourJsonData = [
-  { "name": "Macro", "id": 41253, "level": 3 },
-  // ... rest of your JSON data
-];
-
-buildList(yourJsonData);
+    // Initial render
+    buildTree(data);
+  </script>
+</body>
+</html>
