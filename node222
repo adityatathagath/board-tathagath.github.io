@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Collapsible List</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .arrow {
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body class="bg-gray-100 p-8">
   <div class="max-w-md mx-auto bg-white shadow-md rounded-lg p-6">
@@ -44,8 +49,8 @@
       const listItem = document.createElement('li');
       listItem.className = 'p-2';
       listItem.innerHTML = `
-        <div class="flex justify-between items-center cursor-pointer" onclick="handleItemClick(event, '${item.id}')">
-          <span>${item.name} (ID: ${item.id}, Level: ${item.level})</span>
+        <div class="flex justify-between items-center cursor-pointer">
+          <span onclick="handleItemClick('${item.id}')">${item.name} (ID: ${item.id}, Level: ${item.level})</span>
           <svg class="w-5 h-5 text-gray-500 arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" onclick="toggleCollapse(event, '${item.id}')">
             <path fill-rule="evenodd" d="M5.293 9.293a1 1 0 011.414 0L10 12.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
           </svg>
@@ -66,30 +71,17 @@
 
       const rootLevel = Math.min(...data.map(item => item.level));
       const rootItems = levels[rootLevel];
-      const itemMap = data.reduce((acc, item) => {
-        acc[item.id] = item;
-        return acc;
-      }, {});
 
       function appendChildren(parentItem) {
-        const parentLevel = parentItem.level;
-        const childLevel = parentLevel + 1;
-        if (!levels[childLevel]) return;
-
-        const childItems = levels[childLevel].filter(item => {
-          let parent = itemMap[item.id];
-          while (parent && parent.level !== rootLevel) {
-            if (parent.level === parentItem.level && parent.id === parentItem.id) return true;
-            parent = itemMap[parent.id];
-          }
-          return false;
-        });
-
         const parentElement = document.getElementById(`children-${parentItem.id}`);
-        childItems.forEach(child => {
-          const childElement = createListItem(child);
-          parentElement.appendChild(childElement);
-          appendChildren(child);
+        const childLevel = parentItem.level + 1;
+        if (!levels[childLevel]) return;
+        levels[childLevel].forEach(childItem => {
+          if (childItem.level === childLevel) {
+            const childElement = createListItem(childItem);
+            parentElement.appendChild(childElement);
+            appendChildren(childItem);
+          }
         });
       }
 
@@ -110,10 +102,8 @@
       }
     }
 
-    function handleItemClick(event, id) {
-      if (!event.target.closest('.arrow')) {
-        selectedId.value = id;
-      }
+    function handleItemClick(id) {
+      selectedId.value = id;
     }
 
     function filterData(event) {
