@@ -81,6 +81,7 @@
     }
 
     function buildTree(data) {
+      console.log('Building tree with data:', data); // Debugging line
       const fragment = document.createDocumentFragment();
       for (let i = startIndex; i < Math.min(data.length, endIndex); i++) {
         const item = data[i];
@@ -123,8 +124,9 @@
     }
 
     function updateVisibleItems() {
+      console.log('Updating visible items from index', startIndex, 'to', endIndex); // Debugging line
       endIndex = Math.min(displayedData.length, startIndex + VISIBLE_COUNT);
-      buildTree(displayedData.slice(startIndex, endIndex));
+      buildTree(displayedData);
     }
 
     function handleScroll() {
