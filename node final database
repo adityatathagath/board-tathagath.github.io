@@ -42,8 +42,6 @@
 
     // Function to generate the collapsible list
     function generateCollapsibleList(data, container) {
-        var html = '';
-
         // Group items by their level
         var levels = {};
         data.forEach(function(item) {
@@ -53,22 +51,45 @@
             levels[item.level].push(item);
         });
 
-        // Generate HTML for each level
-        Object.keys(levels).sort().forEach(function(level) {
-            levels[level].forEach(function(item) {
-                html += '<div class="flex items-center">';
-                html += '<div class="cursor-pointer">';
-                html += '<span class="arrow-icon" onclick="toggleCollapse(this)">▶</span>';
-                html += '<span class="level-item" data-id="' + item.id + '">' + item.name + '</span>';
-                html += '</div>';
-                html += '</div>';
-                html += '<div class="ml-4 hidden">'; // Initially hidden nested items
-                html += '</div>';
-            });
+        // Sort levels by numeric order
+        var sortedLevels = Object.keys(levels).sort(function(a, b) {
+            return a - b;
         });
 
-        // Append generated HTML to the container
-        container.innerHTML = html;
+        // Generate HTML for each level
+        sortedLevels.forEach(function(level) {
+            levels[level].forEach(function(item) {
+                var div = document.createElement('div');
+                div.className = 'flex items-center';
+
+                var spanWrapper = document.createElement('div');
+                spanWrapper.className = 'cursor-pointer';
+                div.appendChild(spanWrapper);
+
+                var arrowSpan = document.createElement('span');
+                arrowSpan.className = 'arrow-icon';
+                arrowSpan.textContent = '▶';
+                arrowSpan.onclick = function() {
+                    toggleCollapse(this);
+                };
+                spanWrapper.appendChild(arrowSpan);
+
+                var itemSpan = document.createElement('span');
+                itemSpan.className = 'level-item';
+                itemSpan.setAttribute('data-id', item.id);
+                itemSpan.textContent = item.name;
+                itemSpan.onclick = function() {
+                    handleItemClick(this);
+                };
+                spanWrapper.appendChild(itemSpan);
+
+                var nestedDiv = document.createElement('div');
+                nestedDiv.className = 'ml-4 hidden'; // Initially hidden nested items
+                div.appendChild(nestedDiv);
+
+                container.appendChild(div);
+            });
+        });
     }
 
     // Function to toggle collapse/expand of nested items
