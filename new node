@@ -1,128 +1,152 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Collapsible List with Search</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <style>
-        .hidden { display: none; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Collapsible List</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://unpkg.com/flowbite@1.4.6/dist/flowbite.min.css" rel="stylesheet">
+  <style>
+    .arrow {
+      cursor: pointer;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
 </head>
-<body>
-    <div class="p-4">
-        <input type="text" id="search-input" placeholder="Search by name or ID" class="p-2 border rounded mb-4 w-full">
-        <div id="collapsible-list">
-            <!-- Collapsible list will be inserted here -->
-        </div>
-        <input type="text" id="id-display" placeholder="Selected ID" class="p-2 border rounded mt-4 w-full" readonly>
+<body class="bg-gray-100 p-8">
+  <div class="max-w-md mx-auto bg-white shadow-md rounded-lg p-6">
+    <h1 class="text-2xl font-bold mb-4">Collapsible List</h1>
+    <div class="flex mb-4">
+      <input type="text" id="searchInput" placeholder="Search by name" class="flex-1 p-2 border rounded">
+      <button id="clearButton" class="ml-2 p-2 bg-red-500 text-white rounded">Clear</button>
     </div>
+    <div id="scrollContainer" class="divide-y divide-gray-200 overflow-y-auto max-h-60 relative">
+      <ul id="collapsibleList" class="absolute inset-0">
+        <!-- List items will be dynamically inserted here -->
+      </ul>
+    </div>
+    <div class="mt-4">
+      <label for="selectedId" class="block text-sm font-medium text-gray-700">Selected ID:</label>
+      <input type="text" id="selectedId" readonly class="w-full p-2 border rounded mt-1">
+    </div>
+  </div>
 
-    <script>
-        const data = [
-            { name: 'Item 1', id: 1, level: 3 },
-            { name: 'Item 2', id: 2, level: 4 },
-            { name: 'Item 3', id: 3, level: 4 },
-            { name: 'Item 4', id: 4, level: 4 },
-            { name: 'Item 5', id: 5, level: 5 },
-            { name: 'Item 6', id: 6, level: 6 },
-            { name: 'Item 7', id: 7, level: 6 },
-            { name: 'Item 8', id: 8, level: 6 },
-            { name: 'Item 9', id: 9, level: 7 },
-            { name: 'Item 10', id: 10, level: 8 },
-            { name: 'Item 11', id: 11, level: 8 },
-            { name: 'Item 12', id: 12, level: 8 },
-            // Add the remaining 388 items here
-        ];
+  <script src="https://unpkg.com/flowbite@1.4.6/dist/flowbite.min.js"></script>
+  <script>
+    let data = [];
+    let displayedData = [];
+    const searchInput = document.getElementById('searchInput');
+    const clearButton = document.getElementById('clearButton');
+    const scrollContainer = document.getElementById('scrollContainer');
+    const collapsibleList = document.getElementById('collapsibleList');
+    const selectedId = document.getElementById('selectedId');
 
-        function createCollapsibleList(data) {
-            const list = document.createElement('ul');
-            const groups = {};
+    const ROW_HEIGHT = 50; // Estimated row height in pixels
+    const BUFFER = 5; // Buffer rows above and below the viewport
+    let startIndex = 0;
+    let endIndex = 0;
 
-            // Group items by level
-            data.forEach(item => {
-                if (!groups[item.level]) {
-                    groups[item.level] = [];
-                }
-                groups[item.level].push(item);
-            });
-
-            function createList(level, parent) {
-                if (!groups[level]) return;
-
-                const ul = document.createElement('ul');
-                ul.classList.add('hidden', 'pl-4');
-
-                groups[level].forEach(item => {
-                    const li = document.createElement('li');
-                    li.classList.add('mb-2');
-
-                    const button = document.createElement('button');
-                    button.classList.add('focus:outline-none');
-                    button.textContent = '►';
-
-                    const span = document.createElement('span');
-                    span.textContent = ` ${item.name} (ID: ${item.id}, Level: ${item.level})`;
-
-                    li.appendChild(button);
-                    li.appendChild(span);
-
-                    const nextLevel = level + 1;
-                    
-                    // Attach event listener for lazy loading children on click
-                    button.addEventListener('click', () => {
-                        const childUl = li.querySelector('ul');
-                        if (childUl) {
-                            if (childUl.classList.contains('hidden')) {
-                                childUl.classList.remove('hidden');
-                                button.textContent = '▼';
-                            } else {
-                                childUl.classList.add('hidden');
-                                button.textContent = '►';
-                            }
-                        } else {
-                            createList(nextLevel, li);
-                            const newChildUl = li.querySelector('ul');
-                            if (newChildUl) {
-                                newChildUl.classList.remove('hidden');
-                                button.textContent = '▼';
-                            }
-                        }
-                    });
-
-                    // Display ID in text box when clicking the span
-                    span.addEventListener('click', () => {
-                        document.getElementById('id-display').value = item.id;
-                    });
-
-                    ul.appendChild(li);
-                });
-
-                parent.appendChild(ul);
-            }
-
-            createList(3, list); // Starting from level 3
-
-            return list;
+    async function fetchData() {
+      try {
+        const response = await fetch('output.json');
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
         }
+        data = await response.json();
+        console.log('Fetched data:', data); // Debugging line
+        displayedData = [...data];
+        updateVisibleItems();
+      } catch (error) {
+        console.error('Fetching data failed:', error); // Debugging line
+      }
+    }
 
-        function filterData(searchTerm) {
-            const lowerCaseSearchTerm = searchTerm.toLowerCase();
-            return data.filter(item => 
-                item.name.toLowerCase().includes(lowerCaseSearchTerm) || 
-                item.id.toString().includes(lowerCaseSearchTerm)
-            );
-        }
+    function createListItem(item) {
+      const listItem = document.createElement('li');
+      listItem.className = 'p-2';
+      listItem.style.height = `${ROW_HEIGHT}px`;
+      listItem.innerHTML = `
+        <div class="flex justify-between items-center cursor-pointer">
+          <span onclick="handleItemClick('${item.id}')">${item.name} (ID: ${item.id}, Level: ${item.level})</span>
+          <svg class="w-5 h-5 text-gray-500 arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" onclick="toggleCollapse(event, '${item.id}')">
+            <path fill-rule="evenodd" d="M5.293 9.293a1 1 0 011.414 0L10 12.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <ul id="children-${item.id}" class="hidden pl-4">
+        </ul>
+      `;
+      return listItem;
+    }
 
-        document.getElementById('search-input').addEventListener('input', (event) => {
-            const searchTerm = event.target.value;
-            const filteredData = filterData(searchTerm);
-            const collapsibleListContainer = document.getElementById('collapsible-list');
-            collapsibleListContainer.innerHTML = '';
-            collapsibleListContainer.appendChild(createCollapsibleList(filteredData));
-        });
+    function buildTree(data) {
+      const fragment = document.createDocumentFragment();
+      for (let i = startIndex; i < Math.min(data.length, endIndex); i++) {
+        const item = data[i];
+        const listItem = createListItem(item);
+        listItem.style.top = `${i * ROW_HEIGHT}px`;
+        fragment.appendChild(listItem);
+      }
+      collapsibleList.innerHTML = ''; // Clear the list before building
+      collapsibleList.appendChild(fragment);
+    }
 
-        document.getElementById('collapsible-list').appendChild(createCollapsibleList(data));
-    </script>
+    function toggleCollapse(event, id) {
+      event.stopPropagation();
+      const children = document.getElementById(`children-${id}`);
+      if (children.classList.contains('hidden')) {
+        children.classList.remove('hidden');
+      } else {
+        children.classList.add('hidden');
+      }
+    }
+
+    function handleItemClick(id) {
+      selectedId.value = id;
+    }
+
+    function filterData(event) {
+      const query = event.target.value.toLowerCase();
+      displayedData = data.filter(item => item.name.toLowerCase().includes(query));
+      startIndex = 0;
+      endIndex = VISIBLE_COUNT;
+      updateVisibleItems();
+    }
+
+    function clearSearch() {
+      searchInput.value = '';
+      displayedData = [...data];
+      startIndex = 0;
+      endIndex = VISIBLE_COUNT;
+      updateVisibleItems();
+    }
+
+    function updateVisibleItems() {
+      endIndex = Math.min(displayedData.length, startIndex + VISIBLE_COUNT);
+      buildTree(displayedData.slice(startIndex, endIndex));
+    }
+
+    function handleScroll() {
+      const scrollTop = scrollContainer.scrollTop;
+      const newStartIndex = Math.floor(scrollTop / ROW_HEIGHT);
+
+      if (newStartIndex !== startIndex) {
+        startIndex = Math.max(0, newStartIndex - BUFFER);
+        endIndex = Math.min(displayedData.length, newStartIndex + VISIBLE_COUNT + BUFFER);
+        updateVisibleItems();
+      }
+    }
+
+    searchInput.addEventListener('input', filterData);
+    clearButton.addEventListener('click', clearSearch);
+    scrollContainer.addEventListener('scroll', handleScroll);
+
+    // Initial visible count calculation based on the container height
+    const VISIBLE_COUNT = Math.ceil(scrollContainer.clientHeight / ROW_HEIGHT) + BUFFER;
+
+    // Fetch data and initial render
+    fetchData();
+  </script>
 </body>
 </html>
