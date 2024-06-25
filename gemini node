@@ -1,4 +1,3 @@
-JavaScript
 const listContainer = document.querySelector('.collapse-list ul');
 const selectedIdInput = document.getElementById('selected-id');
 
@@ -20,11 +19,16 @@ function createListItem(macro) {
 
   const listBody = document.createElement('div');
   listBody.classList.add('list-body', 'hidden');
+
+  // Only show list body initially for level 3 items
+  listBody.classList.toggle('hidden', macro.level !== 3);
+
   // Filter child data from yourJsonData based on current macro ID
   const childMacros = yourJsonData.filter(child => child.id.toString().startsWith(macro.id.toString()) && child.level === macro.level + 1);
   for (const childMacro of childMacros) {
     listBody.appendChild(createListItem(childMacro));
   }
+
   listItem.appendChild(listBody);
 
   return listItem;
@@ -40,25 +44,10 @@ function updateSelectedId(id) {
   selectedIdInput.value = id;
 }
 
-// Function to process your JSON data and build the list
-function buildList(data) {
-  for (const macro of data) {
-    listContainer.appendChild(createListItem(macro));
-  }
-}
-
 // Replace with your actual JSON data
 const yourJsonData = [
   { "name": "Macro", "id": 41253, "level": 3 },
-  { "name": "Macrosc", "id": 4125032, "level": 4 },
-  { "name": "Macrocsncs", "id": 4125032, "level": 4 },
-  { "name": "CMMacro", "id": 41250123, "level": 5 },
-  { "name": "Macrozxc", "id": 412504678, "level": 3 },
-  { "name": "Macroasd", "id": 41250, "level": 4 },
-  { "name": "Macroazxcd", "id": 41250, "level": 4 },
-  { "name": "Macronddnnd", "id": 4125037474, "level": 3 },
-  { "name": "Macrohdhd", "id": 4125037474, "level": 4 },
-  { "name": "cog Macro", "id": 4125012345, "level": 5 }
+  // ... rest of your JSON data
 ];
 
 buildList(yourJsonData);
