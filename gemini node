@@ -1,0 +1,70 @@
+<div class="collapse-list">
+  <ul>
+    </ul>
+</div>
+<input type="text" id="selected-id" placeholder="Selected ID">
+Use code with caution.
+
+Tailwind CSS Classes:
+
+.collapse-list: This class will style the overall container of the collapsible list.
+.list-item: This class will style each item in the list.
+.list-item-toggle: This class will style the clickable arrow element. It should be placed within the .list-item.
+.list-item-content: This class will style the content area of the list item, excluding the arrow. This will be the clickable area for the macro name.
+.list-item-content:hover: This class will style the hover state of the content area.
+.list-body: This class will style the content that gets revealed/hidden when a list item is toggled. It will be initially hidden by default.
+JavaScript (using vanilla JS):
+
+JavaScript
+const listContainer = document.querySelector('.collapse-list ul');
+const selectedIdInput = document.getElementById('selected-id');
+
+function createListItem(macro) {
+  const listItem = document.createElement('li');
+  listItem.classList.add('list-item');
+
+  const toggle = document.createElement('span');
+  toggle.classList.add('list-item-toggle');
+  toggle.addEventListener('click', () => toggleListItem(listItem));
+  listItem.appendChild(toggle);
+
+  const content = document.createElement('span');
+  content.classList.add('list-item-content');
+  content.textContent = macro.name;
+  content.addEventListener('click', () => updateSelectedId(macro.id));
+  listItem.appendChild(content);
+
+  const listBody = document.createElement('div');
+  listBody.classList.add('list-body');
+  // Add child list items recursively if level is greater than 3
+  if (macro.level > 3) {
+    // Your logic to fetch or filter child macros based on macro.id
+    const childMacros = getChildrenMacros(macro.id);
+    for (const childMacro of childMacros) {
+      listBody.appendChild(createListItem(childMacro));
+    }
+  }
+  listItem.appendChild(listBody);
+
+  return listItem;
+}
+
+function toggleListItem(listItem) {
+  const listBody = listItem.querySelector('.list-body');
+  listBody.classList.toggle('hidden');
+  // Update toggle icon (optional) based on open/closed state
+}
+
+function updateSelectedId(id) {
+  selectedIdInput.value = id;
+}
+
+// Function to process your JSON data and build the list
+function buildList(data) {
+  for (const macro of data) {
+    listContainer.appendChild(createListItem(macro));
+  }
+}
+
+// Call the buildList function with your actual JSON data
+buildList(yourJsonData);
