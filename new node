@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Collapsible List</title>
+  <title>Collapsible List Debug</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://unpkg.com/flowbite@1.4.6/dist/flowbite.min.css" rel="stylesheet">
   <style>
     .arrow {
       cursor: pointer;
@@ -33,10 +32,8 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/flowbite@1.4.6/dist/flowbite.min.js"></script>
   <script>
     const data = [
-      // Your JSON data here
       { "name": "Item 1", "id": "1", "level": 3 },
       { "name": "Item 2", "id": "2", "level": 4 },
       { "name": "Item 3", "id": "3", "level": 4 },
@@ -45,26 +42,19 @@
       { "name": "Item 6", "id": "6", "level": 6 },
       { "name": "Item 7", "id": "7", "level": 7 },
       { "name": "Item 8", "id": "8", "level": 8 },
-      { "name": "Item 9", "id": "9", "level": 8 },
-      // Add more items here
+      { "name": "Item 9", "id": "9", "level": 8 }
     ];
 
-    let displayedData = [...data];
     const searchInput = document.getElementById('searchInput');
     const clearButton = document.getElementById('clearButton');
     const scrollContainer = document.getElementById('scrollContainer');
     const collapsibleList = document.getElementById('collapsibleList');
     const selectedId = document.getElementById('selectedId');
 
-    const ROW_HEIGHT = 50; // Estimated row height in pixels
-    const BUFFER = 5; // Buffer rows above and below the viewport
-    let startIndex = 0;
-    let endIndex = 0;
-
     function createListItem(item) {
       const listItem = document.createElement('li');
       listItem.className = 'p-2 border-b';
-      listItem.style.height = `${ROW_HEIGHT}px`;
+      listItem.style.height = '50px';
       listItem.innerHTML = `
         <div class="flex justify-between items-center cursor-pointer">
           <span onclick="handleItemClick('${item.id}')">${item.name} (ID: ${item.id}, Level: ${item.level})</span>
@@ -81,12 +71,10 @@
     function buildTree(data) {
       console.log('Building tree with data:', data); // Debugging line
       const fragment = document.createDocumentFragment();
-      for (let i = startIndex; i < Math.min(data.length, endIndex); i++) {
-        const item = data[i];
+      data.forEach(item => {
         const listItem = createListItem(item);
-        listItem.style.top = `${i * ROW_HEIGHT}px`;
         fragment.appendChild(listItem);
-      }
+      });
       collapsibleList.innerHTML = ''; // Clear the list before building
       collapsibleList.appendChild(fragment);
       console.log('Tree built successfully'); // Debugging line
@@ -108,66 +96,20 @@
 
     function filterData(event) {
       const query = event.target.value.toLowerCase();
-      displayedData = data.filter(item => item.name.toLowerCase().includes(query));
-      startIndex = 0;
-      endIndex = VISIBLE_COUNT;
-      updateVisibleItems();
+      const filteredData = data.filter(item => item.name.toLowerCase().includes(query));
+      buildTree(filteredData);
     }
 
     function clearSearch() {
       searchInput.value = '';
-      displayedData = [...data];
-      startIndex = 0;
-      endIndex = VISIBLE_COUNT;
-      updateVisibleItems();
-    }
-
-    function updateVisibleItems() {
-      console.log('Updating visible items from index', startIndex, 'to', endIndex); // Debugging line
-      endIndex = Math.min(displayedData.length, startIndex + VISIBLE_COUNT);
-      buildTree(displayedData);
-    }
-
-    function handleScroll() {
-      const scrollTop = scrollContainer.scrollTop;
-      const newStartIndex = Math.floor(scrollTop / ROW_HEIGHT);
-
-      if (newStartIndex !== startIndex) {
-        startIndex = Math.max(0, newStartIndex - BUFFER);
-        endIndex = Math.min(displayedData.length, newStartIndex + VISIBLE_COUNT + BUFFER);
-        updateVisibleItems();
-      }
+      buildTree(data);
     }
 
     searchInput.addEventListener('input', filterData);
     clearButton.addEventListener('click', clearSearch);
-    scrollContainer.addEventListener('scroll', handleScroll);
-
-    // Initial visible count calculation based on the container height
-    const VISIBLE_COUNT = Math.ceil(scrollContainer.clientHeight / ROW_HEIGHT) + BUFFER;
 
     // Initial render
-    updateVisibleItems();
+    buildTree(data);
   </script>
 </body>
-
-
-
-
-
-
-
-<ul id="collapsibleList" class="absolute inset-0" style="z-index: 10;">
-  <li class="p-2 border-b" style="height: 50px; position: relative;">
-    <div class="flex justify-between items-center cursor-pointer">
-      <span>Item 1 (ID: 1, Level: 3)</span>
-      <svg class="w-5 h-5 text-gray-500 arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-        <path fill-rule="evenodd" d="M5.293 9.293a1 1 0 011.414 0L10 12.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-      </svg>
-    </div>
-    <ul id="children-1" class="hidden pl-4">
-    </ul>
-  </li>
-  <!-- More list items -->
-</ul>
 </html>
