@@ -6,6 +6,12 @@
     <title>Collapsible List Example</title>
     <!-- Include Tailwind CSS -->
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Custom CSS for arrow rotation -->
+    <style>
+        .rotate-90 {
+            transform: rotate(90deg);
+        }
+    </style>
 </head>
 <body class="p-4">
 
@@ -37,9 +43,9 @@
     // Function to generate the collapsible list
     function generateCollapsibleList(data, container) {
         var html = '';
-        var levels = {};
 
         // Group items by their level
+        var levels = {};
         data.forEach(function(item) {
             if (!levels[item.level]) {
                 levels[item.level] = [];
@@ -49,37 +55,53 @@
 
         // Generate HTML for each level
         Object.keys(levels).sort().forEach(function(level) {
-            levels[level].forEach(function(item) {
-                html += '<div class="flex items-center">';
-                html += '<div class="cursor-pointer">';
-                html += '<span class="arrow-icon">▶</span>';
-                html += '<span class="level-item" data-id="' + item.id + '">' + item.name + '</span>';
-                html += '</div>';
-                html += '</div>';
-                html += '<div class="ml-4 hidden">'; // Initially hidden nested items
-                html += '</div>';
+            levels[level].forEach(function(item, index) {
+                if (level === '3') {
+                    // Level 3 items are initially visible
+                    html += '<div class="flex items-center">';
+                    html += '<div class="cursor-pointer">';
+                    html += '<span class="arrow-icon" onclick="toggleCollapse(this)">▶</span>';
+                    html += '<span class="level-item" data-id="' + item.id + '">' + item.name + '</span>';
+                    html += '</div>';
+                    html += '</div>';
+                    html += '<div class="ml-4'; // Initially hidden nested items
+                    if (index === 0) {
+                        html += '";>'; // First item under level 3 visible initially
+                    } else {
+                        html += ' hidden";>';
+                    }
+                    html += '</div>';
+                } else {
+                    // Level 4 and 5 items initially hidden
+                    html += '<div class="ml-4 hidden">';
+                    html += '<div class="flex items-center">';
+                    html += '<div class="cursor-pointer">';
+                    html += '<span class="arrow-icon" onclick="toggleCollapse(this)">▶</span>';
+                    html += '<span class="level-item" data-id="' + item.id + '">' + item.name + '</span>';
+                    html += '</div>';
+                    html += '</div>';
+                    html += '<div class="ml-4 hidden">'; // Initially hidden nested items
+                    html += '</div>';
+                    html += '</div>';
+                }
             });
         });
 
         // Append generated HTML to the container
         container.innerHTML = html;
+    }
 
-        // Add event listeners for collapsible arrows and item clicks
-        var arrowIcons = container.querySelectorAll('.arrow-icon');
-        arrowIcons.forEach(function(icon) {
-            icon.addEventListener('click', function() {
-                this.classList.toggle('rotate-90');
-                this.parentElement.nextElementSibling.classList.toggle('hidden');
-            });
-        });
+    // Function to toggle collapse/expand of nested items
+    function toggleCollapse(icon) {
+        icon.classList.toggle('rotate-90');
+        var nestedItems = icon.parentElement.nextElementSibling;
+        nestedItems.classList.toggle('hidden');
+    }
 
-        var levelItems = container.querySelectorAll('.level-item');
-        levelItems.forEach(function(item) {
-            item.addEventListener('click', function() {
-                var id = this.getAttribute('data-id');
-                document.getElementById('selected-id').value = id;
-            });
-        });
+    // Function to handle item clicks and display ID in textbox
+    function handleItemClick(item) {
+        var id = item.getAttribute('data-id');
+        document.getElementById('selected-id').value = id;
     }
 
     // Call function to generate the collapsible list
