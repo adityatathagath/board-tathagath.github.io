@@ -44,47 +44,21 @@
     function generateCollapsibleList(data, container) {
         var html = '';
 
-        // Group items by their level
-        var levels = {};
-        data.forEach(function(item) {
-            if (!levels[item.level]) {
-                levels[item.level] = [];
-            }
-            levels[item.level].push(item);
+        // Filter data for level 3 initially visible items
+        var level3Data = data.filter(function(item) {
+            return item.level === 3;
         });
 
-        // Generate HTML for each level
-        Object.keys(levels).sort().forEach(function(level) {
-            levels[level].forEach(function(item, index) {
-                if (level === '3') {
-                    // Level 3 items are initially visible
-                    html += '<div class="flex items-center">';
-                    html += '<div class="cursor-pointer">';
-                    html += '<span class="arrow-icon" onclick="toggleCollapse(this)">▶</span>';
-                    html += '<span class="level-item" data-id="' + item.id + '">' + item.name + '</span>';
-                    html += '</div>';
-                    html += '</div>';
-                    html += '<div class="ml-4'; // Initially hidden nested items
-                    if (index === 0) {
-                        html += '";>'; // First item under level 3 visible initially
-                    } else {
-                        html += ' hidden";>';
-                    }
-                    html += '</div>';
-                } else {
-                    // Level 4 and 5 items initially hidden
-                    html += '<div class="ml-4 hidden">';
-                    html += '<div class="flex items-center">';
-                    html += '<div class="cursor-pointer">';
-                    html += '<span class="arrow-icon" onclick="toggleCollapse(this)">▶</span>';
-                    html += '<span class="level-item" data-id="' + item.id + '">' + item.name + '</span>';
-                    html += '</div>';
-                    html += '</div>';
-                    html += '<div class="ml-4 hidden">'; // Initially hidden nested items
-                    html += '</div>';
-                    html += '</div>';
-                }
-            });
+        // Generate HTML for level 3 items
+        level3Data.forEach(function(item) {
+            html += '<div class="flex items-center">';
+            html += '<div class="cursor-pointer">';
+            html += '<span class="arrow-icon" onclick="toggleCollapse(this)">▶</span>';
+            html += '<span class="level-item" data-id="' + item.id + '">' + item.name + '</span>';
+            html += '</div>';
+            html += '</div>';
+            html += '<div class="ml-4 hidden">'; // Initially hidden nested items
+            html += '</div>';
         });
 
         // Append generated HTML to the container
