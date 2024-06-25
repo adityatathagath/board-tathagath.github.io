@@ -51,28 +51,25 @@
             levels[item.level].push(item);
         });
 
-        // Sort levels by numeric order
-        var sortedLevels = Object.keys(levels).sort(function(a, b) {
-            return a - b;
-        });
-
         // Generate HTML for each level
-        sortedLevels.forEach(function(level) {
+        Object.keys(levels).forEach(function(level) {
             levels[level].forEach(function(item) {
                 var div = document.createElement('div');
                 div.className = 'flex items-center';
 
                 var spanWrapper = document.createElement('div');
                 spanWrapper.className = 'cursor-pointer';
-                div.appendChild(spanWrapper);
 
-                var arrowSpan = document.createElement('span');
-                arrowSpan.className = 'arrow-icon';
-                arrowSpan.textContent = '▶';
-                arrowSpan.onclick = function() {
-                    toggleCollapse(this);
-                };
-                spanWrapper.appendChild(arrowSpan);
+                // Add arrow icon for items with levels greater than 3
+                if (item.level > 3) {
+                    var arrowSpan = document.createElement('span');
+                    arrowSpan.className = 'arrow-icon';
+                    arrowSpan.textContent = '▶';
+                    arrowSpan.onclick = function() {
+                        toggleCollapse(this);
+                    };
+                    spanWrapper.appendChild(arrowSpan);
+                }
 
                 var itemSpan = document.createElement('span');
                 itemSpan.className = 'level-item';
@@ -85,10 +82,18 @@
 
                 var nestedDiv = document.createElement('div');
                 nestedDiv.className = 'ml-4 hidden'; // Initially hidden nested items
+                div.appendChild(spanWrapper);
                 div.appendChild(nestedDiv);
 
+                // Append to container
                 container.appendChild(div);
             });
+        });
+
+        // Show only level 3 items initially
+        var level3Items = container.querySelectorAll('.level-item[data-level="3"]');
+        level3Items.forEach(function(item) {
+            item.parentElement.nextElementSibling.classList.remove('hidden');
         });
     }
 
