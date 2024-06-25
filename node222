@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Collapsible List</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+  <div class="max-w-md mx-auto bg-white shadow-md rounded-lg p-6">
+    <h1 class="text-2xl font-bold mb-4">Collapsible List</h1>
+    <div class="flex mb-4">
+      <input type="text" id="searchInput" placeholder="Search by name" class="flex-1 p-2 border rounded">
+      <button id="clearButton" class="ml-2 p-2 bg-red-500 text-white rounded">Clear</button>
+    </div>
+    <ul id="collapsibleList" class="divide-y divide-gray-200 overflow-y-auto max-h-60">
+      <!-- List items will be dynamically inserted here -->
+    </ul>
+    <div class="mt-4">
+      <label for="selectedId" class="block text-sm font-medium text-gray-700">Selected ID:</label>
+      <input type="text" id="selectedId" readonly class="w-full p-2 border rounded mt-1">
+    </div>
+  </div>
+
+  <script>
+    const data = [
+      { name: 'Item 1', id: '1', level: 3 },
+      { name: 'Item 2', id: '2', level: 4 },
+      { name: 'Item 3', id: '3', level: 4 },
+      { name: 'Item 4', id: '4', level: 5 },
+      { name: 'Item 5', id: '5', level: 6 },
+      { name: 'Item 6', id: '6', level: 6 },
+      { name: 'Item 7', id: '7', level: 7 },
+      { name: 'Item 8', id: '8', level: 8 },
+      { name: 'Item 9', id: '9', level: 8 }
+    ];
+
+    const searchInput = document.getElementById('searchInput');
+    const clearButton = document.getElementById('clearButton');
+    const collapsibleList = document.getElementById('collapsibleList');
+    const selectedId = document.getElementById('selectedId');
+
+    function createListItem(item) {
+      const listItem = document.createElement('li');
+      listItem.className = 'p-2';
+      listItem.innerHTML = `
+        <div class="flex justify-between items-center cursor-pointer" onclick="handleItemClick(event, '${item.id}')">
+          <span>${item.name} (ID: ${item.id}, Level: ${item.level})</span>
+          <svg class="w-5 h-5 text-gray-500 arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" onclick="toggleCollapse(event, '${item.id}')">
+            <path fill-rule="evenodd" d="M5.293 9.293a1 1 0 011.414 0L10 12.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <ul id="children-${item.id}" class="hidden pl-4">
+        </ul>
+      `;
+      return listItem;
+    }
+
+    function buildTree(data) {
+      collapsibleList.innerHTML = ''; // Clear the list before building
+      const levels = data.reduce((acc, item) => {
+        if (!acc[item.level]) acc[item.level] = [];
+        acc[item.level].push(item);
+        return acc;
+      }, {});
+
+      const rootLevel = Math.min(...data.map(item => item.level));
+      const rootItems = levels[rootLevel];
+      const itemMap = data.reduce((acc, item) => {
+        acc[item.id] = item;
+        return acc;
+      }, {});
+
+      function appendChildren(parentItem) {
+        const parentLevel = parentItem.level;
+        const childLevel = parentLevel + 1;
+        if (!levels[childLevel]) return;
+
+        const childItems = levels[childLevel].filter(item => {
+          let parent = itemMap[item.id];
+          while (parent && parent.level !== rootLevel) {
+            if (parent.level === parentItem.level && parent.id === parentItem.id) return true;
+            parent = itemMap[parent.id];
+          }
+          return false;
+        });
+
+        const parentElement = document.getElementById(`children-${parentItem.id}`);
+        childItems.forEach(child => {
+          const childElement = createListItem(child);
+          parentElement.appendChild(childElement);
+          appendChildren(child);
+        });
+      }
+
+      rootItems.forEach(rootItem => {
+        const rootElement = createListItem(rootItem);
+        collapsibleList.appendChild(rootElement);
+        appendChildren(rootItem);
+      });
+    }
+
+    function toggleCollapse(event, id) {
+      event.stopPropagation();
+      const children = document.getElementById(`children-${id}`);
+      if (children.classList.contains('hidden')) {
+        children.classList.remove('hidden');
+      } else {
+        children.classList.add('hidden');
+      }
+    }
+
+    function handleItemClick(event, id) {
+      if (!event.target.closest('.arrow')) {
+        selectedId.value = id;
+      }
+    }
+
+    function filterData(event) {
+      const query = event.target.value.toLowerCase();
+      const filteredData = data.filter(item => item.name.toLowerCase().includes(query));
+      buildTree(filteredData);
+    }
+
+    function clearSearch() {
+      searchInput.value = '';
+      buildTree(data);
+    }
+
+    searchInput.addEventListener('input', filterData);
+    clearButton.addEventListener('click', clearSearch);
+
+    // Initial render
+    buildTree(data);
+  </script>
+</body>
+</html>
