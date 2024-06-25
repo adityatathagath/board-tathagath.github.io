@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Collapsible List Debug</title>
+  <title>Collapsible List</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .arrow {
@@ -47,7 +47,6 @@
 
     const searchInput = document.getElementById('searchInput');
     const clearButton = document.getElementById('clearButton');
-    const scrollContainer = document.getElementById('scrollContainer');
     const collapsibleList = document.getElementById('collapsibleList');
     const selectedId = document.getElementById('selectedId');
 
@@ -58,35 +57,36 @@
       listItem.innerHTML = `
         <div class="flex justify-between items-center cursor-pointer">
           <span onclick="handleItemClick('${item.id}')">${item.name} (ID: ${item.id}, Level: ${item.level})</span>
-          <svg class="w-5 h-5 text-gray-500 arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" onclick="toggleCollapse(event, '${item.id}')">
+          <svg class="w-5 h-5 text-gray-500 arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" onclick="toggleCollapse(event, '${item.id}', ${item.level})">
             <path fill-rule="evenodd" d="M5.293 9.293a1 1 0 011.414 0L10 12.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
           </svg>
         </div>
-        <ul id="children-${item.id}" class="hidden pl-4">
-        </ul>
+        <ul id="children-${item.id}" class="hidden pl-4"></ul>
       `;
       return listItem;
     }
 
-    function buildTree(data) {
-      console.log('Building tree with data:', data); // Debugging line
+    function buildTree(data, parentElement = collapsibleList) {
       const fragment = document.createDocumentFragment();
       data.forEach(item => {
         const listItem = createListItem(item);
         fragment.appendChild(listItem);
       });
-      collapsibleList.innerHTML = ''; // Clear the list before building
-      collapsibleList.appendChild(fragment);
-      console.log('Tree built successfully'); // Debugging line
+      parentElement.innerHTML = ''; // Clear the list before building
+      parentElement.appendChild(fragment);
     }
 
-    function toggleCollapse(event, id) {
+    function toggleCollapse(event, id, level) {
       event.stopPropagation();
       const children = document.getElementById(`children-${id}`);
       if (children.classList.contains('hidden')) {
+        const nextLevel = level + 1;
+        const childData = data.filter(item => item.level === nextLevel);
+        buildTree(childData, children);
         children.classList.remove('hidden');
       } else {
         children.classList.add('hidden');
+        children.innerHTML = ''; // Clear children to save memory
       }
     }
 
@@ -96,20 +96,20 @@
 
     function filterData(event) {
       const query = event.target.value.toLowerCase();
-      const filteredData = data.filter(item => item.name.toLowerCase().includes(query));
+      const filteredData = data.filter(item => item.name.toLowerCase().includes(query) && item.level === 3);
       buildTree(filteredData);
     }
 
     function clearSearch() {
       searchInput.value = '';
-      buildTree(data);
+      buildTree(data.filter(item => item.level === 3));
     }
 
     searchInput.addEventListener('input', filterData);
     clearButton.addEventListener('click', clearSearch);
 
     // Initial render
-    buildTree(data);
+    buildTree(data.filter(item => item.level === 3));
   </script>
 </body>
 </html>
