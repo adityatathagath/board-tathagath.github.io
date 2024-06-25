@@ -53,7 +53,7 @@
         level3Data.forEach(function(item) {
             html += '<div class="flex items-center">';
             html += '<div class="cursor-pointer">';
-            html += '<span class="arrow-icon" onclick="toggleCollapse(this)">▶</span>';
+            html += '<span class="arrow-icon">▶</span>';
             html += '<span class="level-item" data-id="' + item.id + '">' + item.name + '</span>';
             html += '</div>';
             html += '</div>';
