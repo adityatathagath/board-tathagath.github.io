@@ -1,0 +1,185 @@
+To achieve this, you need to use a combination of Tailwind CSS, Flask, and some JavaScript to handle the loading spinner and to display the success or failure message. Here's a step-by-step guide to implement this:
+
+### 1. HTML Template with Tailwind CSS
+
+First, create your HTML form with Tailwind CSS and include a container for the spinner and messages.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Form with Loading Spinner</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .hidden { display: none; }
+        .loading-spinner {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+        }
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mx-auto mt-10">
+        <form id="myForm" class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="input1">Input 1</label>
+                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="input1" type="text" placeholder="Enter input 1">
+            </div>
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="input2">Input 2</label>
+                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="input2" type="text" placeholder="Enter input 2">
+            </div>
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="input3">Input 3</label>
+                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="input3" type="text" placeholder="Enter input 3">
+            </div>
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="input4">Input 4</label>
+                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="input4" type="text" placeholder="Enter input 4">
+            </div>
+            <button id="fetchButton" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
+                Fetch
+            </button>
+        </form>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="hidden loading-spinner">
+        <img src="/static/spinner.svg" alt="Loading">
+    </div>
+
+    <!-- Overlay -->
+    <div id="overlay" class="hidden overlay"></div>
+
+    <!-- Message -->
+    <div id="message" class="hidden fixed top-0 left-0 w-full h-full flex items-center justify-center">
+        <div class="bg-white p-8 rounded shadow-md">
+            <img id="messageIcon" src="" alt="Message Icon">
+            <p id="messageText" class="text-lg font-bold text-center mt-4"></p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('fetchButton').addEventListener('click', function() {
+            // Show spinner and overlay
+            document.getElementById('loadingSpinner').classList.remove('hidden');
+            document.getElementById('overlay').classList.remove('hidden');
+
+            // Disable form inputs and button
+            document.querySelectorAll('input, button').forEach(el => el.disabled = true);
+
+            // Get form data
+            const formData = new FormData(document.getElementById('myForm'));
+
+            // Send form data to server
+            fetch('/fetch_data', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Hide spinner and overlay
+                document.getElementById('loadingSpinner').classList.add('hidden');
+                document.getElementById('overlay').classList.add('hidden');
+
+                // Show message
+                const messageIcon = document.getElementById('messageIcon');
+                const messageText = document.getElementById('messageText');
+                if (data.status === 'success') {
+                    messageIcon.src = '/static/success.svg';
+                    messageText.textContent = 'Success!';
+                } else {
+                    messageIcon.src = '/static/failed.svg';
+                    messageText.textContent = 'Failed!';
+                }
+                document.getElementById('message').classList.remove('hidden');
+
+                // Enable form inputs and button after a delay
+                setTimeout(() => {
+                    document.querySelectorAll('input, button').forEach(el => el.disabled = false);
+                    document.getElementById('message').classList.add('hidden');
+                }, 3000); // Hide message after 3 seconds
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                // Hide spinner and overlay in case of error
+                document.getElementById('loadingSpinner').classList.add('hidden');
+                document.getElementById('overlay').classList.add('hidden');
+                document.querySelectorAll('input, button').forEach(el => el.disabled = false);
+            });
+        });
+    </script>
+</body>
+</html>
+```
+
+### 2. Flask Backend
+
+Next, create your Flask backend to handle the form submission and return the status message.
+
+```python
+from flask import Flask, request, jsonify, render_template
+
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/fetch_data', methods=['POST'])
+def fetch_data():
+    # Simulate processing of form data
+    try:
+        # Fetch the form data
+        input1 = request.form['input1']
+        input2 = request.form['input2']
+        input3 = request.form['input3']
+        input4 = request.form['input4']
+        
+        # Call your fetch_df function here
+        result = fetch_df(input1, input2, input3, input4)
+        
+        if result == 'success':
+            return jsonify(status='success')
+        else:
+            return jsonify(status='failed')
+    except Exception as e:
+        return jsonify(status='failed')
+
+def fetch_df(input1, input2, input3, input4):
+    # Implement your function logic here
+    # For now, we'll just simulate success or failure
+    if input1 and input2 and input3 and input4:
+        return 'success'
+    else:
+        return 'failed'
+
+if __name__ == '__main__':
+    app.run(debug=True)
+```
+
+### 3. Static Files
+
+Place your `spinner.svg`, `success.svg`, and `failed.svg` images in a `static` folder within your Flask project.
+
+### Explanation
+
+- The HTML form includes inputs and a fetch button.
+- The JavaScript code handles the button click event to show the spinner, disable form inputs, and send form data to the server.
+- The server processes the form data and returns a success or failure message.
+- Depending on the server response, a success or failure message is displayed, and form inputs are re-enabled after a short delay.
+
+This setup ensures a smooth user experience with a loading spinner and appropriate feedback for the user.
