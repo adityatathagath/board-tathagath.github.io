@@ -63,6 +63,22 @@
 
         // Append generated HTML to the container
         container.innerHTML = html;
+
+        // Add event listeners after HTML is populated
+        var arrowIcons = container.querySelectorAll('.arrow-icon');
+        arrowIcons.forEach(function(icon) {
+            icon.addEventListener('click', function() {
+                toggleCollapse(this);
+            });
+        });
+
+        var levelItems = container.querySelectorAll('.level-item');
+        levelItems.forEach(function(item) {
+            item.addEventListener('click', function() {
+                var id = this.getAttribute('data-id');
+                document.getElementById('selected-id').value = id;
+            });
+        });
     }
 
     // Function to toggle collapse/expand of nested items
@@ -72,14 +88,10 @@
         nestedItems.classList.toggle('hidden');
     }
 
-    // Function to handle item clicks and display ID in textbox
-    function handleItemClick(item) {
-        var id = item.getAttribute('data-id');
-        document.getElementById('selected-id').value = id;
-    }
-
-    // Call function to generate the collapsible list
-    generateCollapsibleList(data, document.getElementById('collapsible-list'));
+    // Call function to generate the collapsible list after the DOM is fully loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        generateCollapsibleList(data, document.getElementById('collapsible-list'));
+    });
 </script>
 
 </body>
