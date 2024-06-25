@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collapsible List with Search</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="p-4">
+        <input type="text" id="search-input" placeholder="Search by name or ID" class="p-2 border rounded mb-4 w-full">
+        <div id="collapsible-list">
+            <!-- Collapsible list will be inserted here -->
+        </div>
+        <input type="text" id="id-display" placeholder="Selected ID" class="p-2 border rounded mt-4 w-full" readonly>
+    </div>
+
+    <script>
+        const data = [
+            { name: 'Item 1', id: 1, level: 3 },
+            { name: 'Item 2', id: 2, level: 4 },
+            { name: 'Item 3', id: 3, level: 4 },
+            { name: 'Item 4', id: 4, level: 4 },
+            { name: 'Item 5', id: 5, level: 5 },
+            { name: 'Item 6', id: 6, level: 6 },
+            { name: 'Item 7', id: 7, level: 6 },
+            { name: 'Item 8', id: 8, level: 6 },
+            { name: 'Item 9', id: 9, level: 7 },
+            { name: 'Item 10', id: 10, level: 8 },
+            { name: 'Item 11', id: 11, level: 8 },
+            { name: 'Item 12', id: 12, level: 8 },
+            // Add the remaining 388 items here
+        ];
+
+        function createCollapsibleList(data) {
+            const list = document.createElement('ul');
+            const groups = {};
+
+            // Group items by level
+            data.forEach(item => {
+                if (!groups[item.level]) {
+                    groups[item.level] = [];
+                }
+                groups[item.level].push(item);
+            });
+
+            function createList(level, parent) {
+                if (!groups[level]) return;
+
+                const ul = document.createElement('ul');
+                ul.classList.add('hidden', 'pl-4');
+
+                groups[level].forEach(item => {
+                    const li = document.createElement('li');
+                    li.classList.add('mb-2');
+
+                    const button = document.createElement('button');
+                    button.classList.add('focus:outline-none');
+                    button.textContent = '►';
+
+                    const span = document.createElement('span');
+                    span.textContent = ` ${item.name} (ID: ${item.id}, Level: ${item.level})`;
+
+                    li.appendChild(button);
+                    li.appendChild(span);
+
+                    const nextLevel = level + 1;
+                    
+                    // Attach event listener for lazy loading children on click
+                    button.addEventListener('click', () => {
+                        const childUl = li.querySelector('ul');
+                        if (childUl) {
+                            if (childUl.classList.contains('hidden')) {
+                                childUl.classList.remove('hidden');
+                                button.textContent = '▼';
+                            } else {
+                                childUl.classList.add('hidden');
+                                button.textContent = '►';
+                            }
+                        } else {
+                            createList(nextLevel, li);
+                            const newChildUl = li.querySelector('ul');
+                            if (newChildUl) {
+                                newChildUl.classList.remove('hidden');
+                                button.textContent = '▼';
+                            }
+                        }
+                    });
+
+                    // Display ID in text box when clicking the span
+                    span.addEventListener('click', () => {
+                        document.getElementById('id-display').value = item.id;
+                    });
+
+                    ul.appendChild(li);
+                });
+
+                parent.appendChild(ul);
+            }
+
+            createList(3, list); // Starting from level 3
+
+            return list;
+        }
+
+        function filterData(searchTerm) {
+            const lowerCaseSearchTerm = searchTerm.toLowerCase();
+            return data.filter(item => 
+                item.name.toLowerCase().includes(lowerCaseSearchTerm) || 
+                item.id.toString().includes(lowerCaseSearchTerm)
+            );
+        }
+
+        document.getElementById('search-input').addEventListener('input', (event) => {
+            const searchTerm = event.target.value;
+            const filteredData = filterData(searchTerm);
+            const collapsibleListContainer = document.getElementById('collapsible-list');
+            collapsibleListContainer.innerHTML = '';
+            collapsibleListContainer.appendChild(createCollapsibleList(filteredData));
+        });
+
+        document.getElementById('collapsible-list').appendChild(createCollapsibleList(data));
+    </script>
+</body>
+</html>
