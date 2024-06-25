@@ -35,8 +35,21 @@
 
   <script src="https://unpkg.com/flowbite@1.4.6/dist/flowbite.min.js"></script>
   <script>
-    let data = [];
-    let displayedData = [];
+    const data = [
+      // Your JSON data here
+      { "name": "Item 1", "id": "1", "level": 3 },
+      { "name": "Item 2", "id": "2", "level": 4 },
+      { "name": "Item 3", "id": "3", "level": 4 },
+      { "name": "Item 4", "id": "4", "level": 5 },
+      { "name": "Item 5", "id": "5", "level": 6 },
+      { "name": "Item 6", "id": "6", "level": 6 },
+      { "name": "Item 7", "id": "7", "level": 7 },
+      { "name": "Item 8", "id": "8", "level": 8 },
+      { "name": "Item 9", "id": "9", "level": 8 },
+      // Add more items here
+    ];
+
+    let displayedData = [...data];
     const searchInput = document.getElementById('searchInput');
     const clearButton = document.getElementById('clearButton');
     const scrollContainer = document.getElementById('scrollContainer');
@@ -47,21 +60,6 @@
     const BUFFER = 5; // Buffer rows above and below the viewport
     let startIndex = 0;
     let endIndex = 0;
-
-    async function fetchData() {
-      try {
-        const response = await fetch('output.json');
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-        data = await response.json();
-        console.log('Fetched data:', data); // Debugging line
-        displayedData = [...data];
-        updateVisibleItems();
-      } catch (error) {
-        console.error('Fetching data failed:', error); // Debugging line
-      }
-    }
 
     function createListItem(item) {
       const listItem = document.createElement('li');
@@ -147,8 +145,8 @@
     // Initial visible count calculation based on the container height
     const VISIBLE_COUNT = Math.ceil(scrollContainer.clientHeight / ROW_HEIGHT) + BUFFER;
 
-    // Fetch data and initial render
-    fetchData();
+    // Initial render
+    updateVisibleItems();
   </script>
 </body>
 </html>
