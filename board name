@@ -104,3 +104,21 @@ if __name__ == '__main__':
 3. **Flask Backend**: This handles the form submission, calls the `fetch_df` function with the form inputs, and returns the result as a JSON response.
 
 With this setup, your form will display a loading indicator while the `fetch_df` function processes the input, and then show the success or failure message in a dialog box.
+
+
+Certainly! Here's a more concise version:
+
+---
+
+🎓 **Connecting with Future Talent at AIT Pune!** 🎓
+
+Our team recently visited the Army Institute of Technology, Pune, for campus placements. It was inspiring to meet such talented students, and we're excited to see some of them join our team soon. 
+
+Thank you, AIT Pune, for your hospitality and for making this event a success!
+
+#CampusPlacement #AITPune #Barclays #TalentAcquisition
+
+---
+
+This version is shorter while still conveying the key points.
+
