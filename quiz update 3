@@ -96,7 +96,7 @@ def quiz_game_ui():
     if 'username' not in st.session_state:
         st.session_state.username = None
         st.session_state.selected_quiz = None
-        st.session_state.current_question = 0
+        st.session_state.current_question = None
         st.session_state.start_time = None
         st.session_state.score = 0
 
@@ -132,10 +132,10 @@ def quiz_game_ui():
                 if q['type'] == 'mcq':
                     st.write(q['content'])
                     options = q['options']
-                    option_selected = st.radio("Select an option:", options)
+                    option_selected = st.radio("Select an option:", options, key='radio_options')
                 elif q['type'] == 'input':
                     st.write(q['content'])
-                    option_selected = st.text_input("Your answer:")
+                    option_selected = st.text_input("Your answer:", key='text_input_answer')
 
                 # Timer for each question (15 seconds)
                 elapsed_time = time.time() - st.session_state.start_time
@@ -159,7 +159,7 @@ def quiz_game_ui():
                 # Reset game state
                 st.session_state.username = None
                 st.session_state.selected_quiz = None
-                st.session_state.current_question = 0
+                st.session_state.current_question = None
                 st.session_state.start_time = None
                 st.session_state.score = 0
                 
