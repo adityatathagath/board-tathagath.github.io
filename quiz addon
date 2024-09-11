@@ -1,0 +1,45 @@
+import streamlit as st
+import json
+import os
+
+# Path for storing user data and quizzes
+USER_DB = 'users.json'
+QUIZ_DB = 'quiz.json'
+
+# Helper to load JSON safely
+def load_json(file_path, default_value):
+    try:
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as f:
+                return json.load(f)
+        else:
+            return default_value
+    except json.JSONDecodeError:
+        # Reset to default if the file is corrupted
+        return default_value
+
+# Create or load user and quiz data
+def load_users():
+    return load_json(USER_DB, {})
+
+def load_quiz():
+    return load_json(QUIZ_DB, [])
+
+def save_user(username, score):
+    users = load_users()
+    users[username] = score
+    with open(USER_DB, 'w') as db:
+        json.dump(users, db)
+
+def save_quiz(quiz_data):
+    quizzes = load_quiz()
+    quizzes.append(quiz_data)
+    with open(QUIZ_DB, 'w') as qb:
+        json.dump(quizzes, qb)
+
+def username_exists(username):
+    users = load_users()
+    return username in users
+
+# Add a new quiz (rest of your quiz code here)
+# ...
