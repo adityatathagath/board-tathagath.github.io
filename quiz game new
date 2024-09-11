@@ -1,0 +1,157 @@
+import streamlit as st
+import json
+import os
+import time
+
+# Path for storing user data and quizzes
+USER_DB = 'users.json'
+QUIZ_DB = 'quiz.json'
+
+# Create an empty user and quiz database if it doesn't exist
+if not os.path.exists(USER_DB):
+    with open(USER_DB, 'w') as db:
+        json.dump({}, db)
+
+if not os.path.exists(QUIZ_DB):
+    with open(QUIZ_DB, 'w') as qb:
+        json.dump([], qb)
+
+# Load existing users
+def load_users():
+    with open(USER_DB, 'r') as db:
+        return json.load(db)
+
+# Load existing quizzes
+def load_quiz():
+    with open(QUIZ_DB, 'r') as qb:
+        return json.load(qb)
+
+# Save new user data
+def save_user(username, score):
+    users = load_users()
+    users[username] = score
+    with open(USER_DB, 'w') as db:
+        json.dump(users, db)
+
+# Save new quiz
+def save_quiz(quiz_data):
+    quizzes = load_quiz()
+    quizzes.append(quiz_data)
+    with open(QUIZ_DB, 'w') as qb:
+        json.dump(quizzes, qb)
+
+# Check if username exists
+def username_exists(username):
+    users = load_users()
+    return username in users
+
+# Add a new quiz
+def create_quiz_ui():
+    st.title("Create a Quiz")
+
+    quiz_name = st.text_input("Enter Quiz Name")
+
+    questions = []
+    
+    num_questions = st.number_input("How many questions?", min_value=1, max_value=20, step=1)
+    
+    for i in range(num_questions):
+        st.write(f"### Question {i+1}")
+        question = {}
+        
+        question_type = st.selectbox(f"Select question type for Question {i+1}", ("Text", "Image"))
+        
+        if question_type == "Text":
+            question_text = st.text_area(f"Enter the text for Question {i+1}")
+            question['type'] = 'text'
+            question['content'] = question_text
+        elif question_type == "Image":
+            image = st.file_uploader(f"Upload the image for Question {i+1}", type=["png", "jpg", "jpeg"])
+            if image is not None:
+                question['type'] = 'image'
+                question['content'] = image.getvalue()
+
+        # Adding answer options
+        options = []
+        for j in range(4):
+            option = st.text_input(f"Enter Option {j+1} for Question {i+1}")
+            options.append(option)
+        question['options'] = options
+        
+        # Answer key
+        answer_key = st.selectbox(f"Select the correct answer for Question {i+1}", options)
+        question['answer'] = answer_key
+        
+        questions.append(question)
+
+    if st.button("Save Quiz"):
+        if quiz_name:
+            save_quiz({"quiz_name": quiz_name, "questions": questions})
+            st.success("Quiz saved successfully!")
+        else:
+            st.error("Quiz name is required.")
+
+# Running the quiz for a player
+def quiz_game_ui():
+    quizzes = load_quiz()
+
+    if not quizzes:
+        st.error("No quizzes available. Please create a quiz first.")
+        return
+    
+    st.title("Welcome to the Quiz Game!")
+    username = st.text_input("Enter your username")
+    
+    selected_quiz = st.selectbox("Select a Quiz", [quiz['quiz_name'] for quiz in quizzes])
+    
+    if username:
+        if username_exists(username):
+            st.error("Username already taken. Please choose another one.")
+        else:
+            if st.button('Start Game'):
+                score = 0
+                quiz = next(q for q in quizzes if q['quiz_name'] == selected_quiz)
+                questions = quiz['questions']
+                
+                for i, q in enumerate(questions):
+                    st.write(f"Question {i+1}:")
+                    
+                    # Handle text or image question
+                    if q['type'] == 'text':
+                        st.write(q['content'])
+                    elif q['type'] == 'image':
+                        st.image(q['content'])
+                    
+                    # Display options
+                    options = q['options']
+                    option_selected = st.radio(f"Select an option for Question {i+1}:", options)
+                    
+                    # 15 seconds per question timer
+                    timer = 15
+                    for sec in range(timer, 0, -1):
+                        st.write(f"Time left: {sec} seconds")
+                        time.sleep(1)
+                        st.experimental_rerun()
+                    
+                    # Check answer
+                    if option_selected == q['answer']:
+                        score += 1
+                
+                # Game over, show score
+                st.write(f"Game over! Your score: {score}")
+                save_user(username, score)
+                
+                # Show leaderboard
+                st.write("Leaderboard")
+                users = load_users()
+                sorted_users = sorted(users.items(), key=lambda x: x[1], reverse=True)
+                for user, user_score in sorted_users:
+                    st.write(f"{user}: {user_score}")
+
+if __name__ == "__main__":
+    option = st.sidebar.selectbox("Choose an action", ["Play Quiz", "Create Quiz"])
+
+    if option == "Play Quiz":
+        quiz_game_ui()
+    elif option == "Create Quiz":
+        create_quiz_ui()
