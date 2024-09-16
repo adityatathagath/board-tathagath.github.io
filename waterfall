@@ -1,0 +1,38 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Power BI passes the data into the 'dataset' dataframe
+df = dataset
+
+# Explicitly define column names
+df.columns = ['attribute', 'value']
+
+# Sort the dataframe by attribute to maintain the correct order
+df = df.sort_values('attribute')
+
+# Prepare for waterfall chart
+fig, ax = plt.subplots()
+
+# Calculate cumulative values for the waterfall
+df['cumulative'] = df['value'].cumsum()
+df['cumulative_shifted'] = df['cumulative'].shift(1, fill_value=df['value'].iloc[0])
+
+# Set bar colors
+colors = ['green' if v > 0 else 'red' for v in df['value']]
+
+# Plot the bars
+ax.bar(df['attribute'], df['value'], bottom=df['cumulative_shifted'], color=colors)
+
+# Add labels for the starting and ending points
+ax.text(0, df['value'].iloc[0] / 2, f"Start: {df['value'].iloc[0]}", ha='center', color='black')
+ax.text(len(df) - 1, df['cumulative'].iloc[-1], f"End: {df['cumulative'].iloc[-1]}", ha='center', color='black')
+
+# Title and labels
+ax.set_title('Waterfall Chart')
+ax.set_ylabel('Value')
+
+# Rotate x-axis labels if necessary
+plt.xticks(rotation=45, ha='right')
+
+# Show the chart in Power BI
+plt.show()
