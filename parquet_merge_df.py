@@ -56,3 +56,92 @@ input_folder = 'path_to_your_files'  # Folder where CSV/XLSX files are located
 output_file = 'output.csv'  # Final output CSV file
 process_files(input_folder, search_ids, output_file)
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import os
+from pyspark.sql import SparkSession
+from pathlib import Path
+
+# Manually set paths for Spark and Java if needed
+os.environ["JAVA_HOME"] = "C:/Program Files/Java/jdk1.8.0_291"  # Replace with your Java path
+os.environ["SPARK_HOME"] = "C:/path/to/spark"  # Replace with your Spark path
+os.environ["HADOOP_HOME"] = os.environ["SPARK_HOME"]
+
+# Step 1: Initialize PySpark session
+spark = SparkSession.builder \
+    .appName("Merge CSV Files with All Columns as Strings") \
+    .config("spark.driver.memory", "4g") \
+    .getOrCreate()
+
+print("Spark session created successfully!")
+
+# Step 2: Configuration variables
+input_directory = "C:/path/to/your/csv/files"  # Replace with the directory containing your CSV files
+output_file = "C:/path/to/output/merged_file.csv"  # Replace with your desired output file path
+filter_column = "node_num"  # Column to filter on
+filter_values = ["101", "202", "303"]  # Replace with your list of values to filter as strings
+
+# Step 3: Identify CSV files with "delta" in their filenames
+csv_files = [str(file) for file in Path(input_directory).rglob("*delta*.csv")]
+
+if not csv_files:
+    print("No CSV files with 'delta' in the name found in the specified directory.")
+    spark.stop()
+    exit()
+
+print(f"Found {len(csv_files)} files to process.")
+
+# Step 4: Read, filter, and collect DataFrames
+all_dfs = []
+
+for file in csv_files:
+    print(f"Reading file: {file}")
+    
+    # Read the CSV file with all columns as strings
+    df = spark.read.csv(file, header=True, inferSchema=False)
+    
+    # Check if the filter column exists in the DataFrame
+    if filter_column not in df.columns:
+        print(f"Column '{filter_column}' not found in {file}. Skipping this file.")
+        continue
+
+    # Filter rows where the filter_column contains values in filter_values
+    filtered_df = df.filter(df[filter_column].isin(filter_values))
+    
+    # Append the filtered DataFrame to the list
+    all_dfs.append(filtered_df)
+
+# Step 5: Merge all DataFrames
+if all_dfs:
+    merged_df = all_dfs[0]
+    for df in all_dfs[1:]:
+        merged_df = merged_df.union(df)
+
+    print("All relevant files merged successfully!")
+
+    # Step 6: Write the merged DataFrame to a CSV
+    merged_df.write.csv(output_file, header=True, mode="overwrite")
+    print(f"Merged data saved to {output_file}")
+else:
+    print("No data matched the specified filters.")
+
+# Stop the Spark session
+spark.stop()
+print("Spark session stopped.")
+
+
