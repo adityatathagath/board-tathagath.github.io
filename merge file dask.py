@@ -36,3 +36,52 @@ file_paths = [os.path.join(input_folder, file) for file in os.listdir(input_fold
 
 # Run the script
 process_files_in_parallel(file_paths, output_file)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import pandas as pd
+import os
+
+# Directory containing the CSV files
+folder_path = '/path/to/your/csv_files/'
+
+# Get a list of all CSV files in the folder
+csv_files = [f for f in os.listdir(folder_path) if f.endswith('.csv')]
+
+# Dictionary to store dataframes dynamically
+dfs = {}
+
+# Read each CSV file and store it in the dictionary with its filename (without extension) as the key
+for csv_file in csv_files:
+    file_path = os.path.join(folder_path, csv_file)
+    # Create a key from the filename (remove extension and use it as the variable name)
+    df_name = os.path.splitext(csv_file)[0]
+    # Read the CSV into a DataFrame and store it in the dictionary
+    dfs[df_name] = pd.read_csv(file_path)
+
+# Example: Access a specific DataFrame by the file name (without extension)
+print(dfs['file_name'])  # Replace 'file_name' with the actual file name without the '.csv' extension
+
+
