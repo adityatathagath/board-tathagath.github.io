@@ -1,0 +1,36 @@
+Sub CopyNonZeroValues()
+    Dim ws As Worksheet
+    Dim tbl1 As Range, tbl2 As Range
+    Dim row1 As Range, cell1 As Range
+    Dim row2 As Range
+    Dim tbl1RowIndex As Integer
+    Dim tbl2RowIndex As Integer
+    
+    ' Set the worksheet
+    Set ws = ThisWorkbook.Sheets(1) ' Change to your sheet name if needed
+
+    ' Define Table 1 and Table 2 ranges
+    Set tbl1 = ws.Range("A24:G29") ' Adjust if needed
+    Set tbl2 = ws.Range("A34:Q38") ' Adjust if needed
+    
+    tbl2RowIndex = 1 ' Start pasting from the first row of Table 2
+
+    ' Loop through rows of Table 1
+    For Each row1 In tbl1.Rows
+        ' Check if non-zero values exist in CSO1 A (Column C) or CSO1 B (Column D)
+        If row1.Cells(3).Value <> 0 Or row1.Cells(4).Value <> 0 Then
+            ' Copy non-zero values from CSO1 A and CSO1 B to Table 2
+            tbl2.Rows(tbl2RowIndex).Cells(3).Value = row1.Cells(3).Value ' CSO1 A
+            tbl2.Rows(tbl2RowIndex).Cells(4).Value = row1.Cells(4).Value ' CSO1 B
+            
+            ' Copy other columns if needed
+            For Each cell1 In row1.Cells
+                tbl2.Rows(tbl2RowIndex).Cells(cell1.Column).Value = cell1.Value
+            Next cell1
+            
+            tbl2RowIndex = tbl2RowIndex + 1 ' Move to the next row in Table 2
+        End If
+    Next row1
+
+    MsgBox "Non-zero values copied successfully!"
+End Sub
