@@ -1,0 +1,67 @@
+Sub RunSQLAndPrintToExcel()
+    Dim conn As Object
+    Dim rs As Object
+    Dim sqlQuery As String
+    Dim connectionString As String
+    Dim ws As Worksheet
+    Dim row As Long
+    Dim col As Long
+
+    ' Set worksheet
+    Set ws = ThisWorkbook.Sheets(1) ' Change to your desired sheet
+
+    ' Define SQL query
+    sqlQuery = "SELECT * FROM YourTableName" ' Replace with your SQL query
+
+    ' Connection string (modify based on your database)
+    connectionString = "Provider=SQLOLEDB;Data Source=YourServerName;Initial Catalog=YourDatabaseName;User ID=YourUsername;Password=YourPassword;"
+
+    ' Create connection and recordset objects
+    Set conn = CreateObject("ADODB.Connection")
+    Set rs = CreateObject("ADODB.Recordset")
+
+    On Error GoTo ErrorHandler
+
+    ' Open connection
+    conn.Open connectionString
+
+    ' Execute query
+    rs.Open sqlQuery, conn
+
+    ' Check if records exist
+    If Not rs.EOF Then
+        ' Print headers
+        For col = 0 To rs.Fields.Count - 1
+            ws.Cells(1, col + 1).Value = rs.Fields(col).Name
+        Next col
+
+        ' Print data
+        row = 2
+        Do While Not rs.EOF
+            For col = 0 To rs.Fields.Count - 1
+                ws.Cells(row, col + 1).Value = rs.Fields(col).Value
+            Next col
+            rs.MoveNext
+            row = row + 1
+        Loop
+    Else
+        MsgBox "No records found.", vbInformation
+    End If
+
+    ' Close recordset and connection
+    rs.Close
+    conn.Close
+    Set rs = Nothing
+    Set conn = Nothing
+
+    MsgBox "Data successfully retrieved!", vbInformation
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error: " & Err.Description, vbCritical
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    If Not conn Is Nothing Then conn.Close
+    Set rs = Nothing
+    Set conn = Nothing
+End Sub
