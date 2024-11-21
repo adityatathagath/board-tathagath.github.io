@@ -1,17 +1,23 @@
-Sub RunSQLAndPrintToExcel()
+Sub RunSQLFromSheetAndPrintToExcel()
     Dim conn As Object
     Dim rs As Object
     Dim sqlQuery As String
     Dim connectionString As String
-    Dim ws As Worksheet
+    Dim wsData As Worksheet
+    Dim wsSQL As Worksheet
     Dim row As Long
     Dim col As Long
 
-    ' Set worksheet
-    Set ws = ThisWorkbook.Sheets(1) ' Change to your desired sheet
+    ' Set worksheets
+    Set wsData = ThisWorkbook.Sheets("Sheet1") ' Change to your data sheet name
+    Set wsSQL = ThisWorkbook.Sheets("SQL")     ' Sheet containing SQL query
 
-    ' Define SQL query
-    sqlQuery = "SELECT * FROM YourTableName" ' Replace with your SQL query
+    ' Combine SQL query from Sheet "SQL" (A1:A13)
+    Dim i As Long
+    For i = 1 To 13 ' Adjust range as needed
+        sqlQuery = sqlQuery & wsSQL.Cells(i, 1).Value & " "
+    Next i
+    sqlQuery = Trim(sqlQuery) ' Remove extra spaces
 
     ' Connection string (modify based on your database)
     connectionString = "Provider=SQLOLEDB;Data Source=YourServerName;Initial Catalog=YourDatabaseName;User ID=YourUsername;Password=YourPassword;"
@@ -30,16 +36,16 @@ Sub RunSQLAndPrintToExcel()
 
     ' Check if records exist
     If Not rs.EOF Then
-        ' Print headers
+        ' Print headers to "Sheet1"
         For col = 0 To rs.Fields.Count - 1
-            ws.Cells(1, col + 1).Value = rs.Fields(col).Name
+            wsData.Cells(1, col + 1).Value = rs.Fields(col).Name
         Next col
 
         ' Print data
         row = 2
         Do While Not rs.EOF
             For col = 0 To rs.Fields.Count - 1
-                ws.Cells(row, col + 1).Value = rs.Fields(col).Value
+                wsData.Cells(row, col + 1).Value = rs.Fields(col).Value
             Next col
             rs.MoveNext
             row = row + 1
