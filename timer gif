@@ -1,0 +1,37 @@
+from PIL import Image, ImageDraw, ImageFont
+import os
+
+# Create a 30-second countdown GIF
+frames = []
+width, height = 500, 500
+font_size = 100
+
+# Load font for the countdown numbers
+font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"  # Default font path
+font = ImageFont.truetype(font_path, font_size)
+
+# Generate each frame
+for i in range(30, -1, -1):  # Countdown from 30 to 0
+    # Create a blank image
+    img = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(img)
+    
+    # Draw the circular progress bar
+    angle = int((30 - i) / 30 * 360)  # Calculate the angle for the progress
+    draw.arc([50, 50, width - 50, height - 50], start=90, end=90 - angle, fill="black", width=20)
+    
+    # Draw the countdown number in the center
+    text = str(i)
+    text_width, text_height = draw.textsize(text, font=font)
+    text_x = (width - text_width) // 2
+    text_y = (height - text_height) // 2
+    draw.text((text_x, text_y), text, font=font, fill="black")
+    
+    # Append the frame
+    frames.append(img)
+
+# Save as a GIF
+output_path = "/mnt/data/30_second_countdown.gif"
+frames[0].save(output_path, save_all=True, append_images=frames[1:], duration=1000, loop=0)
+
+output_path
