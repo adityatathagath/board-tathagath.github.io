@@ -1,28 +1,39 @@
-from flask import Flask, render_template, jsonify
 import pandas as pd
+from flask import Flask, render_template, jsonify
 
 app = Flask(__name__)
 
 # Load the data from the Excel file
-df = pd.read_excel('ecodamus.xlsx', sheet_name='summary')
+df = pd.read_excel('ecodamus.xlsx', sheet_name='summary', header=None)
 
-# Data preparation for the charts and analysis
-top_players = df[['Rank', 'Name', 'Total Score']].sort_values(by='Total Score', ascending=False).head(10)
+# Extract ranks (Row 1)
+ranks = df.iloc[0, 1:].values.tolist()
 
-# Prepare asset class contributions (stacked bar for each player)
-asset_classes = df.columns[2:-1]  # Excluding Rank, Name, Total Score
-asset_class_contributions = df[asset_classes].values.tolist()
+# Extract player names (Row 2)
+player_names = df.iloc[1, 1:].values.tolist()
 
-# Prepare Performance Across Asset Classes (bar chart)
-performance_data = df[asset_classes]
+# Extract asset class scores (Rows 3 to 17)
+asset_classes = df.iloc[2:17, 0].values.tolist()  # Asset classes are in rows 3-17, column 1
+asset_scores = df.iloc[2:17, 1:].values.tolist()  # Player scores for 15 asset classes
 
-# Prepare Average Score by Asset Class
-average_scores = df[asset_classes].mean()
+# Extract total scores (Row 18)
+total_scores = df.iloc[17, 1:].values.tolist()
 
-# Prepare Spider chart data (for player comparison)
+# Preparing the top players for leaderboard
+player_data = {
+    'rank': ranks,
+    'name': player_names,
+    'total_score': total_scores
+}
+top_players_df = pd.DataFrame(player_data)
+
+# Sorting the top players by total score and selecting the top 10
+top_players = top_players_df.sort_values(by='total_score', ascending=False).head(10)
+
+# Function to get data for player comparison
 def get_spider_data(player1, player2):
-    player1_data = df[df['Name'] == player1][asset_classes].values.flatten()
-    player2_data = df[df['Name'] == player2][asset_classes].values.flatten()
+    player1_data = df[df.iloc[1, 1:] == player1].iloc[2:17, 1:].values.flatten()
+    player2_data = df[df.iloc[1, 1:] == player2].iloc[2:17, 1:].values.flatten()
     return player1_data.tolist(), player2_data.tolist()
 
 @app.route('/')
@@ -35,7 +46,7 @@ def top_players_data():
 
 @app.route('/search/<name>')
 def search(name):
-    player_data = df[df['Name'].str.contains(name, case=False, na=False)]
+    player_data = df[df.iloc[1, 1:].str.contains(name, case=False, na=False)]
     return jsonify(player_data.to_dict(orient='records'))
 
 @app.route('/compare/<player1>/<player2>')
@@ -45,11 +56,9 @@ def compare(player1, player2):
 
 @app.route('/charts')
 def charts():
-    # Return necessary chart data in JSON format
     return jsonify({
-        'asset_class_contributions': asset_class_contributions,
-        'performance_data': performance_data.values.tolist(),
-        'average_scores': average_scores.tolist()
+        'asset_class_contributions': asset_scores,
+        'average_scores': df.iloc[2:17, 1:].mean(axis=0).values.tolist()
     })
 
 if __name__ == "__main__":
