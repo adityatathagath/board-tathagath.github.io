@@ -1,3 +1,27 @@
+@app.route("/api/leaderboard")
+def api_leaderboard():
+    leaderboard, _ = analyze_data()
+    return jsonify(leaderboard)
+
+@app.route("/api/insights")
+def api_insights():
+    _, insights = analyze_data()
+    return jsonify(insights)
+
+@app.route("/api/chart-data")
+def api_chart_data():
+    leaderboard, insights = analyze_data()
+    chart_data = {
+        "top_10_names": [player["name"] for player in leaderboard[:10]],
+        "top_10_scores": [player["total_score"] for player in leaderboard[:10]],
+        "assets": [stat["asset"] for stat in insights["asset_stats"]],
+        "asset_averages": [stat["average"] for stat in insights["asset_stats"]]
+    }
+    return jsonify(chart_data)
+
+
+
+
 def analyze_data():
     # Read the Excel file
     df = pd.read_excel("ecodamus.xlsx", engine="openpyxl")
@@ -71,33 +95,10 @@ def home():
         <h1 class="text-center text-3xl barclays-blue font-bold mb-4">Ecodamus Insights</h1>
 
         <!-- Winner Section -->
-        <div class="text-center bg-gray-100 p-4 rounded-md mb-6">
-            <h2 class="text-xl font-bold barclays-blue">🏆 Winner: {{ leaderboard[0]['name'] }}</h2>
-            <p class="text-lg">Rank: {{ leaderboard[0]['rank'] }}</p>
-            <p class="text-lg">Total Score: {{ leaderboard[0]['total_score'] }}</p>
-        </div>
+        <div id="winner-section" class="text-center bg-gray-100 p-4 rounded-md mb-6"></div>
 
         <!-- Insights Section -->
-        <div class="mb-6">
-            <h2 class="text-2xl font-bold barclays-blue">📊 Key Insights</h2>
-            <ul class="list-disc pl-5 mt-2">
-                <li><strong>Most Consistent Scorer:</strong> {{ insights['consistent_scorer'] }}</li>
-            </ul>
-
-            <h3 class="mt-4 text-xl font-bold">Top Performers by Asset</h3>
-            <ul class="list-disc pl-5">
-                {% for item in insights['top_performers'] %}
-                <li>{{ item['asset'] }} - {{ item['top_scorer'] }}: {{ item['score'] }}</li>
-                {% endfor %}
-            </ul>
-
-            <h3 class="mt-4 text-xl font-bold">Asset Statistics</h3>
-            <ul class="list-disc pl-5">
-                {% for stat in insights['asset_stats'] %}
-                <li>{{ stat['asset'] }} - Average: {{ stat['average'] }}, Max: {{ stat['max'] }}, Min: {{ stat['min'] }}</li>
-                {% endfor %}
-            </ul>
-        </div>
+        <div id="insights-section" class="mb-6"></div>
 
         <!-- Leaderboard -->
         <h2 class="text-2xl font-bold barclays-blue mb-4">🏅 Leaderboard</h2>
@@ -113,15 +114,7 @@ def home():
                     <th class="px-4 py-2">Total Score</th>
                 </tr>
             </thead>
-            <tbody id="leaderboard">
-                {% for player in leaderboard[:10] %}
-                <tr class="border-b">
-                    <td class="px-4 py-2">{{ player['rank'] }}</td>
-                    <td class="px-4 py-2">{{ player['name'] }}</td>
-                    <td class="px-4 py-2">{{ player['total_score'] }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
+            <tbody id="leaderboard"></tbody>
         </table>
 
         <!-- Charts -->
@@ -138,51 +131,94 @@ def home():
         </div>
     </div>
 
-    <!-- JavaScript for Search -->
+    <!-- JavaScript -->
     <script>
-        const searchInput = document.getElementById('search');
-        const leaderboardBody = document.getElementById('leaderboard');
-        const allPlayers = {{ leaderboard|tojson }};
+        // Fetch leaderboard and populate table
+        async function fetchLeaderboard(query = "") {
+            const response = await fetch("/api/leaderboard");
+            const data = await response.json();
+            const filteredData = query
+                ? data.filter(player => player.name.toLowerCase().includes(query.toLowerCase()))
+                : data;
 
-        searchInput.addEventListener('input', () => {
-            const query = searchInput.value.toLowerCase();
-            const filteredPlayers = allPlayers.filter(player =>
-                player.name.toLowerCase().includes(query)
-            );
-            leaderboardBody.innerHTML = filteredPlayers.slice(0, 10).map(player => `
+            const leaderboardBody = document.getElementById("leaderboard");
+            leaderboardBody.innerHTML = filteredData.slice(0, 10).map(player => `
                 <tr class="border-b">
                     <td class="px-4 py-2">${player.rank}</td>
                     <td class="px-4 py-2">${player.name}</td>
                     <td class="px-4 py-2">${player.total_score}</td>
                 </tr>
             `).join('');
+        }
+
+        // Fetch insights and populate sections
+        async function fetchInsights() {
+            const response = await fetch("/api/insights");
+            const insights = await response.json();
+
+            const winnerSection = document.getElementById("winner-section");
+            winnerSection.innerHTML = `
+                <h2 class="text-xl font-bold barclays-blue">🏆 Winner: ${insights.top_performers[0].top_scorer}</h2>
+                <p class="text-lg">Reason: ${insights.consistent_scorer}</p>
+            `;
+
+            const insightsSection = document.getElementById("insights-section");
+            insightsSection.innerHTML = `
+                <h3 class="mt-4 text-xl font-bold">Top Performers by Asset</h3>
+                <ul class="list-disc pl-5">
+                    ${insights.top_performers.map(item => `
+                        <li>${item.asset} - ${item.top_scorer}: ${item.score}</li>
+                    `).join('')}
+                </ul>
+                <h3 class="mt-4 text-xl font-bold">Asset Statistics</h3>
+                <ul class="list-disc pl-5">
+                    ${insights.asset_stats.map(stat => `
+                        <li>${stat.asset} - Average: ${stat.average}, Max: ${stat.max}, Min: ${stat.min}</li>
+                    `).join('')}
+                </ul>
+            `;
+        }
+
+        // Fetch chart data and render charts
+        async function fetchChartData() {
+            const response = await fetch("/api/chart-data");
+            const data = await response.json();
+
+            new Chart(document.getElementById("scoreChart"), {
+                type: 'bar',
+                data: {
+                    labels: data.top_10_names,
+                    datasets: [{
+                        label: 'Total Score',
+                        data: data.top_10_scores,
+                        backgroundColor: '#00aeef',
+                    }]
+                }
+            });
+
+            new Chart(document.getElementById("averageChart"), {
+                type: 'line',
+                data: {
+                    labels: data.assets,
+                    datasets: [{
+                        label: 'Average Score',
+                        data: data.asset_averages,
+                        borderColor: '#00395d',
+                        fill: false
+                    }]
+                }
+            });
+        }
+
+        // Initialize page
+        document.getElementById("search").addEventListener("input", event => {
+            fetchLeaderboard(event.target.value);
         });
 
-        // Charts
-        const scoreChart = new Chart(document.getElementById('scoreChart'), {
-            type: 'bar',
-            data: {
-                labels: {{ leaderboard[:10]|map(attribute='name')|tojson }},
-                datasets: [{
-                    label: 'Total Score',
-                    data: {{ leaderboard[:10]|map(attribute='total_score')|tojson }},
-                    backgroundColor: '#00aeef',
-                }]
-            }
-        });
-
-        const averageChart = new Chart(document.getElementById('averageChart'), {
-            type: 'line',
-            data: {
-                labels: {{ insights['asset_stats']|map(attribute='asset')|tojson }},
-                datasets: [{
-                    label: 'Average Score',
-                    data: {{ insights['asset_stats']|map(attribute='average')|tojson }},
-                    borderColor: '#00395d',
-                    fill: false
-                }]
-            }
-        });
+        fetchLeaderboard();
+        fetchInsights();
+        fetchChartData();
     </script>
 </body>
 </html>
+
