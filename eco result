@@ -263,3 +263,61 @@ This layout ensures a highly interactive and insightful experience. Let me know 
         data: comparisonData
     });
 </script>
+
+
+<script>
+    // Leaderboard Chart
+    const leaderboardData = {
+        labels: JSON.parse(`{{ score_table | map(attribute="Name") | tojson | safe }}`),
+        datasets: [{
+            label: 'Total Score',
+            data: JSON.parse(`{{ score_table | map(attribute="Total") | tojson | safe }}`),
+            backgroundColor: 'rgba(54, 162, 235, 0.5)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+        }]
+    };
+    new Chart(document.getElementById('leaderboardChart'), {
+        type: 'bar',
+        data: leaderboardData
+    });
+
+    // Average Scores Per Asset Class
+    const averageScoresData = {
+        labels: JSON.parse(`{{ assets | tojson | safe }}`),
+        datasets: [{
+            label: 'Average Score',
+            data: JSON.parse(`{{ averages | tojson | safe }}`),
+            backgroundColor: 'rgba(255, 99, 132, 0.5)',
+            borderColor: 'rgba(255, 99, 132, 1)',
+            borderWidth: 1
+        }]
+    };
+    new Chart(document.getElementById('averageScoresChart'), {
+        type: 'bar',
+        data: averageScoresData
+    });
+
+    // Player Performance Comparison
+    const comparisonLabels = JSON.parse(`{{ assets | tojson | safe }}`);
+    const comparisonData = {
+        labels: comparisonLabels,
+        datasets: [
+            {% for row in score_table %}
+            {
+                label: '{{ row.Name }}',
+                data: JSON.parse(`{{ row.Scores | tojson | safe }}`),
+                fill: false,
+                borderColor: 'rgba({{ loop.index0 * 80 }}, {{ loop.index0 * 80 }}, 255, 1)',
+                tension: 0.1
+            },
+            {% endfor %}
+        ]
+    };
+    new Chart(document.getElementById('comparisonChart'), {
+        type: 'line',
+        data: comparisonData
+    });
+</script>
+
+
