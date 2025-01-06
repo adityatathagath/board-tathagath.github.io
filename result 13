@@ -1,0 +1,188 @@
+def analyze_data():
+    # Read the Excel file
+    df = pd.read_excel("ecodamus.xlsx", engine="openpyxl")
+
+    # Extract data
+    ranks = df.iloc[0, 1:].tolist()
+    names = df.iloc[1, 1:].tolist()
+    total_scores = df.iloc[-1, 1:].tolist()
+    assets = df.iloc[2:-1, 0].tolist()
+    scores = df.iloc[2:-1, 1:].to_dict()
+
+    # Create leaderboard
+    leaderboard = sorted(
+        [{"rank": rank, "name": name, "total_score": score}
+         for rank, name, score in zip(ranks, names, total_scores)],
+        key=lambda x: x["total_score"],
+        reverse=True
+    )
+
+    # Insights
+    insights = {
+        "top_performers": [
+            {
+                "asset": asset,
+                "top_scorer": names[scores[asset].index(max(scores[asset]))],
+                "score": max(scores[asset])
+            }
+            for asset, scores in zip(assets, df.iloc[2:-1, 1:].values)
+        ],
+        "asset_stats": [
+            {
+                "asset": asset,
+                "average": round(df.iloc[i, 1:].mean(), 2),
+                "max": round(df.iloc[i, 1:].max(), 2),
+                "min": round(df.iloc[i, 1:].min(), 2)
+            }
+            for i, asset in enumerate(assets)
+        ],
+        "consistent_scorer": names[
+            sum(abs(df.iloc[2:-1, 1:].diff().fillna(0).sum(axis=0))).argmin()
+        ]
+    }
+
+    return leaderboard, insights
+
+
+
+@app.route("/")
+def home():
+    leaderboard, insights = analyze_data()
+    return render_template("index.html", leaderboard=leaderboard, insights=insights)
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Ecodamus Insights</title>
+    <style>
+        body { background-color: #f4f4f4; }
+        .barclays-blue { color: #00aeef; }
+        .barclays-dark-blue { background-color: #00395d; }
+    </style>
+</head>
+<body class="min-h-screen p-6">
+    <div class="container mx-auto max-w-6xl bg-white shadow-lg rounded-lg p-6">
+        <h1 class="text-center text-3xl barclays-blue font-bold mb-4">Ecodamus Insights</h1>
+
+        <!-- Winner Section -->
+        <div class="text-center bg-gray-100 p-4 rounded-md mb-6">
+            <h2 class="text-xl font-bold barclays-blue">🏆 Winner: {{ leaderboard[0]['name'] }}</h2>
+            <p class="text-lg">Rank: {{ leaderboard[0]['rank'] }}</p>
+            <p class="text-lg">Total Score: {{ leaderboard[0]['total_score'] }}</p>
+        </div>
+
+        <!-- Insights Section -->
+        <div class="mb-6">
+            <h2 class="text-2xl font-bold barclays-blue">📊 Key Insights</h2>
+            <ul class="list-disc pl-5 mt-2">
+                <li><strong>Most Consistent Scorer:</strong> {{ insights['consistent_scorer'] }}</li>
+            </ul>
+
+            <h3 class="mt-4 text-xl font-bold">Top Performers by Asset</h3>
+            <ul class="list-disc pl-5">
+                {% for item in insights['top_performers'] %}
+                <li>{{ item['asset'] }} - {{ item['top_scorer'] }}: {{ item['score'] }}</li>
+                {% endfor %}
+            </ul>
+
+            <h3 class="mt-4 text-xl font-bold">Asset Statistics</h3>
+            <ul class="list-disc pl-5">
+                {% for stat in insights['asset_stats'] %}
+                <li>{{ stat['asset'] }} - Average: {{ stat['average'] }}, Max: {{ stat['max'] }}, Min: {{ stat['min'] }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- Leaderboard -->
+        <h2 class="text-2xl font-bold barclays-blue mb-4">🏅 Leaderboard</h2>
+        <div class="mb-4">
+            <input type="text" id="search" placeholder="Search by name..." 
+                   class="w-full p-2 border-2 border-barclays-blue rounded-md">
+        </div>
+        <table class="w-full text-left border-collapse table-auto">
+            <thead class="bg-barclays-dark-blue text-white">
+                <tr>
+                    <th class="px-4 py-2">Rank</th>
+                    <th class="px-4 py-2">Name</th>
+                    <th class="px-4 py-2">Total Score</th>
+                </tr>
+            </thead>
+            <tbody id="leaderboard">
+                {% for player in leaderboard[:10] %}
+                <tr class="border-b">
+                    <td class="px-4 py-2">{{ player['rank'] }}</td>
+                    <td class="px-4 py-2">{{ player['name'] }}</td>
+                    <td class="px-4 py-2">{{ player['total_score'] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Charts -->
+        <h2 class="text-2xl font-bold barclays-blue mt-6 mb-4">📈 Visualizations</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <h3 class="font-bold text-lg text-center">Top 10 Total Scores</h3>
+                <canvas id="scoreChart"></canvas>
+            </div>
+            <div>
+                <h3 class="font-bold text-lg text-center">Asset Average Scores</h3>
+                <canvas id="averageChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript for Search -->
+    <script>
+        const searchInput = document.getElementById('search');
+        const leaderboardBody = document.getElementById('leaderboard');
+        const allPlayers = {{ leaderboard|tojson }};
+
+        searchInput.addEventListener('input', () => {
+            const query = searchInput.value.toLowerCase();
+            const filteredPlayers = allPlayers.filter(player =>
+                player.name.toLowerCase().includes(query)
+            );
+            leaderboardBody.innerHTML = filteredPlayers.slice(0, 10).map(player => `
+                <tr class="border-b">
+                    <td class="px-4 py-2">${player.rank}</td>
+                    <td class="px-4 py-2">${player.name}</td>
+                    <td class="px-4 py-2">${player.total_score}</td>
+                </tr>
+            `).join('');
+        });
+
+        // Charts
+        const scoreChart = new Chart(document.getElementById('scoreChart'), {
+            type: 'bar',
+            data: {
+                labels: {{ leaderboard[:10]|map(attribute='name')|tojson }},
+                datasets: [{
+                    label: 'Total Score',
+                    data: {{ leaderboard[:10]|map(attribute='total_score')|tojson }},
+                    backgroundColor: '#00aeef',
+                }]
+            }
+        });
+
+        const averageChart = new Chart(document.getElementById('averageChart'), {
+            type: 'line',
+            data: {
+                labels: {{ insights['asset_stats']|map(attribute='asset')|tojson }},
+                datasets: [{
+                    label: 'Average Score',
+                    data: {{ insights['asset_stats']|map(attribute='average')|tojson }},
+                    borderColor: '#00395d',
+                    fill: false
+                }]
+            }
+        });
+    </script>
+</body>
+</html>
