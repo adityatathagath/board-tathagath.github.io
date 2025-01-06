@@ -55,6 +55,7 @@ if __name__ == "__main__":
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.0.3/dist/tailwind.min.css" rel="stylesheet">
 </head>
 <body class="bg-gray-900 text-white">
@@ -188,16 +189,38 @@ if __name__ == "__main__":
             }
         });
 
-        // Spider Chart comparison
-        document.getElementById('compareButton').addEventListener('click', () => {
-            const player1 = document.getElementById('player1').value;
-            const player2 = document.getElementById('player2').value;
-            
-            fetch(`/compare/${player1}/${player2}`)
-                .then(response => response.json())
-                .then(data => {
+        // AJAX for Player Search
+        $('#searchBar').on('input', function() {
+            const searchTerm = $(this).val();
+            $.ajax({
+                url: `/search/${searchTerm}`,
+                method: 'GET',
+                success: function(response) {
+                    let tableContent = '';
+                    response.forEach(player => {
+                        tableContent += `
+                            <tr>
+                                <td class="px-4 py-2">${player['Rank']}</td>
+                                <td class="px-4 py-2">${player['Name']}</td>
+                                <td class="px-4 py-2">${player['Total Score']}</td>
+                            </tr>
+                        `;
+                    });
+                    $('#leaderboardTable').html(tableContent);
+                }
+            });
+        });
+
+        // AJAX for Comparing Two Players
+        $('#compareButton').on('click', function() {
+            const player1 = $('#player1').val();
+            const player2 = $('#player2').val();
+            $.ajax({
+                url: `/compare/${player1}/${player2}`,
+                method: 'GET',
+                success: function(data) {
                     const ctx = document.getElementById('spiderChart').getContext('2d');
-                    const spiderChart = new Chart(ctx, {
+                    new Chart(ctx, {
                         type: 'radar',
                         data: {
                             labels: ['Asset 1', 'Asset 2', 'Asset 3', 'Asset 4', 'Asset 5'],
@@ -219,7 +242,8 @@ if __name__ == "__main__":
                             ]
                         }
                     });
-                });
+                }
+            });
         });
     </script>
 </body>
