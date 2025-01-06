@@ -1,0 +1,232 @@
+import pandas as pd
+import plotly.express as px
+from flask import Flask, render_template, jsonify
+
+app = Flask(__name__)
+
+# Load data from the Excel sheet
+df = pd.read_excel('ecodamus.xlsx', sheet_name='summary', header=None)
+
+# Extract ranks, names, asset classes, and scores
+ranks = df.iloc[0, 1:].values.tolist()
+names = df.iloc[1, 1:].values.tolist()
+asset_classes = df.iloc[2:17, 0].values.tolist()
+asset_scores = df.iloc[2:17, 1:].values.tolist()
+total_scores = df.iloc[17, 1:].values.tolist()
+
+# Prepare the data for analysis
+players_data = {
+    'rank': ranks,
+    'name': names,
+    'total_score': total_scores
+}
+
+# Create DataFrame for player info
+player_df = pd.DataFrame(players_data)
+
+# Prepare asset class data for pie chart and bar charts
+asset_scores_df = pd.DataFrame(asset_scores, columns=names, index=asset_classes)
+
+# Average scores per asset class
+avg_asset_scores = asset_scores_df.mean(axis=1)
+
+# For the distribution of scores (histogram)
+all_scores = total_scores
+
+# Preparing player data for Spider Chart comparisons
+def get_spider_data(player1, player2):
+    player1_scores = df[df.iloc[1, 1:] == player1].iloc[2:17, 1:].values.flatten()
+    player2_scores = df[df.iloc[1, 1:] == player2].iloc[2:17, 1:].values.flatten()
+    return player1_scores.tolist(), player2_scores.tolist()
+
+@app.route('/')
+def index():
+    return render_template('index.html', players=names)
+
+@app.route('/top_players')
+def top_players():
+    # Sort players by total score and get top 10
+    top_10 = player_df.sort_values(by='total_score', ascending=False).head(10)
+    return jsonify(top_10.to_dict(orient='records'))
+
+@app.route('/search/<name>')
+def search(name):
+    # Ensure that we're handling name search correctly with .str.contains
+    search_results = player_df[player_df['name'].str.contains(name, case=False, na=False)]
+    return jsonify(search_results.to_dict(orient='records'))
+
+@app.route('/asset_class_contribution')
+def asset_class_contribution():
+    # Generate pie charts for asset class contributions
+    pie_charts = {}
+    for player in names:
+        pie_charts[player] = px.pie(
+            asset_scores_df[player], 
+            names=asset_classes, 
+            values=asset_scores_df[player],
+            title=f'Asset Class Contribution for {player}'
+        ).to_html(full_html=False)
+    return jsonify(pie_charts)
+
+@app.route('/performance_across_asset_classes')
+def performance_across_asset_classes():
+    # Generate bar chart for performance across asset classes
+    fig = px.bar(
+        asset_scores_df.T,
+        x=asset_scores_df.index,
+        y=asset_scores_df.columns,
+        title='Performance Across Asset Classes'
+    )
+    return jsonify({'chart': fig.to_html(full_html=False)})
+
+@app.route('/score_distribution')
+def score_distribution():
+    # Generate histogram for score distribution
+    fig = px.histogram(x=all_scores, nbins=20, title="Score Distribution")
+    return jsonify({'chart': fig.to_html(full_html=False)})
+
+@app.route('/top_asset_classes')
+def top_asset_classes():
+    # Generate bar chart for top asset classes by average score
+    fig = px.bar(
+        avg_asset_scores,
+        x=avg_asset_scores.index,
+        y=avg_asset_scores.values,
+        title="Top Asset Classes by Average Score"
+    )
+    return jsonify({'chart': fig.to_html(full_html=False)})
+
+@app.route('/compare_players/<player1>/<player2>')
+def compare_players(player1, player2):
+    player1_scores, player2_scores = get_spider_data(player1, player2)
+    fig = px.line_polar(
+        [player1_scores, player2_scores],
+        r=[player1_scores, player2_scores],
+        theta=asset_classes,
+        line_close=True,
+        title=f'Comparison between {player1} and {player2}',
+        labels={'r': 'Scores', 'theta': 'Asset Classes'}
+    )
+    return jsonify({'chart': fig.to_html(full_html=False)})
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ecodamus Analysis</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/plotly.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body class="bg-gray-800 text-white">
+
+    <!-- Navbar -->
+    <nav class="bg-black p-4">
+        <h1 class="text-xl">Ecodamus Stock Prediction Game</h1>
+    </nav>
+
+    <div class="container mx-auto p-4">
+        <h2 class="text-2xl my-4">Top 10 Performers</h2>
+        <input type="text" id="searchBar" placeholder="Search Player..." class="p-2 mb-4 bg-gray-700 text-white rounded w-full">
+        <div id="top_players_list"></div>
+
+        <h2 class="text-2xl my-4">Asset Class Contribution (Pie Chart)</h2>
+        <div id="asset_class_contribution"></div>
+
+        <h2 class="text-2xl my-4">Performance Across Asset Classes (Bar Chart)</h2>
+        <div id="performance_across_asset_classes"></div>
+
+        <h2 class="text-2xl my-4">Score Distribution (Histogram)</h2>
+        <div id="score_distribution"></div>
+
+        <h2 class="text-2xl my-4">Top Asset Classes by Average Score (Bar Chart)</h2>
+        <div id="top_asset_classes"></div>
+
+        <h2 class="text-2xl my-4">Player Comparison (Spider Chart)</h2>
+        <!-- Dropdown for Player Comparison -->
+        <select id="player1" class="p-2 mb-4 bg-gray-700 text-white rounded w-full">
+            <option value="">Select Player 1</option>
+            {% for player in players %}
+                <option value="{{ player }}">{{ player }}</option>
+            {% endfor %}
+        </select>
+        <select id="player2" class="p-2 mb-4 bg-gray-700 text-white rounded w-full">
+            <option value="">Select Player 2</option>
+            {% for player in players %}
+                <option value="{{ player }}">{{ player }}</option>
+            {% endfor %}
+        </select>
+        <button id="compareBtn" class="bg-blue-600 px-4 py-2 rounded">Compare</button>
+        <div id="player_comparison"></div>
+    </div>
+
+    <script>
+        // Load top players
+        function loadTopPlayers() {
+            $.get("/top_players", function(data) {
+                let playersHtml = '<table class="table-auto w-full text-center"><thead><tr><th>Rank</th><th>Name</th><th>Total Score</th></tr></thead><tbody>';
+                data.forEach(player => {
+                    playersHtml += `<tr><td>${player.rank}</td><td>${player.name}</td><td>${player.total_score}</td></tr>`;
+                });
+                playersHtml += '</tbody></table>';
+                $('#top_players_list').html(playersHtml);
+            });
+        }
+
+        // Load charts
+        function loadCharts() {
+            $.get("/performance_across_asset_classes", function(data) {
+                $('#performance_across_asset_classes').html(data.chart);
+            });
+
+            $.get("/score_distribution", function(data) {
+                $('#score_distribution').html(data.chart);
+            });
+
+            $.get("/top_asset_classes", function(data) {
+                $('#top_asset_classes').html(data.chart);
+            });
+        }
+
+        // Search functionality
+        $('#searchBar').on('keyup', function() {
+            const searchText = $(this).val().toLowerCase();
+            $.get(`/search/${searchText}`, function(data) {
+                let playerInfoHtml = '';
+                if (data.length === 0) {
+                    playerInfoHtml = '<p>No results found</p>';
+                } else {
+                    data.forEach(player => {
+                        playerInfoHtml += `<p>${player.name} - Rank: ${player.rank} - Total Score: ${player['Total Score']}</p>`;
+                    });
+                }
+                $('#top_players_list').html(playerInfoHtml);
+            });
+        });
+
+        // Compare players
+        $('#compareBtn').click(function() {
+            const player1 = $('#player1').val();
+            const player2 = $('#player2').val();
+            if (player1 && player2) {
+                $.get(`/compare_players/${player1}/${player2}`, function(data) {
+                    $('#player_comparison').html(data.chart);
+                });
+            } else {
+                alert("Please select two players for comparison.");
+            }
+        });
+
+        // Initialize page
+        $(document).ready(function() {
+            loadTopPlayers();
+            loadCharts();
+        });
+    </script>
+</body>
+</html>
