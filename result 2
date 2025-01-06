@@ -1,3 +1,61 @@
+from flask import Flask, render_template, jsonify
+import pandas as pd
+
+app = Flask(__name__)
+
+# Load data from Excel file
+excel_file = 'path_to_your_file/ecodamus.xlsx'
+
+# Function to load player and asset data from the Excel file
+def load_data():
+    # Load the 'summary' sheet
+    df_summary = pd.read_excel(excel_file, sheet_name='summary')
+
+    # Load the 'score calculation' sheet
+    df_score = pd.read_excel(excel_file, sheet_name='score calculation', header=None)
+
+    # Extract player names and total scores from the summary sheet
+    player_names = df_summary['Name'].tolist()
+    total_scores = df_summary['Total Score'].tolist()
+
+    # Extract asset classes and scores
+    asset_classes = df_score.iloc[2:17, 0].tolist()  # Asset classes from rows 3 to 17 (indexing starts from 0)
+    player_scores = df_score.iloc[1, 1:].tolist()  # Player scores from row 2 onwards (columns from 1 onward)
+    
+    player_data = []
+    for i, name in enumerate(player_names):
+        scores = df_score.iloc[3:18, i+1].tolist()  # Extract scores for each player
+        player_data.append({
+            'Name': name,
+            'Scores': scores,
+            'TotalScore': total_scores[i]
+        })
+
+    return player_data, asset_classes
+
+# Route to serve the webpage
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+# API endpoint to return data to the frontend
+@app.route('/api/data')
+def get_data():
+    player_data, asset_classes = load_data()
+    
+    # Prepare data to send to frontend
+    response_data = {
+        'assetClasses': asset_classes,
+        'playerScores': player_data,
+        'winner_image_url': 'path_to_winner_image'  # Provide the winner image URL here
+    }
+    return jsonify(response_data)
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -26,19 +84,18 @@
 
     <!-- Analysis Section -->
     <section class="px-8 py-4">
-        <h2 class="text-2xl font-semibold mb-4">Player Performance Comparison</h2>
+        <!-- Top 5 Players by Total Score -->
+        <h2 class="text-2xl font-semibold mb-4">Top 5 Players by Total Score</h2>
+        <div id="topPlayers" class="mb-8"></div>
+
+        <!-- Player Performance Comparison -->
+        <h2 class="text-2xl font-semibold mb-4 mt-8">Player Performance Comparison</h2>
         <div class="flex justify-between mb-4">
             <select id="player1" class="p-2 border border-gray-300 rounded">
                 <option value="">Select Player 1</option>
-                {% for row in score_table %}
-                    <option value="{{ row['Name'] }}">{{ row['Name'] }}</option>
-                {% endfor %}
             </select>
             <select id="player2" class="p-2 border border-gray-300 rounded">
                 <option value="">Select Player 2</option>
-                {% for row in score_table %}
-                    <option value="{{ row['Name'] }}">{{ row['Name'] }}</option>
-                {% endfor %}
             </select>
         </div>
         <canvas id="comparisonRadarChart"></canvas>
@@ -51,122 +108,187 @@
         <h2 class="text-2xl font-semibold mb-4 mt-8">Score Distribution</h2>
         <canvas id="scoreDistributionChart"></canvas>
 
-        <!-- Heatmap for Asset Class Performance -->
-        <h2 class="text-2xl font-semibold mb-4 mt-8">Asset Class Performance Heatmap</h2>
-        <canvas id="heatmapChart"></canvas>
+        <!-- Median, Mean, and Standard Deviation -->
+        <h2 class="text-2xl font-semibold mb-4 mt-8">Median, Mean, and Standard Deviation</h2>
+        <div id="scoreStats" class="mb-8"></div>
+
+        <!-- Asset Class Correlation Heatmap -->
+        <h2 class="text-2xl font-semibold mb-4 mt-8">Asset Class Correlation Heatmap</h2>
+        <canvas id="assetClassCorrelationChart"></canvas>
     </section>
 
     <script>
-        // Data for Overall Performance Trends (Sample - replace with actual data)
-        const assetClasses = {{ asset_classes | tojson }};
-        const playerScores = {{ score_table | tojson }};
-        const playerNames = playerScores.map(player => player['Name']);
-        
-        // Prepare datasets for the charts
-        let playerPerformanceData = playerScores.map(player => player['Scores']);
-        let assetImpactData = assetClasses.map((asset, index) => {
-            return {
-                label: asset,
-                data: playerScores.map(player => player['Scores'][index]),
-                backgroundColor: `rgba(${(index * 50) % 255}, ${(index * 80) % 255}, ${(index * 120) % 255}, 0.6)`,
-                borderColor: `rgba(${(index * 50) % 255}, ${(index * 80) % 255}, ${(index * 120) % 255}, 1)`,
-                borderWidth: 1
-            };
-        });
+        // Fetch data using AJAX
+        fetch('/api/data')
+            .then(response => response.json())
+            .then(data => {
+                const assetClasses = data.assetClasses;
+                const playerScores = data.playerScores;
+                const playerNames = playerScores.map(player => player['Name']);
 
-        // Overall Performance Trends (Line Chart)
-        const performanceTrendsData = {
-            labels: assetClasses,
-            datasets: playerPerformanceData.map((data, index) => ({
-                label: playerNames[index],
-                data: data,
-                fill: false,
-                borderColor: `rgba(${(index * 60) % 255}, ${(index * 120) % 255}, ${(index * 180) % 255}, 1)`,
-                tension: 0.1
-            }))
-        };
+                // Populate player selection dropdowns
+                const player1Select = document.getElementById('player1');
+                const player2Select = document.getElementById('player2');
+                playerNames.forEach(name => {
+                    const option1 = document.createElement('option');
+                    option1.value = name;
+                    option1.textContent = name;
+                    player1Select.appendChild(option1);
 
-        // Top Asset Classes Impact (Bar Chart)
-        const assetImpactChartData = {
-            labels: assetClasses,
-            datasets: assetImpactData
-        };
+                    const option2 = document.createElement('option');
+                    option2.value = name;
+                    option2.textContent = name;
+                    player2Select.appendChild(option2);
+                });
 
-        // Score Distribution (Histogram)
-        const scoreDistributionData = {
-            labels: playerScores.map(player => player['Name']),
-            datasets: [{
-                label: 'Score Distribution',
-                data: playerScores.map(player => player['TotalScore']),
-                backgroundColor: 'rgba(153, 102, 255, 0.6)',
-                borderColor: 'rgba(153, 102, 255, 1)',
-                borderWidth: 1
-            }]
-        };
+                // Prepare datasets for the charts
+                let playerPerformanceData = playerScores.map(player => player['Scores']);
+                let assetImpactData = assetClasses.map((asset, index) => {
+                    return {
+                        label: asset,
+                        data: playerScores.map(player => player['Scores'][index]),
+                        backgroundColor: `rgba(${(index * 50) % 255}, ${(index * 80) % 255}, ${(index * 120) % 255}, 0.6)`,
+                        borderColor: `rgba(${(index * 50) % 255}, ${(index * 80) % 255}, ${(index * 120) % 255}, 1)`,
+                        borderWidth: 1
+                    };
+                });
 
-        // Heatmap (For Asset Class Performance)
-        const heatmapData = {
-            labels: playerNames,
-            datasets: [{
-                label: 'Asset Class Performance Heatmap',
-                data: playerScores.map(player => player['Scores']),
-                backgroundColor: function(context) {
-                    const value = context.dataset.data[context.dataIndex];
-                    const alpha = value / Math.max(...playerScores.map(p => p['TotalScore']));
-                    return `rgba(0, 255, 0, ${alpha})`; // Color intensity based on score
-                },
-                borderWidth: 1
-            }]
-        };
+                // Median, Mean, and Standard Deviation Calculation
+                const totalScores = playerScores.map(player => player['TotalScore']);
+                const meanScore = totalScores.reduce((acc, score) => acc + score, 0) / totalScores.length;
+                const medianScore = totalScores.sort((a, b) => a - b)[Math.floor(totalScores.length / 2)];
+                const stdDevScore = Math.sqrt(totalScores.reduce((acc, score) => acc + Math.pow(score - meanScore, 2), 0) / totalScores.length);
 
-        // Initialize the charts
-        new Chart(document.getElementById('comparisonRadarChart'), {
-            type: 'radar',
-            data: performanceTrendsData
-        });
+                document.getElementById('scoreStats').innerHTML = `
+                    <p><strong>Mean:</strong> ${meanScore.toFixed(2)}</p>
+                    <p><strong>Median:</strong> ${medianScore}</p>
+                    <p><strong>Standard Deviation:</strong> ${stdDevScore.toFixed(2)}</p>
+                `;
 
-        new Chart(document.getElementById('assetImpactChart'), {
-            type: 'bar',
-            data: assetImpactChartData
-        });
+                // Top 5 Players by Total Score
+                const topPlayers = playerScores
+                    .sort((a, b) => b['TotalScore'] - a['TotalScore'])
+                    .slice(0, 5);
+                const topPlayersTable = document.getElementById('topPlayers');
+                topPlayersTable.innerHTML = `
+                    <table class="w-full table-auto border-collapse">
+                        <thead>
+                            <tr>
+                                <th class="border p-2">Rank</th>
+                                <th class="border p-2">Name</th>
+                                <th class="border p-2">Total Score</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${topPlayers.map((player, index) => `
+                                <tr>
+                                    <td class="border p-2">${index + 1}</td>
+                                    <td class="border p-2">${player['Name']}</td>
+                                    <td class="border p-2">${player['TotalScore']}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
 
-        new Chart(document.getElementById('scoreDistributionChart'), {
-            type: 'bar',
-            data: scoreDistributionData
-        });
+                // Overall Performance Trends (Line Chart)
+                const performanceTrendsData = {
+                    labels: assetClasses,
+                    datasets: playerPerformanceData.map((data, index) => ({
+                        label: playerNames[index],
+                        data: data,
+                        fill: false,
+                        borderColor: `rgba(${(index * 60) % 255}, ${(index * 120) % 255}, ${(index * 180) % 255}, 1)`,
+                        tension: 0.1
+                    }))
+                };
 
-        new Chart(document.getElementById('heatmapChart'), {
-            type: 'bubble',  // Using a bubble chart as a heatmap
-            data: heatmapData
-        });
+                // Top Asset Classes Impact (Bar Chart)
+                const assetImpactChartData = {
+                    labels: assetClasses,
+                    datasets: assetImpactData
+                };
 
-        // Celebration Animation
-        document.addEventListener('DOMContentLoaded', () => {
-            const celebrationElement = document.getElementById('celebrationAnimation');
-            setTimeout(() => {
-                celebrationElement.classList.add('bg-green-200');
-                celebrationElement.innerHTML += '<p>🎉 🎉 🎉</p>';
-            }, 1000); // Trigger animation after 1 second
-        });
+                // Score Distribution (Histogram)
+                const scoreDistributionData = {
+                    labels: playerScores.map(player => player['Name']),
+                    datasets: [{
+                        label: 'Score Distribution',
+                        data: playerScores.map(player => player['TotalScore']),
+                        backgroundColor: 'rgba(153, 102, 255, 0.6)',
+                        borderColor: 'rgba(153, 102, 255, 1)',
+                        borderWidth: 1
+                    }]
+                };
 
-        // Function to handle player selection for comparison
-        document.getElementById('player1').addEventListener('change', updateComparisonChart);
-        document.getElementById('player2').addEventListener('change', updateComparisonChart);
+                // Asset Class Correlation Heatmap (Scatter Plot)
+                const assetClassCorrelationData = {
+                    labels: assetClasses,
+                    datasets: assetClasses.map((asset, index) => ({
+                        label: asset,
+                        data: playerScores.map(player => ({
+                            x: player['Scores'][index],
+                            y: player['TotalScore']
+                        })),
+                        backgroundColor: `rgba(${(index * 50) % 255}, ${(index * 80) % 255}, ${(index * 120) % 255}, 0.6)`
+                    }))
+                };
 
-        function updateComparisonChart() {
-            const player1 = document.getElementById('player1').value;
-            const player2 = document.getElementById('player2').value;
-            const chart = Chart.getChart('comparisonRadarChart');
-            
-            if (player1 && player2) {
-                const data1 = playerScores.find(player => player['Name'] === player1)['Scores'];
-                const data2 = playerScores.find(player => player['Name'] === player2)['Scores'];
+                // Initialize the charts
+                new Chart(document.getElementById('comparisonRadarChart'), {
+                    type: 'radar',
+                    data: performanceTrendsData
+                });
 
-                chart.data.datasets[0].data = data1;
-                chart.data.datasets[1].data = data2;
-                chart.update();
-            }
-        }
+                new Chart(document.getElementById('assetImpactChart'), {
+                    type: 'bar',
+                    data: assetImpactChartData
+                });
+
+                new Chart(document.getElementById('scoreDistributionChart'), {
+                    type: 'bar',
+                    data: scoreDistributionData
+                });
+
+                new Chart(document.getElementById('assetClassCorrelationChart'), {
+                    type: 'scatter',
+                    data: assetClassCorrelationData,
+                    options: {
+                        plugins: {
+                            legend: { display: false }
+                        }
+                    }
+                });
+
+                // Celebration Animation
+                document.addEventListener('DOMContentLoaded', () => {
+                    const celebrationElement = document.getElementById('celebrationAnimation');
+                    setTimeout(() => {
+                        celebrationElement.classList.add('bg-green-200');
+                        celebrationElement.innerHTML += '<p>🎉 🎉 🎉</p>';
+                    }, 1000); // Trigger animation after 1 second
+                });
+
+                // Function to handle player selection for comparison
+                document.getElementById('player1').addEventListener('change', updateComparisonChart);
+                document.getElementById('player2').addEventListener('change', updateComparisonChart);
+
+                function updateComparisonChart() {
+                    const player1 = document.getElementById('player1').value;
+                    const player2 = document.getElementById('player2').value;
+                    const chart = Chart.getChart('comparisonRadarChart');
+                    
+                    if (player1 && player2) {
+                        const data1 = playerScores.find(player => player['Name'] === player1)['Scores'];
+                        const data2 = playerScores.find(player => player['Name'] === player2)['Scores'];
+
+                        chart.data.datasets[0].data = data1;
+                        chart.data.datasets[1].data = data2;
+                        chart.update();
+                    }
+                }
+            })
+            .catch(error => console.error('Error fetching data:', error));
     </script>
 </body>
 </html>
