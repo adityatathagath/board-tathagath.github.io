@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ecodamus - Game Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.0.3/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white">
+    <!-- Navbar -->
+    <nav class="bg-cyan-600 p-4">
+        <div class="container mx-auto text-center">
+            <h1 class="text-4xl font-bold">Ecodamus Game Analysis</h1>
+        </div>
+    </nav>
+
+    <!-- Top Players with Search -->
+    <section class="mt-6">
+        <div class="container mx-auto">
+            <input type="text" id="searchBar" placeholder="Search Player..." class="px-4 py-2 mb-4 w-full bg-gray-800 text-white rounded">
+            <div id="leaderboard">
+                <h2 class="text-xl font-semibold">Top 10 Players</h2>
+                <table class="table-auto w-full mt-4">
+                    <thead>
+                        <tr class="bg-cyan-500">
+                            <th class="px-4 py-2">Rank</th>
+                            <th class="px-4 py-2">Player</th>
+                            <th class="px-4 py-2">Total Score</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboardTable">
+                        {% for player in top_players %}
+                            <tr>
+                                <td class="px-4 py-2">{{ player['Rank'] }}</td>
+                                <td class="px-4 py-2">{{ player['Name'] }}</td>
+                                <td class="px-4 py-2">{{ player['Total Score'] }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- Charts Section -->
+    <section class="mt-8">
+        <div class="container mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div>
+                <h2 class="text-xl font-semibold mb-4">Asset Class Contribution to Total Score</h2>
+                <canvas id="assetContributionChart"></canvas>
+            </div>
+            <div>
+                <h2 class="text-xl font-semibold mb-4">Performance Across Asset Classes</h2>
+                <canvas id="performanceChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="container mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
+            <div>
+                <h2 class="text-xl font-semibold mb-4">Score Distribution</h2>
+                <canvas id="scoreDistributionChart"></canvas>
+            </div>
+            <div>
+                <h2 class="text-xl font-semibold mb-4">Top Asset Classes by Average Score</h2>
+                <canvas id="averageScoreChart"></canvas>
+            </div>
+        </div>
+
+        <div class="container mx-auto mt-8">
+            <h2 class="text-xl font-semibold mb-4">Compare Two Players</h2>
+            <input type="text" id="player1" placeholder="Player 1" class="px-4 py-2 mb-4 w-full bg-gray-800 text-white rounded">
+            <input type="text" id="player2" placeholder="Player 2" class="px-4 py-2 mb-4 w-full bg-gray-800 text-white rounded">
+            <button id="compareButton" class="bg-green-600 px-4 py-2 rounded text-white">Compare</button>
+            <canvas id="spiderChart"></canvas>
+        </div>
+    </section>
+
+    <script>
+        const assetContributionData = {{ asset_class_contributions | tojson }};
+        const performanceData = {{ performance_data | tojson }};
+        const averageScores = {{ average_scores | tojson }};
+        const topPlayers = {{ top_players | tojson }};
+        
+        // Setup Charts
+        const assetContributionChart = new Chart(document.getElementById('assetContributionChart'), {
+            type: 'pie',
+            data: {
+                labels: ['Asset 1', 'Asset 2', 'Asset 3', 'Asset 4', 'Asset 5'],
+                datasets: [{
+                    data: assetContributionData[0],  // Example: Displaying the first player’s data
+                    backgroundColor: ['#4CAF50', '#8BC34A', '#CDDC39', '#FFEB3B', '#FFC107'],
+                    borderColor: '#fff',
+                    borderWidth: 2
+                }]
+            }
+        });
+
+        const performanceChart = new Chart(document.getElementById('performanceChart'), {
+            type: 'bar',
+            data: {
+                labels: ['Asset 1', 'Asset 2', 'Asset 3', 'Asset 4', 'Asset 5'],
+                datasets: performanceData.map((player, index) => ({
+                    label: `Player ${topPlayers[index].Name}`,
+                    data: player,
+                    backgroundColor: 'rgba(0, 150, 136, 0.6)',
+                    borderColor: 'rgba(0, 150, 136, 1)',
+                    borderWidth: 1
+                }))
+            }
+        });
+
+        const scoreDistributionChart = new Chart(document.getElementById('scoreDistributionChart'), {
+            type: 'histogram',
+            data: {
+                labels: ['Player 1', 'Player 2', 'Player 3', 'Player 4', 'Player 5'],
+                datasets: [{
+                    label: 'Total Score Distribution',
+                    data: topPlayers.map(player => player['Total Score']),
+                    backgroundColor: '#FFEB3B',
+                    borderColor: '#FFC107',
+                    borderWidth: 2
+                }]
+            }
+        });
+
+        const averageScoreChart = new Chart(document.getElementById('averageScoreChart'), {
+            type: 'bar',
+            data: {
+                labels: ['Asset 1', 'Asset 2', 'Asset 3', 'Asset 4', 'Asset 5'],
+                datasets: [{
+                    label: 'Average Score by Asset',
+                    data: averageScores,
+                    backgroundColor: '#00BCD4',
+                    borderColor: '#0097A7',
+                    borderWidth: 1
+                }]
+            }
+        });
+
+        // AJAX for Player Search
+        $('#searchBar').on('input', function() {
+            const searchTerm = $(this).val();
+            $.ajax({
+                url: `/search/${searchTerm}`,
+                method: 'GET',
+                success: function(response) {
+                    let tableContent = '';
+                    response.forEach(player => {
+                        tableContent += `
+                            <tr>
+                                <td class="px-4 py-2">${player['Rank']}</td>
+                                <td class="px-4 py-2">${player['Name']}</td>
+                                <td class="px-4 py-2">${player['Total Score']}</td>
+                            </tr>
+                        `;
+                    });
+                    $('#leaderboardTable').html(tableContent);
+                }
+            });
+        });
+
+        // AJAX for Comparing Two Players
+        $('#compareButton').on('click', function() {
+            const player1 = $('#player1').val();
+            const player2 = $('#player2').val();
+            $.ajax({
+                url: `/compare/${player1}/${player2}`,
+                method: 'GET',
+                success: function(data) {
+                    const ctx = document.getElementById('spiderChart').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'radar',
+                        data: {
+                            labels: ['Asset 1', 'Asset 2', 'Asset 3', 'Asset 4', 'Asset 5'],
+                            datasets: [
+                                {
+                                    label: player1,
+                                    data: data.player1,
+                                    backgroundColor: 'rgba(0, 150, 136, 0.3)',
+                                    borderColor: 'rgba(0, 150, 136, 1)',
+                                    borderWidth: 1
+                                },
+                                {
+                                    label: player2,
+                                    data: data.player2,
+                                    backgroundColor: 'rgba(255, 87, 34, 0.3)',
+                                    borderColor: 'rgba(255, 87, 34, 1)',
+                                    borderWidth: 1
+                                }
+                            ]
+                        }
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
