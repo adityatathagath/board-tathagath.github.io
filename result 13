@@ -1,78 +1,59 @@
-@app.route("/api/leaderboard")
-def api_leaderboard():
-    leaderboard, _ = analyze_data()
-    return jsonify(leaderboard)
+from flask import Flask, jsonify, render_template
+import pandas as pd
 
-@app.route("/api/insights")
-def api_insights():
-    _, insights = analyze_data()
-    return jsonify(insights)
+app = Flask(__name__)
 
-@app.route("/api/chart-data")
-def api_chart_data():
-    leaderboard, insights = analyze_data()
-    chart_data = {
-        "top_10_names": [player["name"] for player in leaderboard[:10]],
-        "top_10_scores": [player["total_score"] for player in leaderboard[:10]],
-        "assets": [stat["asset"] for stat in insights["asset_stats"]],
-        "asset_averages": [stat["average"] for stat in insights["asset_stats"]]
-    }
-    return jsonify(chart_data)
+# Load the Excel data into a Pandas DataFrame
+file_path = 'data.xlsx'  # Replace with the actual file path
+data = pd.read_excel(file_path)
 
+@app.route('/')
+def home():
+    return render_template('index.html')
 
+@app.route('/api/leaderboard')
+def leaderboard():
+    leaderboard_data = data.sort_values(by='Total Score', ascending=False)
+    leaderboard_json = leaderboard_data.to_dict(orient='records')
+    return jsonify(leaderboard_json)
 
-
-def analyze_data():
-    # Read the Excel file
-    df = pd.read_excel("ecodamus.xlsx", engine="openpyxl")
-
-    # Extract data
-    ranks = df.iloc[0, 1:].tolist()
-    names = df.iloc[1, 1:].tolist()
-    total_scores = df.iloc[-1, 1:].tolist()
-    assets = df.iloc[2:-1, 0].tolist()
-    scores = df.iloc[2:-1, 1:].to_dict()
-
-    # Create leaderboard
-    leaderboard = sorted(
-        [{"rank": rank, "name": name, "total_score": score}
-         for rank, name, score in zip(ranks, names, total_scores)],
-        key=lambda x: x["total_score"],
-        reverse=True
-    )
-
-    # Insights
-    insights = {
+@app.route('/api/insights')
+def insights():
+    insights_data = {
         "top_performers": [
-            {
-                "asset": asset,
-                "top_scorer": names[scores[asset].index(max(scores[asset]))],
-                "score": max(scores[asset])
-            }
-            for asset, scores in zip(assets, df.iloc[2:-1, 1:].values)
+            {"asset": asset, "top_scorer": row['Name'], "score": row[asset]}
+            for asset in data.columns[2:-1]
+            for _, row in data.sort_values(by=asset, ascending=False).head(1).iterrows()
         ],
+        "consistent_scorer": data.loc[data['Total Score'].idxmax(), 'Name'],
         "asset_stats": [
             {
                 "asset": asset,
-                "average": round(df.iloc[i, 1:].mean(), 2),
-                "max": round(df.iloc[i, 1:].max(), 2),
-                "min": round(df.iloc[i, 1:].min(), 2)
+                "average": data[asset].mean(),
+                "max": data[asset].max(),
+                "min": data[asset].min()
             }
-            for i, asset in enumerate(assets)
-        ],
-        "consistent_scorer": names[
-            sum(abs(df.iloc[2:-1, 1:].diff().fillna(0).sum(axis=0))).argmin()
+            for asset in data.columns[2:-1]
         ]
     }
+    return jsonify(insights_data)
 
-    return leaderboard, insights
+@app.route('/api/chart-data')
+def chart_data():
+    top_10 = data.sort_values(by='Total Score', ascending=False).head(10)
+    chart_data = {
+        "top_10_names": top_10['Name'].tolist(),
+        "top_10_scores": top_10['Total Score'].tolist(),
+        "assets": data.columns[2:-1].tolist(),
+        "asset_averages": [data[asset].mean() for asset in data.columns[2:-1]]
+    }
+    return jsonify(chart_data)
+
+if __name__ == '__main__':
+    app.run(debug=True)
 
 
 
-@app.route("/")
-def home():
-    leaderboard, insights = analyze_data()
-    return render_template("index.html", leaderboard=leaderboard, insights=insights)
 
 
 
@@ -133,33 +114,30 @@ def home():
 
     <!-- JavaScript -->
     <script>
-        // Fetch leaderboard and populate table
         async function fetchLeaderboard(query = "") {
             const response = await fetch("/api/leaderboard");
             const data = await response.json();
             const filteredData = query
-                ? data.filter(player => player.name.toLowerCase().includes(query.toLowerCase()))
+                ? data.filter(player => player.Name.toLowerCase().includes(query.toLowerCase()))
                 : data;
 
             const leaderboardBody = document.getElementById("leaderboard");
             leaderboardBody.innerHTML = filteredData.slice(0, 10).map(player => `
                 <tr class="border-b">
-                    <td class="px-4 py-2">${player.rank}</td>
-                    <td class="px-4 py-2">${player.name}</td>
-                    <td class="px-4 py-2">${player.total_score}</td>
+                    <td class="px-4 py-2">${player.Rank}</td>
+                    <td class="px-4 py-2">${player.Name}</td>
+                    <td class="px-4 py-2">${player["Total Score"]}</td>
                 </tr>
             `).join('');
         }
 
-        // Fetch insights and populate sections
         async function fetchInsights() {
             const response = await fetch("/api/insights");
             const insights = await response.json();
 
             const winnerSection = document.getElementById("winner-section");
             winnerSection.innerHTML = `
-                <h2 class="text-xl font-bold barclays-blue">🏆 Winner: ${insights.top_performers[0].top_scorer}</h2>
-                <p class="text-lg">Reason: ${insights.consistent_scorer}</p>
+                <h2 class="text-xl font-bold barclays-blue">🏆 Winner: ${insights.consistent_scorer}</h2>
             `;
 
             const insightsSection = document.getElementById("insights-section");
@@ -179,7 +157,6 @@ def home():
             `;
         }
 
-        // Fetch chart data and render charts
         async function fetchChartData() {
             const response = await fetch("/api/chart-data");
             const data = await response.json();
@@ -210,7 +187,6 @@ def home():
             });
         }
 
-        // Initialize page
         document.getElementById("search").addEventListener("input", event => {
             fetchLeaderboard(event.target.value);
         });
@@ -221,4 +197,3 @@ def home():
     </script>
 </body>
 </html>
-
