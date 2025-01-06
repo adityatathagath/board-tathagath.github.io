@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ecodamus Game</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.0.0/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+</head>
+<body class="bg-gray-100">
+    <!-- Celebration Animation -->
+    <div id="celebration" class="fixed top-0 left-0 w-full h-full bg-white opacity-0 flex justify-center items-center">
+        <div class="text-center">
+            <h1 class="text-5xl font-bold text-green-500">🎉 Congratulations 🎉</h1>
+            <p class="text-2xl text-gray-700">You Are the Winner!</p>
+        </div>
+    </div>
+
+    <!-- Navigation Bar -->
+    <nav class="bg-blue-500 p-4 text-white text-center">
+        <h1 class="text-2xl font-semibold">Ecodamus Game Leaderboard</h1>
+    </nav>
+
+    <!-- Winner's Photo and Celebration -->
+    <section class="p-8 text-center">
+        <img src="https://via.placeholder.com/200" alt="Winner's Photo" class="mx-auto mb-4 rounded-full border-4 border-blue-500">
+        <div id="celebrationText" class="text-xl text-blue-500 font-semibold">
+            <p>Winner: {{ score_table[0]['Name'] }}</p>
+        </div>
+    </section>
+
+    <!-- Analysis Section -->
+    <section class="px-8 py-6">
+        <h2 class="text-3xl font-bold mb-6">Analysis</h2>
+
+        <!-- Leaderboard Chart -->
+        <div class="mb-6">
+            <canvas id="leaderboardChart"></canvas>
+        </div>
+
+        <!-- Average Scores per Asset Class -->
+        <div class="mb-6">
+            <canvas id="averageScoresChart"></canvas>
+        </div>
+
+        <!-- Player Performance Comparison -->
+        <div class="mb-6">
+            <canvas id="comparisonChart"></canvas>
+        </div>
+    </section>
+
+    <!-- Player Details Table -->
+    <section class="px-8 py-6">
+        <h2 class="text-3xl font-bold mb-6">Player Details</h2>
+        <input type="text" id="searchInput" class="mb-4 p-2 border border-gray-300 rounded" placeholder="Search Players...">
+        <table id="playersTable" class="table-auto w-full bg-white rounded shadow-md">
+            <thead class="bg-blue-500 text-white">
+                <tr>
+                    <th class="px-4 py-2">Rank</th>
+                    <th class="px-4 py-2">Player</th>
+                    <th class="px-4 py-2">Total Score</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in score_table %}
+                <tr>
+                    <td class="px-4 py-2">{{ loop.index }}</td>
+                    <td class="px-4 py-2">{{ row['Name'] }}</td>
+                    <td class="px-4 py-2">{{ row['Total'] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <script>
+        // Celebration Animation (Display for 5 seconds)
+        setTimeout(() => {
+            document.getElementById('celebration').classList.add('opacity-100');
+        }, 100);
+        setTimeout(() => {
+            document.getElementById('celebration').classList.add('opacity-0');
+        }, 5000);
+
+        // Leaderboard Chart
+        const leaderboardData = {
+            labels: {{ score_table | map(attribute='Name') | tojson }},
+            datasets: [{
+                label: 'Total Score',
+                data: {{ score_table | map(attribute='Total') | tojson }},
+                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        };
+        new Chart(document.getElementById('leaderboardChart'), {
+            type: 'bar',
+            data: leaderboardData
+        });
+
+        // Average Scores per Asset Class
+        const averageScoresData = {
+            labels: {{ assets | tojson }},
+            datasets: [{
+                label: 'Average Score',
+                data: {{ averages | tojson }},
+                backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                borderColor: 'rgba(255, 99, 132, 1)',
+                borderWidth: 1
+            }]
+        };
+        new Chart(document.getElementById('averageScoresChart'), {
+            type: 'bar',
+            data: averageScoresData
+        });
+
+        // Player Performance Comparison
+        const comparisonLabels = {{ assets | tojson }};
+        const comparisonData = {
+            labels: comparisonLabels,
+            datasets: [
+                {% for row in score_table %}
+                {
+                    label: "{{ row['Name'] }}",
+                    data: {{ row['Scores'] | tojson }},
+                    fill: false,
+                    borderColor: `rgba({{ (loop.index0 * 60) % 255 }}, {{ (loop.index0 * 120) % 255 }}, {{ (loop.index0 * 180) % 255 }}, 1)`,
+                    tension: 0.1
+                }
+                {% if not loop.last %},{% endif %}
+                {% endfor %}
+            ]
+        };
+        new Chart(document.getElementById('comparisonChart'), {
+            type: 'line',
+            data: comparisonData
+        });
+
+        // Search functionality for the player table
+        document.getElementById('searchInput').addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            const rows = document.querySelectorAll('#playersTable tbody tr');
+            rows.forEach(row => {
+                const nameCell = row.cells[1].textContent.toLowerCase();
+                row.style.display = nameCell.includes(searchTerm) ? '' : 'none';
+            });
+        });
+    </script>
+</body>
+</html>
