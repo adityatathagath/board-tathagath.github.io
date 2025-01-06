@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ecodamus Game Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        /* Animation for fade-in */
+        .fadeIn {
+            animation: fadeIn 1s ease-in-out forwards;
+        }
+        @keyframes fadeIn {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        .floating {
+            animation: floating 3s ease-in-out infinite;
+        }
+        @keyframes floating {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <!-- Navigation Bar -->
+    <nav class="bg-gradient-to-r from-indigo-500 via-purple-600 to-pink-500 text-white p-6 shadow-xl">
+        <div class="max-w-screen-xl mx-auto flex justify-between items-center">
+            <div class="text-3xl font-bold">Ecodamus Game Analysis</div>
+            <div class="space-x-4">
+                <a href="#playerPerformance" class="hover:text-yellow-300">Player Performance</a>
+                <a href="#assetContribution" class="hover:text-yellow-300">Asset Contribution</a>
+                <a href="#topAssetPlayers" class="hover:text-yellow-300">Top Asset Players</a>
+                <a href="#scoreHeatmap" class="hover:text-yellow-300">Score Heatmap</a>
+                <a href="#rankingChanges" class="hover:text-yellow-300">Ranking Changes</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Celebration and Winner Section -->
+    <section class="text-center py-10 bg-gradient-to-r from-green-400 to-blue-500">
+        <h2 class="text-4xl font-semibold text-white mb-4 fadeIn">Congratulations to the Winner!</h2>
+        <div id="celebrationAnimation" class="w-full h-72 flex justify-center items-center bg-yellow-300 mt-6 rounded-xl">
+            <img src="{{ winner_image_url }}" alt="Winner" class="mx-auto rounded-full w-40 h-40 border-4 border-white shadow-lg floating">
+            <div id="celebrationText" class="absolute text-4xl text-white animate__animated animate__pulse">🎉 🎉 🎉</div>
+        </div>
+    </section>
+
+    <!-- Main Content Section -->
+    <div class="container mx-auto px-6 py-8">
+
+        <!-- Player Performance Over Time -->
+        <section id="playerPerformance" class="mb-16 fadeIn">
+            <h2 class="text-3xl font-semibold mb-4">Player Performance Over Time</h2>
+            <p class="text-lg mb-4 text-gray-700">This line chart shows the performance of players over time. It provides insights into which players improved and which plateaued.</p>
+            <canvas id="playerPerformanceChart"></canvas>
+        </section>
+
+        <!-- Asset Contribution to Total Score -->
+        <section id="assetContribution" class="mb-16 fadeIn">
+            <h2 class="text-3xl font-semibold mb-4">Asset Contribution to Total Score</h2>
+            <p class="text-lg mb-4 text-gray-700">This bar chart visualizes the contribution of each asset class to the players' total scores. It helps identify which assets had the biggest impact on the game outcome.</p>
+            <canvas id="assetContributionChart"></canvas>
+        </section>
+
+        <!-- Top Performers by Asset Class -->
+        <section id="topAssetPlayers" class="mb-16 fadeIn">
+            <h2 class="text-3xl font-semibold mb-4">Top Performers by Asset Class</h2>
+            <p class="text-lg mb-4 text-gray-700">This analysis ranks players by their performance in each individual asset class, highlighting their best assets.</p>
+            <div id="topAssetPlayersTable" class="bg-white p-6 rounded-lg shadow-md"></div>
+        </section>
+
+        <!-- Score Distribution Heatmap -->
+        <section id="scoreHeatmap" class="mb-16 fadeIn">
+            <h2 class="text-3xl font-semibold mb-4">Score Distribution Heatmap</h2>
+            <p class="text-lg mb-4 text-gray-700">The heatmap displays score density across players and asset classes, showing where scores are concentrated.</p>
+            <canvas id="scoreHeatmapChart"></canvas>
+        </section>
+
+        <!-- Player Ranking Changes -->
+        <section id="rankingChanges" class="mb-16 fadeIn">
+            <h2 class="text-3xl font-semibold mb-4">Player Ranking Changes</h2>
+            <p class="text-lg mb-4 text-gray-700">This chart shows how player ranks have changed over time, allowing us to analyze trends and see if players improved or dropped in ranks.</p>
+            <canvas id="rankingChangesChart"></canvas>
+        </section>
+
+    </div>
+
+    <script>
+        // Fetch data using AJAX
+        fetch('/api/data')
+            .then(response => response.json())
+            .then(data => {
+                const assetClasses = data.assetClasses;
+                const playerScores = data.playerScores;
+                const playerNames = playerScores.map(player => player['Name']);
+
+                // Player Performance Over Time
+                const performanceOverTimeData = playerScores.map(player => player['ScoreHistory']);
+                new Chart(document.getElementById('playerPerformanceChart'), {
+                    type: 'line',
+                    data: {
+                        labels: Array.from({ length: performanceOverTimeData[0].length }, (_, i) => `Round ${i+1}`),
+                        datasets: performanceOverTimeData.map((scores, index) => ({
+                            label: playerNames[index],
+                            data: scores,
+                            borderColor: `rgba(${(index * 50) % 255}, ${(index * 100) % 255}, 255, 0.8)`,
+                            backgroundColor: 'rgba(0, 0, 0, 0)',
+                            borderWidth: 2
+                        }))
+                    }
+                });
+
+                // Asset Contribution to Total Score
+                const assetContributionData = assetClasses.map((asset, index) => {
+                    return {
+                        label: asset,
+                        data: playerScores.map(player => player['Scores'][index]),
+                        backgroundColor: `rgba(${(index * 50) % 255}, ${(index * 80) % 255}, ${(index * 120) % 255}, 0.6)`,
+                        borderColor: `rgba(${(index * 50) % 255}, ${(index * 80) % 255}, ${(index * 120) % 255}, 1)`,
+                        borderWidth: 1
+                    };
+                });
+                new Chart(document.getElementById('assetContributionChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: playerNames,
+                        datasets: assetContributionData
+                    }
+                });
+
+                // Top Performers by Asset Class (table)
+                const topAssetPlayers = assetClasses.map((asset, index) => {
+                    return {
+                        asset,
+                        players: playerScores.map(player => ({
+                            name: player['Name'],
+                            score: player['Scores'][index]
+                        })).sort((a, b) => b.score - a.score).slice(0, 3)
+                    };
+                });
+
+                const topAssetPlayersTable = document.getElementById('topAssetPlayersTable');
+                topAssetPlayersTable.innerHTML = `
+                    <table class="w-full table-auto border-collapse">
+                        <thead>
+                            <tr>
+                                <th class="border p-2">Asset Class</th>
+                                <th class="border p-2">Top 3 Players</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${topAssetPlayers.map(asset => `
+                                <tr>
+                                    <td class="border p-2">${asset.asset}</td>
+                                    <td class="border p-2">
+                                        ${asset.players.map(player => `${player.name} (${player.score})`).join('<br>')}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+
+                // Score Distribution Heatmap
+                const heatmapData = playerScores.map(player => player['Scores']);
+                new Chart(document.getElementById('scoreHeatmapChart'), {
+                    type: 'heatmap',
+                    data: {
+                        labels: assetClasses,
+                        datasets: [{
+                            label: 'Score Density',
+                            data: heatmapData,
+                            backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            borderWidth: 1
+                        }]
+                    }
+                });
+
+                // Player Ranking Changes (Line chart)
+                const rankChangesData = playerScores.map(player => player['RankHistory']);
+                new Chart(document.getElementById('rankingChangesChart'), {
+                    type: 'line',
+                    data: {
+                        labels: Array.from({ length: rankChangesData[0].length }, (_, i) => `Round ${i+1}`),
+                        datasets: rankChangesData.map((ranks, index) => ({
+                            label: playerNames[index],
+                            data: ranks,
+                            borderColor: `rgba(${(index * 100) % 255}, ${(index * 150) % 255}, 100, 0.8)`,
+                            backgroundColor: 'rgba(0, 0, 0, 0)',
+                            borderWidth: 2
+                        }))
+                    }
+                });
+
+                // Animation for Celebration
+                gsap.from("#celebrationAnimation", { opacity: 0, y: -100, duration: 1 });
+                setTimeout(() => {
+                    gsap.to("#celebrationText", { opacity: 0, duration: 1 });
+                }, 5000);
+            });
+    </script>
+
+</body>
+</html>
