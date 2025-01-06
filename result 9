@@ -1,68 +1,74 @@
+from flask import Flask, jsonify, render_template
 import pandas as pd
-from flask import Flask, render_template, jsonify
 
 app = Flask(__name__)
 
-# Load the data from the Excel file
-df = pd.read_excel('ecodamus.xlsx', sheet_name='summary', header=None)
+# Load the data
+file_path = 'data.xlsx'
+df = pd.read_excel(file_path, header=None)
 
-# Extract ranks (Row 1)
+# Extract ranks, names, asset classes, and scores
 ranks = df.iloc[0, 1:].values.tolist()
-
-# Extract player names (Row 2)
 player_names = df.iloc[1, 1:].values.tolist()
-
-# Extract asset class scores (Rows 3 to 17)
-asset_classes = df.iloc[2:17, 0].values.tolist()  # Asset classes are in rows 3-17, column 1
-asset_scores = df.iloc[2:17, 1:].values.tolist()  # Player scores for 15 asset classes
-
-# Extract total scores (Row 18)
+asset_classes = df.iloc[2:17, 0].values.tolist()
+asset_scores = df.iloc[2:17, 1:].values.tolist()
 total_scores = df.iloc[17, 1:].values.tolist()
 
-# Preparing the top players for leaderboard
-player_data = {
-    'rank': ranks,
-    'name': player_names,
-    'total_score': total_scores
-}
-top_players_df = pd.DataFrame(player_data)
-
-# Sorting the top players by total score and selecting the top 10
-top_players = top_players_df.sort_values(by='total_score', ascending=False).head(10)
-
-# Function to get data for player comparison
-def get_spider_data(player1, player2):
-    player1_data = df[df.iloc[1, 1:] == player1].iloc[2:17, 1:].values.flatten()
-    player2_data = df[df.iloc[1, 1:] == player2].iloc[2:17, 1:].values.flatten()
-    return player1_data.tolist(), player2_data.tolist()
 
 @app.route('/')
-def index():
+def home():
     return render_template('index.html')
 
-@app.route('/top_players')
-def top_players_data():
-    return jsonify(top_players.to_dict(orient='records'))
 
-@app.route('/search/<name>')
-def search(name):
-    player_data = df[df.iloc[1, 1:].str.contains(name, case=False, na=False)]
-    return jsonify(player_data.to_dict(orient='records'))
+@app.route('/api/leaderboard')
+def leaderboard():
+    # Combine ranks, names, and total scores into a leaderboard
+    leaderboard_data = [
+        {"rank": ranks[i], "name": player_names[i], "total_score": total_scores[i]}
+        for i in range(len(ranks))
+    ]
+    leaderboard_data = sorted(leaderboard_data, key=lambda x: x["total_score"], reverse=True)
+    return jsonify(leaderboard_data)
 
-@app.route('/compare/<player1>/<player2>')
-def compare(player1, player2):
-    player1_data, player2_data = get_spider_data(player1, player2)
-    return jsonify({'player1': player1_data, 'player2': player2_data})
 
-@app.route('/charts')
-def charts():
-    return jsonify({
-        'asset_class_contributions': asset_scores,
-        'average_scores': df.iloc[2:17, 1:].mean(axis=0).values.tolist()
-    })
+@app.route('/api/insights')
+def insights():
+    # Calculate insights
+    asset_stats = [
+        {
+            "asset": asset_classes[i],
+            "average": sum(asset_scores[i]) / len(asset_scores[i]),
+            "max": max(asset_scores[i]),
+            "min": min(asset_scores[i]),
+            "top_scorer": player_names[asset_scores[i].index(max(asset_scores[i]))]
+        }
+        for i in range(len(asset_classes))
+    ]
 
-if __name__ == "__main__":
+    winner_index = total_scores.index(max(total_scores))
+    insights_data = {
+        "top_performers": asset_stats,
+        "consistent_scorer": player_names[winner_index],
+        "consistent_reasoning": "The winner achieved a balanced performance across all asset classes.",
+    }
+    return jsonify(insights_data)
+
+
+@app.route('/api/chart-data')
+def chart_data():
+    # Prepare data for charts
+    chart_data = {
+        "top_10_names": [player_names[i] for i in sorted(range(len(total_scores)), key=lambda x: total_scores[x], reverse=True)[:10]],
+        "top_10_scores": sorted(total_scores, reverse=True)[:10],
+        "assets": asset_classes,
+        "asset_averages": [sum(scores) / len(scores) for scores in asset_scores]
+    }
+    return jsonify(chart_data)
+
+
+if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 <!DOCTYPE html>
