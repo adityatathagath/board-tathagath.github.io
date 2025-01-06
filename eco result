@@ -321,3 +321,28 @@ This layout ensures a highly interactive and insightful experience. Let me know 
 </script>
 
 
+<script>
+    const comparisonLabels = JSON.parse(`{{ assets | tojson | safe }}`);
+    const comparisonData = {
+        labels: comparisonLabels,
+        datasets: [
+            {% for row in score_table %}
+            {
+                label: "{{ row.Name }}",
+                data: JSON.parse(`{{ row.Scores | tojson | safe }}`),
+                fill: false,
+                borderColor: `rgba({{ loop.index0 * 50 }}, {{ (loop.index0 * 70) % 255 }}, {{ (loop.index0 * 90) % 255 }}, 1)`,
+                tension: 0.1
+            }
+            {% if not loop.last %},{% endif %}
+            {% endfor %}
+        ]
+    };
+
+    new Chart(document.getElementById('comparisonChart'), {
+        type: 'line',
+        data: comparisonData
+    });
+</script>
+
+
