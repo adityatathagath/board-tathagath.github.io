@@ -10,25 +10,27 @@ def index():
 @app.route('/api/data')
 def api_data():
     # Load the Excel file and the summary sheet
-    df = pd.read_excel('ecodamus.xlsx', sheet_name='summary')
+    df = pd.read_excel('ecodamus.xlsx', sheet_name='summary', header=None)
     
-    # Extract asset classes, player names, and their corresponding scores
-    asset_classes = df.columns[2:-1]  # Exclude first two columns (Rank, Player Name) and the last column (Total Score)
-    player_names = df['Player Name'].tolist()
-    scores = df.iloc[:, 2:-1].values  # All the asset class scores
+    # Extract ranks, player names, and asset class scores
+    ranks = df.iloc[0, 1:].tolist()  # First row (Ranks)
+    player_names = df.iloc[1, 1:].tolist()  # Second row (Player Names)
+    asset_classes = [f"Asset {i+1}" for i in range(15)]  # Asset1 to Asset15
+    scores = df.iloc[2:17, 1:].transpose().values  # Asset class scores for each player
+    total_scores = df.iloc[17, 1:].tolist()  # Last row (Total Scores)
 
-    # Prepare data to send to the frontend
+    # Combine the data into a structured format for the frontend
     player_scores = []
-    for i, row in df.iterrows():
+    for i, player in enumerate(player_names):
         player_scores.append({
-            'Name': row['Player Name'],
-            'Scores': row[2:-1].tolist(),  # Scores for each asset class
-            'TotalScore': row['Total Score'],
-            'Rank': row['Rank']
+            'Name': player,
+            'Scores': scores[i].tolist(),
+            'TotalScore': total_scores[i],
+            'Rank': ranks[i]
         })
 
     return jsonify({
-        'assetClasses': asset_classes.tolist(),
+        'assetClasses': asset_classes,
         'playerScores': player_scores
     })
 
