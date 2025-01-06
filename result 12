@@ -1,0 +1,132 @@
+from flask import Flask, render_template
+import pandas as pd
+import plotly.graph_objects as go
+import plotly
+import json
+
+app = Flask(__name__)
+
+# Function to generate the spider chart data
+def generate_spider_chart(player_1_scores, player_2_scores, asset_classes):
+    fig = go.Figure()
+
+    # Add Player 1 data
+    fig.add_trace(go.Scatterpolar(
+        r=player_1_scores,
+        theta=asset_classes,
+        fill='toself',
+        name='Player 1',
+        line=dict(color='blue')
+    ))
+
+    # Add Player 2 data
+    fig.add_trace(go.Scatterpolar(
+        r=player_2_scores,
+        theta=asset_classes,
+        fill='toself',
+        name='Player 2',
+        line=dict(color='red')
+    ))
+
+    # Update layout to improve the appearance
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100]  # Assuming score range is 0 to 100
+            )
+        ),
+        title="Comparison of Player 1 and Player 2",
+        showlegend=True
+    )
+
+    # Return the chart as JSON
+    return json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+
+@app.route('/')
+def index():
+    # Read the "analysis" sheet from ecodamus.xlsx
+    df = pd.read_excel('ecodamus.xlsx', sheet_name='analysis')
+
+    # Convert the dataframe to a dictionary to pass it to the template
+    data = df.to_dict(orient='list')
+    
+    # Example data for players (replace with actual data)
+    player_1_scores = data['Asset1'][:5]  # Top 5 for player 1
+    player_2_scores = data['Asset1'][5:10]  # Top 5 for player 2
+    asset_classes = [f"Asset {i}" for i in range(1, 16)]
+
+    # Generate the Spider Chart data
+    spider_chart_data = generate_spider_chart(player_1_scores, player_2_scores, asset_classes)
+
+    return render_template('index.html', data=data, spider_chart_data=spider_chart_data)
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ecodamus Results and Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 text-gray-900">
+
+    <!-- Congratulations Section with Animation -->
+    <div class="relative bg-blue-600 text-white py-16 px-4">
+        <div class="absolute inset-0 bg-cover bg-center bg-opacity-60" style="background-image: url('/static/winner-image.jpg');"></div>
+        <div class="container mx-auto text-center relative z-10">
+            <h1 class="text-5xl font-bold animate__animated animate__fadeIn animate__delay-1s">🎉 Congratulations to the Winners! 🎉</h1>
+            <p class="mt-6 text-lg animate__animated animate__fadeIn animate__delay-2s">Outstanding achievements in performance across all asset classes!</p>
+        </div>
+    </div>
+
+    <!-- Data Table Analysis -->
+    <div class="container mx-auto py-10">
+        <h2 class="text-3xl font-bold mb-6 text-center">Ecodamus Results and Analysis</h2>
+        <div class="overflow-x-auto bg-white rounded-lg shadow-lg">
+            <table class="min-w-full text-sm text-left text-gray-500">
+                <thead class="bg-gray-800 text-white">
+                    <tr>
+                        <th class="px-6 py-4 cursor-pointer hover:bg-gray-700">Rank</th>
+                        <th class="px-6 py-4 cursor-pointer hover:bg-gray-700">Name</th>
+                        <th class="px-6 py-4 cursor-pointer hover:bg-gray-700">Asset1</th>
+                        <th class="px-6 py-4 cursor-pointer hover:bg-gray-700">Asset2</th>
+                        <th class="px-6 py-4 cursor-pointer hover:bg-gray-700">...</th>
+                        <th class="px-6 py-4 cursor-pointer hover:bg-gray-700">Total Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for i in range(data['Rank']|length) %}
+                    <tr class="border-b hover:bg-gray-200 transition duration-300">
+                        <td class="px-6 py-4">{{ data['Rank'][i] }}</td>
+                        <td class="px-6 py-4">{{ data['Name'][i] }}</td>
+                        <td class="px-6 py-4">{{ data['Asset1'][i] }}</td>
+                        <td class="px-6 py-4">{{ data['Asset2'][i] }}</td>
+                        <td class="px-6 py-4">...</td>
+                        <td class="px-6 py-4">{{ data['Total Score'][i] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Spider Chart Section -->
+    <div class="container mx-auto py-10">
+        <h2 class="text-3xl font-bold mb-6 text-center">Player Comparison</h2>
+        <div id="spider-chart"></div>
+        <script>
+            var data = {{ spider_chart_data | safe }};
+            Plotly.newPlot('spider-chart', data.data, data.layout);
+        </script>
+    </div>
+
+</body>
+</html>
