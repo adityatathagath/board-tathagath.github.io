@@ -6,7 +6,25 @@ import json
 
 app = Flask(__name__)
 
-# Function to generate the spider chart data
+# Function to read data from the analysis sheet and process it
+def read_analysis_data():
+    # Read the Excel file
+    df = pd.read_excel('ecodamus.xlsx', sheet_name='analysis', header=None)
+    
+    # Extract asset class names from column 1 (from row 2 to row 17)
+    asset_classes = df.iloc[1:17, 0].tolist()  # Row 2 to Row 17 (index 1 to 16 in Python)
+    
+    # Extract player names and their scores for the asset classes
+    player_data = {
+        'Rank': df.iloc[0, 1:].tolist(),
+        'Name': df.iloc[1, 1:].tolist(),
+        'Scores': {asset_classes[i]: df.iloc[2 + i, 1:].tolist() for i in range(15)},
+        'Total Score': df.iloc[17, 1:].tolist()
+    }
+
+    return player_data, asset_classes
+
+# Function to generate the spider chart data for comparing two players
 def generate_spider_chart(player_1_scores, player_2_scores, asset_classes):
     fig = go.Figure()
 
@@ -45,25 +63,20 @@ def generate_spider_chart(player_1_scores, player_2_scores, asset_classes):
 
 @app.route('/')
 def index():
-    # Read the "analysis" sheet from ecodamus.xlsx
-    df = pd.read_excel('ecodamus.xlsx', sheet_name='analysis')
+    # Automatically fetch and process the analysis data
+    player_data, asset_classes = read_analysis_data()
 
-    # Convert the dataframe to a dictionary to pass it to the template
-    data = df.to_dict(orient='list')
-    
-    # Example data for players (replace with actual data)
-    player_1_scores = data['Asset1'][:5]  # Top 5 for player 1
-    player_2_scores = data['Asset1'][5:10]  # Top 5 for player 2
-    asset_classes = [f"Asset {i}" for i in range(1, 16)]
+    # Example: Automatically pick the first two players for the comparison chart (could be dynamic)
+    player_1_scores = player_data['Scores'][asset_classes[0]][0:5]  # First player's first 5 asset scores
+    player_2_scores = player_data['Scores'][asset_classes[0]][5:10]  # Second player's first 5 asset scores
 
     # Generate the Spider Chart data
     spider_chart_data = generate_spider_chart(player_1_scores, player_2_scores, asset_classes)
 
-    return render_template('index.html', data=data, spider_chart_data=spider_chart_data)
+    return render_template('index.html', player_data=player_data, spider_chart_data=spider_chart_data)
 
 if __name__ == '__main__':
     app.run(debug=True)
-
 
 
 <!DOCTYPE html>
@@ -96,21 +109,21 @@ if __name__ == '__main__':
                     <tr>
                         <th class="px-6 py-4 cursor-pointer hover:bg-gray-700">Rank</th>
                         <th class="px-6 py-4 cursor-pointer hover:bg-gray-700">Name</th>
-                        <th class="px-6 py-4 cursor-pointer hover:bg-gray-700">Asset1</th>
-                        <th class="px-6 py-4 cursor-pointer hover:bg-gray-700">Asset2</th>
-                        <th class="px-6 py-4 cursor-pointer hover:bg-gray-700">...</th>
+                        {% for asset in asset_classes %}
+                            <th class="px-6 py-4 cursor-pointer hover:bg-gray-700">{{ asset }}</th>
+                        {% endfor %}
                         <th class="px-6 py-4 cursor-pointer hover:bg-gray-700">Total Score</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for i in range(data['Rank']|length) %}
+                    {% for i in range(player_data['Rank']|length) %}
                     <tr class="border-b hover:bg-gray-200 transition duration-300">
-                        <td class="px-6 py-4">{{ data['Rank'][i] }}</td>
-                        <td class="px-6 py-4">{{ data['Name'][i] }}</td>
-                        <td class="px-6 py-4">{{ data['Asset1'][i] }}</td>
-                        <td class="px-6 py-4">{{ data['Asset2'][i] }}</td>
-                        <td class="px-6 py-4">...</td>
-                        <td class="px-6 py-4">{{ data['Total Score'][i] }}</td>
+                        <td class="px-6 py-4">{{ player_data['Rank'][i] }}</td>
+                        <td class="px-6 py-4">{{ player_data['Name'][i] }}</td>
+                        {% for asset in asset_classes %}
+                            <td class="px-6 py-4">{{ player_data['Scores'][asset][i] }}</td>
+                        {% endfor %}
+                        <td class="px-6 py-4">{{ player_data['Total Score'][i] }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
