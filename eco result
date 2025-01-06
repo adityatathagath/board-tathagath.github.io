@@ -346,3 +346,27 @@ This layout ensures a highly interactive and insightful experience. Let me know 
 </script>
 
 
+<script>
+    const comparisonLabels = JSON.parse(`{{ assets | tojson | safe }}`);
+    const comparisonData = {
+        labels: comparisonLabels,
+        datasets: [
+            {% for row in score_table %}
+            {
+                label: "{{ row['Name'] }}", // Ensure 'Name' matches the key in score_table
+                data: {{ row['Scores'] | tojson | safe }}, // Ensure 'Scores' matches key and is valid JSON
+                fill: false,
+                borderColor: `rgba({{ (loop.index0 * 60) % 255 }}, {{ (loop.index0 * 120) % 255 }}, {{ (loop.index0 * 180) % 255 }}, 1)`,
+                tension: 0.1
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ]
+    };
+
+    new Chart(document.getElementById('comparisonChart'), {
+        type: 'line',
+        data: comparisonData
+    });
+</script>
+
+
