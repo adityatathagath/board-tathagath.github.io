@@ -3,9 +3,9 @@ import pandas as pd
 
 app = Flask(__name__)
 
-# Load the Excel data into a Pandas DataFrame
-file_path = 'data.xlsx'  # Replace with the actual file path
-data = pd.read_excel(file_path)
+# Load and process the data
+file_path = 'data.xlsx'  # Replace with your actual file path
+data = pd.read_excel(file_path).set_index("Rank").T  # Transpose the data for easier processing
 
 @app.route('/')
 def home():
@@ -13,17 +13,17 @@ def home():
 
 @app.route('/api/leaderboard')
 def leaderboard():
-    leaderboard_data = data.sort_values(by='Total Score', ascending=False)
+    leaderboard_data = data[['Rank', 'Name', 'Total Score']].sort_values(by='Total Score', ascending=False)
     leaderboard_json = leaderboard_data.to_dict(orient='records')
     return jsonify(leaderboard_json)
 
 @app.route('/api/insights')
 def insights():
+    assets = data.columns[2:-1]  # Select all asset columns
     insights_data = {
         "top_performers": [
-            {"asset": asset, "top_scorer": row['Name'], "score": row[asset]}
-            for asset in data.columns[2:-1]
-            for _, row in data.sort_values(by=asset, ascending=False).head(1).iterrows()
+            {"asset": asset, "top_scorer": data.loc[data[asset].idxmax(), 'Name'], "score": data[asset].max()}
+            for asset in assets
         ],
         "consistent_scorer": data.loc[data['Total Score'].idxmax(), 'Name'],
         "asset_stats": [
@@ -33,7 +33,7 @@ def insights():
                 "max": data[asset].max(),
                 "min": data[asset].min()
             }
-            for asset in data.columns[2:-1]
+            for asset in assets
         ]
     }
     return jsonify(insights_data)
@@ -41,16 +41,18 @@ def insights():
 @app.route('/api/chart-data')
 def chart_data():
     top_10 = data.sort_values(by='Total Score', ascending=False).head(10)
+    assets = data.columns[2:-1]
     chart_data = {
         "top_10_names": top_10['Name'].tolist(),
         "top_10_scores": top_10['Total Score'].tolist(),
-        "assets": data.columns[2:-1].tolist(),
-        "asset_averages": [data[asset].mean() for asset in data.columns[2:-1]]
+        "assets": assets.tolist(),
+        "asset_averages": [data[asset].mean() for asset in assets]
     }
     return jsonify(chart_data)
 
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
