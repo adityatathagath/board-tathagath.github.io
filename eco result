@@ -1,0 +1,210 @@
+Here’s a complete Flask-based webpage including all five analyses discussed earlier. Each analysis is presented with clear visuals and interactive elements.
+
+1. Flask Backend Code
+
+from flask import Flask, render_template
+import pandas as pd
+
+app = Flask(__name__)
+
+# File and Sheet Details
+EXCEL_FILE = "ecodamus.xlsx"
+SUMMARY_SHEET = "summary"
+SCORES_SHEET = "score_calculation"
+
+@app.route("/")
+def index():
+    # Read Player Summary Data
+    summary_data = pd.read_excel(EXCEL_FILE, sheet_name=SUMMARY_SHEET)
+    player_data = summary_data.to_dict(orient="records")
+    winner = player_data[0]  # Assume the first entry is the winner
+
+    # Read Score Calculation Data
+    score_data = pd.read_excel(EXCEL_FILE, sheet_name=SCORES_SHEET, header=None)
+    ranks = score_data.iloc[0, 1:].tolist()
+    names = score_data.iloc[1, 1:].tolist()
+    asset_classes = score_data.iloc[2:17, 0].tolist()
+    scores = score_data.iloc[2:17, 1:].values.tolist()
+    total_scores = score_data.iloc[17, 1:].tolist()
+
+    # Prepare structured data for rendering
+    score_table = [
+        {"Rank": ranks[i], "Name": names[i], "Scores": [row[i] for row in scores], "Total": total_scores[i]}
+        for i in range(len(ranks))
+    ]
+
+    # Insights Calculations
+    asset_class_averages = [sum(row) / len(row) for row in scores]
+    top_per_asset = [
+        {"Asset": asset_classes[i], "TopPlayer": names[scores[i].index(max(scores[i]))], "MaxScore": max(scores[i])}
+        for i in range(len(asset_classes))
+    ]
+
+    performance_patterns = [
+        {"Name": names[i], "HighPerformingAssets": [asset_classes[j] for j in range(len(asset_classes)) if scores[j][i] > 0.9 * max(scores[j])]}
+        for i in range(len(names))
+    ]
+
+    return render_template(
+        "index.html",
+        winner=winner,
+        players=player_data,
+        score_table=score_table,
+        assets=asset_classes,
+        averages=asset_class_averages,
+        top_per_asset=top_per_asset,
+        performance_patterns=performance_patterns,
+    )
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
+2. HTML Template (templates/index.html)
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ecodamus Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-gray-100">
+
+    <!-- Celebration Animation -->
+    <div id="celebration" class="fixed top-0 left-0 w-full h-full bg-yellow-200 z-50 flex items-center justify-center">
+        <h1 class="text-5xl font-bold text-red-600 animate-bounce">🎉 Congratulations! 🎉</h1>
+    </div>
+
+    <script>
+        setTimeout(() => {
+            document.getElementById('celebration').style.display = 'none';
+        }, 5000);
+    </script>
+
+    <!-- Navbar -->
+    <nav class="bg-blue-500 p-4">
+        <h1 class="text-white text-2xl font-bold">Ecodamus Analysis</h1>
+    </nav>
+
+    <!-- Winner Section -->
+    <div class="container mx-auto my-8 text-center">
+        <img src="{{ winner['Photo'] }}" alt="Winner Photo" class="mx-auto rounded-full w-40 h-40 shadow-lg">
+        <h2 class="text-3xl font-bold mt-4">{{ winner['Name'] }}</h2>
+        <p class="text-xl text-green-500">Winner of the Stock Prediction Game!</p>
+    </div>
+
+    <!-- Analysis Section -->
+    <div class="container mx-auto my-8">
+
+        <!-- 1. Leaderboard -->
+        <h2 class="text-2xl font-bold mb-4">Leaderboard</h2>
+        <canvas id="leaderboardChart" class="w-full h-96"></canvas>
+
+        <!-- 2. Top Performer Per Asset Class -->
+        <h2 class="text-2xl font-bold mt-8 mb-4">Top Performer Per Asset Class</h2>
+        <table class="table-auto w-full border-collapse border border-gray-300 mb-4">
+            <thead>
+                <tr class="bg-gray-200">
+                    <th class="border border-gray-400 px-4 py-2">Asset Class</th>
+                    <th class="border border-gray-400 px-4 py-2">Top Performer</th>
+                    <th class="border border-gray-400 px-4 py-2">Max Score</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in top_per_asset %}
+                <tr>
+                    <td class="border border-gray-400 px-4 py-2">{{ item.Asset }}</td>
+                    <td class="border border-gray-400 px-4 py-2">{{ item.TopPlayer }}</td>
+                    <td class="border border-gray-400 px-4 py-2">{{ item.MaxScore }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- 3. Average Scores Per Asset Class -->
+        <h2 class="text-2xl font-bold mt-8 mb-4">Average Scores Per Asset Class</h2>
+        <canvas id="averageScoresChart" class="w-full h-96"></canvas>
+
+        <!-- 4. Player Performance Comparison -->
+        <h2 class="text-2xl font-bold mt-8 mb-4">Player Performance Comparison</h2>
+        <canvas id="comparisonChart" class="w-full h-96"></canvas>
+
+        <!-- 5. Performance Patterns -->
+        <h2 class="text-2xl font-bold mt-8 mb-4">Performance Patterns</h2>
+        <ul class="list-disc ml-8">
+            {% for pattern in performance_patterns %}
+            <li class="mb-2">
+                <strong>{{ pattern.Name }}</strong>: High-performing assets: {{ pattern.HighPerformingAssets | join(', ') }}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <script>
+        // Leaderboard Chart
+        const leaderboardData = {
+            labels: {{ score_table | map(attribute='Name') | tojson }},
+            datasets: [{
+                label: 'Total Score',
+                data: {{ score_table | map(attribute='Total') | tojson }},
+                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        };
+        new Chart(document.getElementById('leaderboardChart'), {
+            type: 'bar',
+            data: leaderboardData
+        });
+
+        // Average Scores Per Asset Class
+        const averageScoresData = {
+            labels: {{ assets | tojson }},
+            datasets: [{
+                label: 'Average Score',
+                data: {{ averages | tojson }},
+                backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                borderColor: 'rgba(255, 99, 132, 1)',
+                borderWidth: 1
+            }]
+        };
+        new Chart(document.getElementById('averageScoresChart'), {
+            type: 'bar',
+            data: averageScoresData
+        });
+
+        // Player Performance Comparison
+        const comparisonData = {
+            labels: {{ assets | tojson }},
+            datasets: [
+                {% for row in score_table %}
+                {
+                    label: '{{ row.Name }}',
+                    data: {{ row.Scores | tojson }},
+                    fill: false,
+                    borderColor: 'rgba({{ loop.index0 * 80 }}, {{ loop.index0 * 80 }}, 255, 1)',
+                    tension: 0.1
+                },
+                {% endfor %}
+            ]
+        };
+        new Chart(document.getElementById('comparisonChart'), {
+            type: 'line',
+            data: comparisonData
+        });
+    </script>
+</body>
+</html>
+
+Features
+	1.	Leaderboard Chart: Displays the total scores for all players.
+	2.	Top Performer Table: Highlights the best-performing player in each asset class.
+	3.	Average Scores Chart: Shows the average performance across asset classes.
+	4.	Comparison Chart: Compares all players’ performance across asset classes.
+	5.	Performance Patterns: Lists assets where players perform exceptionally well.
+
+This layout ensures a highly interactive and insightful experience. Let me know if you’d like adjustments!
