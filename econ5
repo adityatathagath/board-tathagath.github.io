@@ -324,10 +324,34 @@
             fetchLeaderboard(event.target.value);
         });
 
-        fetchInsights();
-        fetchPlayers();
-        fetchLeaderboard();
-        fetchChartData();
+        async function generateConfetti() {
+            const confettiContainer = document.getElementById('confetti');
+
+            for (let i = 0; i < 50; i++) {
+                const confetti = document.createElement('div');
+                confetti.style.position = 'absolute';
+                confetti.style.width = '10px';
+                confetti.style.height = '10px';
+                confetti.style.backgroundColor = `hsl(${Math.random() * 360}, 100%, 50%)`;
+                confetti.style.left = `${Math.random() * 100}%`;
+                confetti.style.top = `${Math.random() * 100}%`;
+                confetti.style.animation = `fall ${3 + Math.random() * 2}s ease-out forwards`;
+                confetti.style.opacity = 0;
+                confetti.style.animationDelay = `${Math.random()}s`;
+
+                confettiContainer.appendChild(confetti);
+
+                setTimeout(() => confetti.remove(), 5000);
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            generateConfetti();
+            fetchInsights();
+            fetchPlayers();
+            fetchLeaderboard();
+            fetchChartData();
+        });
     </script>
 </body>
 </html>
