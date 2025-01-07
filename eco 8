@@ -1,0 +1,292 @@
+from flask import Flask, jsonify, render_template, request
+import pandas as pd
+
+app = Flask(__name__)
+
+# Load and process the data
+file_path = 'data.xlsx'  # Replace with your actual file path
+raw_data = pd.read_excel(file_path, header=None)
+
+# Extract ranks, names, asset classes, and scores
+ranks = raw_data.iloc[0, 1:].values.tolist()
+player_names = raw_data.iloc[1, 1:].values.tolist()
+asset_classes = raw_data.iloc[2:17, 0].values.tolist()
+asset_scores = raw_data.iloc[2:17, 1:].values.tolist()
+total_scores = raw_data.iloc[17, 1:].values.tolist()
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/api/leaderboard')
+def leaderboard():
+    # Combine ranks, names, and total scores into a leaderboard
+    leaderboard_data = [
+        {"rank": ranks[i], "name": player_names[i], "total_score": total_scores[i]}
+        for i in range(len(ranks))
+    ]
+    leaderboard_data = sorted(leaderboard_data, key=lambda x: x["total_score"], reverse=True)
+    return jsonify(leaderboard_data)
+
+@app.route('/api/insights')
+def insights():
+    # Best Performing Player
+    player_averages = [
+        {"name": player_names[i], "average": sum(row[i] for row in asset_scores) / len(asset_classes)}
+        for i in range(len(player_names))
+    ]
+    best_performing_player = max(player_averages, key=lambda x: x["average"])
+
+    # Highest Scorer Across All Asset Classes
+    highest_scorer_index = total_scores.index(max(total_scores))
+    highest_scorer_asset = {
+        "name": player_names[highest_scorer_index],
+        "score": max(total_scores)
+    }
+
+    # Prepare insights data
+    insights_data = {
+        "best_performing_player": best_performing_player,
+        "highest_scorer_asset": highest_scorer_asset,
+    }
+    return jsonify(insights_data)
+
+@app.route('/api/compare')
+def compare():
+    player1 = request.args.get("player1")
+    player2 = request.args.get("player2")
+
+    player1_index = player_names.index(player1)
+    player2_index = player_names.index(player2)
+
+    comparison_data = {
+        "assets": asset_classes,
+        "player1_scores": [row[player1_index] for row in asset_scores],
+        "player2_scores": [row[player2_index] for row in asset_scores],
+    }
+    return jsonify(comparison_data)
+
+@app.route('/api/chart-data')
+def chart_data():
+    # Prepare data for charts
+    top_10_indices = sorted(range(len(total_scores)), key=lambda x: total_scores[x], reverse=True)[:10]
+
+    # Find the highest scorer for each asset class
+    highest_scorer_per_asset = [
+        player_names[max(range(len(row)), key=lambda i: row[i])] for row in asset_scores
+    ]
+
+    chart_data = {
+        "top_10_names": [player_names[i] for i in top_10_indices],
+        "top_10_scores": [total_scores[i] for i in top_10_indices],
+        "assets": asset_classes,
+        "asset_averages": [sum(scores) / len(scores) for scores in asset_scores],
+        "highest_scorer_per_asset": highest_scorer_per_asset,
+    }
+    return jsonify(chart_data)
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Ecodamus Results</title>
+    <style>
+        .barclays-blue { color: #00aeef; }
+        .barclays-dark-blue { background-color: #00395d; }
+        .confetti { pointer-events: none; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-50 to-gray-200 min-h-screen">
+
+    <!-- Navbar -->
+    <nav class="bg-barclays-dark-blue text-white py-4 px-6 shadow-md flex justify-between items-center">
+        <h1 class="text-2xl font-bold">Ecodamus Results 2024</h1>
+        <img src="static/logo.png" alt="Logo" class="h-12">
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="text-center py-12 bg-barclays-blue text-white">
+        <h2 class="text-4xl font-bold text-black">🎉 Congratulations to the Winner!</h2>
+        <div class="mt-6">
+            <img id="winner-photo" src="static/winner.jpg" alt="Winner Photo" class="w-32 h-32 mx-auto rounded-full shadow-md border-4 border-white">
+            <p id="winner-reasoning" class="mt-4 text-lg italic text-gray-900 max-w-2xl mx-auto">Loading winner's reasoning...</p>
+        </div>
+    </header>
+
+    <!-- Insights Section -->
+    <section class="max-w-7xl mx-auto my-12 px-6">
+        <h2 class="text-xl font-semibold text-black mb-6 text-center">🏆 Key Insights</h2>
+        <div id="insights" class="grid md:grid-cols-2 gap-6">
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="font-bold text-lg">Best Performing Player</h3>
+                <p id="best-performing-player" class="mt-2 text-gray-600"></p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="font-bold text-lg">Highest Scorer Across Asset Classes</h3>
+                <p id="highest-scorer-asset" class="mt-2 text-gray-600"></p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Charts Section -->
+    <section class="max-w-7xl mx-auto my-12 px-6">
+        <h2 class="text-xl font-semibold text-black mb-6 text-center">📈 Visualizations</h2>
+        <div class="grid md:grid-cols-2 gap-6">
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="font-bold text-lg text-center mb-4">Highest Scorer by Asset Class</h3>
+                <canvas id="assetClassChart"></canvas>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="font-bold text-lg text-center mb-4">Average Asset Scores</h3>
+                <canvas id="assetChart"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <!-- Leaderboard Section -->
+    <section class="max-w-7xl mx-auto my-12 px-6">
+        <h2 class="text-xl font-semibold text-black mb-6 text-center">🏅 Leaderboard</h2>
+        <input type="text" id="search" placeholder="Search by name..." 
+               class="w-full p-3 mb-4 rounded-lg border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-barclays-blue">
+        <table class="w-full bg-white rounded-lg shadow-md">
+            <thead class="bg-barclays-dark-blue text-white">
+                <tr>
+                    <th class="py-3 px-4 text-left">Rank</th>
+                    <th class="py-3 px-4 text-left">Name</th>
+                    <th class="py-3 px-4 text-left">Total Score</th>
+                </tr>
+            </thead>
+            <tbody id="leaderboard" class="text-gray-800"></tbody>
+        </table>
+    </section>
+
+    <!-- Player Comparison Section -->
+    <section class="max-w-7xl mx-auto my-12 px-6">
+        <h2 class="text-xl font-semibold text-black mb-6 text-center">⚖️ Compare Players</h2>
+        <div class="grid md:grid-cols-2 gap-6">
+            <div>
+                <label for="player1" class="block font-bold text-gray-600 mb-2">Select Player 1</label>
+                <select id="player1" class="w-full p-3 rounded-lg border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-barclays-blue">
+                    <!-- Options dynamically added -->
+                </select>
+            </div>
+            <div>
+                <label for="player2" class="block font-bold text-gray-600 mb-2">Select Player 2</label>
+                <select id="player2" class="w-full p-3 rounded-lg border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-barclays-blue">
+                    <!-- Options dynamically added -->
+                </select>
+            </div>
+        </div>
+        <div class="mt-8 bg-white p-6 rounded-lg shadow-md">
+            <h3 class="font-bold text-lg text-center mb-4">Player Comparison</h3>
+            <canvas id="playerComparisonChart"></canvas>
+        </div>
+    </section>
+
+    <!-- JavaScript -->
+    <script>
+        async function fetchData(url) {
+            const response = await fetch(url);
+            return response.json();
+        }
+
+        async function loadLeaderboard(query = "") {
+            const data = await fetchData('/api/leaderboard');
+            const filteredData = query
+                ? data.filter(player => player.name.toLowerCase().includes(query.toLowerCase()))
+                : data;
+
+            const leaderboardBody = document.getElementById('leaderboard');
+            leaderboardBody.innerHTML = filteredData.slice(0, 10).map(player => `
+                <tr class="border-b">
+                    <td class="py-3 px-4">${player.rank}</td>
+                    <td class="py-3 px-4">${player.name}</td>
+                    <td class="py-3 px-4">${player.total_score}</td>
+                </tr>`).join('');
+        }
+
+        async function loadInsights() {
+            const insights = await fetchData('/api/insights');
+            document.getElementById('winner-name').innerText = insights.best_performing_player.name;
+            document.getElementById('winner-reasoning').innerText = "Reasoning: " + insights.best_performing_player.average.toFixed(2) + " was their average score.";
+            document.getElementById('insights').innerHTML = `
+                <div>Best Performer: ${insights.best_performing_player.name} (Avg: ${insights.best_performing_player.average.toFixed(2)})</div>
+                <div>Highest Scorer: ${insights.highest_scorer_asset.name} (${insights.highest_scorer_asset.score})</div>`;
+        }
+
+        async function loadCharts() {
+            const data = await fetchData('/api/chart-data');
+
+            // Chart: Highest Scorer by Asset Class
+            new Chart(document.getElementById('assetClassChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.assets,
+                    datasets: [{
+                        label: 'Highest Scorer',
+                        data: data.asset_averages.map((_, i) => Math.max(...data.asset_averages)),
+                        backgroundColor: '#00aeef'
+                    }]
+                }
+            });
+
+            // Chart: Average Asset Scores
+            new Chart(document.getElementById('assetChart'), {
+                type: 'line',
+                data: {
+                    labels: data.assets,
+                    datasets: [{
+                        label: 'Average Score',
+                        data: data.asset_averages,
+                        borderColor: '#00395d',
+                        fill: false
+                    }]
+                }
+            });
+        }
+
+        async function loadPlayerComparison() {
+            const player1 = document.getElementById('player1').value;
+            const player2 = document.getElementById('player2').value;
+
+            if (!player1 || !player2) return;
+
+            const data = await fetchData(`/api/compare?player1=${player1}&player2=${player2}`);
+            new Chart(document.getElementById('playerComparisonChart'), {
+                type: 'radar',
+                data: {
+                    labels: data.assets,
+                    datasets: [
+                        { label: player1, data: data.player1_scores, borderColor: '#00aeef', backgroundColor: 'rgba(0, 174, 239, 0.2)' },
+                        { label: player2, data: data.player2_scores, borderColor: '#00395d', backgroundColor: 'rgba(0, 57, 93, 0.2)' }
+                    ]
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadLeaderboard();
+            loadInsights();
+            loadCharts();
+
+            const searchInput = document.getElementById('search');
+            searchInput.addEventListener('input', (e) => loadLeaderboard(e.target.value));
+
+            const player1Select = document.getElementById('player1');
+            const player2Select = document.getElementById('player2');
+            player1Select.addEventListener('change', loadPlayerComparison);
+            player2Select.addEventListener('change', loadPlayerComparison);
+        });
+    </script>
+</body>
+</html>
