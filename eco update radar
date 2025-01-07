@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Ecodamus Results</title>
+    <style>
+        .barclays-blue { color: #00aeef; }
+        .barclays-dark-blue { background-color: #00395d; }
+        .confetti { pointer-events: none; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-50 to-gray-200 min-h-screen">
+
+    <!-- Navbar -->
+    <nav class="bg-barclays-dark-blue text-white py-4 px-6 shadow-md flex justify-between items-center">
+        <h1 class="text-2xl font-bold">Ecodamus Results 2024</h1>
+        <img src="static/logo.png" alt="Logo" class="h-12">
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="text-center py-12 bg-barclays-blue text-white">
+        <h2 class="text-4xl font-bold text-black">🎉 Congratulations to the Winner!</h2>
+        <div class="mt-6">
+            <img id="winner-photo" src="static/winner.jpg" alt="Winner Photo" class="w-32 h-32 mx-auto rounded-full shadow-md border-4 border-white">
+            <p id="winner-reasoning" class="mt-4 text-lg italic text-gray-900 max-w-2xl mx-auto">Loading winner's reasoning...</p>
+        </div>
+    </header>
+
+    <!-- Insights Section -->
+    <section class="max-w-7xl mx-auto my-12 px-6">
+        <h2 class="text-xl font-semibold text-black mb-6 text-center">🏆 Key Insights</h2>
+        <div id="insights" class="grid md:grid-cols-2 gap-6">
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="font-bold text-lg">Best Performing Player</h3>
+                <p id="best-performing-player" class="mt-2 text-gray-600"></p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="font-bold text-lg">Most Consistent Player</h3>
+                <p id="most-consistent-player" class="mt-2 text-gray-600"></p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Charts Section -->
+    <section class="max-w-7xl mx-auto my-12 px-6">
+        <h2 class="text-xl font-semibold text-black mb-6 text-center">📈 Visualizations</h2>
+        <div class="grid md:grid-cols-2 gap-6">
+            <!-- Average Asset Scores -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="font-bold text-lg text-center mb-4">Average Asset Scores</h3>
+                <canvas id="assetChart"></canvas>
+            </div>
+            <!-- Radar Chart for Player Comparison -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="font-bold text-lg text-center mb-4">Player Comparison</h3>
+                <select id="player1" class="w-full p-2 mb-4 border border-gray-300 rounded-md">
+                    <!-- Options populated dynamically -->
+                </select>
+                <select id="player2" class="w-full p-2 mb-4 border border-gray-300 rounded-md">
+                    <!-- Options populated dynamically -->
+                </select>
+                <canvas id="playerComparisonChart"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <!-- Leaderboard Section -->
+    <section class="max-w-7xl mx-auto my-12 px-6">
+        <h2 class="text-xl font-semibold text-black mb-6 text-center">🏅 Leaderboard</h2>
+        <input type="text" id="search" placeholder="Search by name..." 
+               class="w-full p-3 mb-4 rounded-lg border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-barclays-blue">
+        <table class="w-full bg-white rounded-lg shadow-md">
+            <thead class="bg-barclays-dark-blue text-white">
+                <tr>
+                    <th class="py-3 px-4 text-left">Rank</th>
+                    <th class="py-3 px-4 text-left">Name</th>
+                    <th class="py-3 px-4 text-left">Total Score</th>
+                </tr>
+            </thead>
+            <tbody id="leaderboard" class="text-gray-800"></tbody>
+        </table>
+    </section>
+
+    <script>
+        let radarChart; // Store the radar chart instance
+
+        async function fetchData(url) {
+            const response = await fetch(url);
+            return response.json();
+        }
+
+        async function loadInsights() {
+            const insights = await fetchData('/api/insights');
+            document.getElementById('best-performing-player').innerText = `${insights.best_performing_player.name} (Avg: ${insights.best_performing_player.average.toFixed(2)})`;
+            document.getElementById('most-consistent-player').innerText = `${insights.most_consistent_player.name} (Variance: ${insights.most_consistent_player.variance.toFixed(2)})`;
+        }
+
+        async function loadCharts() {
+            const data = await fetchData('/api/chart-data');
+
+            // Average Asset Scores Chart
+            new Chart(document.getElementById('assetChart'), {
+                type: 'line',
+                data: {
+                    labels: data.assets,
+                    datasets: [{
+                        label: 'Average Score',
+                        data: data.asset_averages,
+                        borderColor: '#00395d',
+                        pointBackgroundColor: '#00aeef',
+                        borderWidth: 2,
+                        fill: false,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    }
+                }
+            });
+        }
+
+        async function initializeRadarChart() {
+            const players = await fetchData('/api/leaderboard');
+            if (players.length < 2) return;
+
+            // Populate dropdowns
+            const player1Select = document.getElementById('player1');
+            const player2Select = document.getElementById('player2');
+            players.forEach(player => {
+                const option1 = document.createElement('option');
+                option1.value = player.name;
+                option1.textContent = player.name;
+                player1Select.appendChild(option1);
+
+                const option2 = document.createElement('option');
+                option2.value = player.name;
+                option2.textContent = player.name;
+                player2Select.appendChild(option2);
+            });
+
+            // Select first two players as default and render radar chart
+            player1Select.value = players[0].name;
+            player2Select.value = players[1].name;
+            loadPlayerComparison();
+        }
+
+        async function loadPlayerComparison() {
+            const player1 = document.getElementById('player1').value;
+            const player2 = document.getElementById('player2').value;
+
+            if (!player1 || !player2) return;
+
+            const data = await fetchData(`/api/compare?player1=${player1}&player2=${player2}`);
+
+            // Create or Update Radar Chart
+            if (radarChart) {
+                radarChart.destroy();
+            }
+            radarChart = new Chart(document.getElementById('playerComparisonChart'), {
+                type: 'radar',
+                data: {
+                    labels: data.assets,
+                    datasets: [
+                        {
+                            label: player1,
+                            data: data.player1_scores,
+                            borderColor: '#00aeef',
+                            backgroundColor: 'rgba(0, 174, 239, 0.2)',
+                            pointBackgroundColor: '#00aeef',
+                        },
+                        {
+                            label: player2,
+                            data: data.player2_scores,
+                            borderColor: '#00395d',
+                            backgroundColor: 'rgba(0, 57, 93, 0.2)',
+                            pointBackgroundColor: '#00395d',
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    },
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            angleLines: { color: '#ddd' },
+                        }
+                    }
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadInsights();
+            loadCharts();
+            initializeRadarChart();
+
+            document.getElementById('player1').addEventListener('change', loadPlayerComparison);
+            document.getElementById('player2').addEventListener('change', loadPlayerComparison);
+        });
+    </script>
+</body>
+</html>
