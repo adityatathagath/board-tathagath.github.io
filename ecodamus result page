@@ -1,0 +1,307 @@
+from flask import Flask, jsonify, render_template
+import pandas as pd
+
+app = Flask(__name__)
+
+# Load and process the data
+file_path = 'data.xlsx'  # Replace with your actual file path
+raw_data = pd.read_excel(file_path, header=None)
+
+# Extract ranks, names, asset classes, and scores
+ranks = raw_data.iloc[0, 1:].values.tolist()
+player_names = raw_data.iloc[1, 1:].values.tolist()
+asset_classes = raw_data.iloc[2:17, 0].values.tolist()
+asset_scores = raw_data.iloc[2:17, 1:].values.tolist()
+total_scores = raw_data.iloc[17, 1:].values.tolist()
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/api/leaderboard')
+def leaderboard():
+    # Combine ranks, names, and total scores into a leaderboard
+    leaderboard_data = [
+        {"rank": ranks[i], "name": player_names[i], "total_score": total_scores[i]}
+        for i in range(len(ranks))
+    ]
+    leaderboard_data = sorted(leaderboard_data, key=lambda x: x["total_score"], reverse=True)
+    return jsonify(leaderboard_data)
+
+@app.route('/api/insights')
+def insights():
+    # Calculate insights
+    asset_stats = [
+        {
+            "asset": asset_classes[i],
+            "average": sum(asset_scores[i]) / len(asset_scores[i]),
+            "max": max(asset_scores[i]),
+            "min": min(asset_scores[i]),
+            "top_scorer": player_names[asset_scores[i].index(max(asset_scores[i]))]
+        }
+        for i in range(len(asset_classes))
+    ]
+
+    # Find the best performer overall
+    winner_index = total_scores.index(max(total_scores))
+
+    # Determine the best asset class by average score
+    best_asset_class = max(asset_stats, key=lambda x: x["average"])
+
+    # Determine the most consistent performer
+    consistency_scores = [
+        {"name": player_names[i], "variance": pd.Series([row[i] for row in asset_scores]).var()}
+        for i in range(len(player_names))
+    ]
+    most_consistent = min(consistency_scores, key=lambda x: x["variance"])
+
+    insights_data = {
+        "winner": {
+            "name": player_names[winner_index],
+            "photo": "static/winner.jpg",  # Replace with the actual winner photo URL
+            "total_score": total_scores[winner_index],
+            "reasoning": "The winner achieved outstanding performance by leveraging insights into market trends."
+        },
+        "top_performers": asset_stats,
+        "best_asset_class": {
+            "asset": best_asset_class["asset"],
+            "average": best_asset_class["average"]
+        },
+        "most_consistent": most_consistent
+    }
+    return jsonify(insights_data)
+
+@app.route('/api/chart-data')
+def chart_data():
+    # Prepare data for charts
+    top_10_indices = sorted(range(len(total_scores)), key=lambda x: total_scores[x], reverse=True)[:10]
+    chart_data = {
+        "top_10_names": [player_names[i] for i in top_10_indices],
+        "top_10_scores": [total_scores[i] for i in top_10_indices],
+        "assets": asset_classes,
+        "asset_averages": [sum(scores) / len(scores) for scores in asset_scores]
+    }
+    return jsonify(chart_data)
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Ecodamus Insights</title>
+    <style>
+        /* Barclays Colors */
+        body { background-color: #f4f4f4; }
+        .barclays-blue { color: #00aeef; }
+        .barclays-dark-blue { background-color: #00395d; }
+        .barclays-light-gray { background-color: #f4f4f4; }
+
+        /* Animations */
+        .animate-slide-in {
+            animation: slide-in 1.5s ease-out forwards;
+        }
+        @keyframes slide-in {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .animate-bounce {
+            animation: bounce 2s infinite;
+        }
+        @keyframes bounce {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        /* Confetti Animation */
+        #confetti {
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-6">
+    <!-- Hero Section -->
+    <div class="hero-section relative bg-barclays-dark-blue text-white p-8 rounded-lg shadow-lg mb-8">
+        <div id="confetti" class="absolute inset-0"></div>
+        <div class="container mx-auto text-center relative z-10">
+            <h1 class="text-4xl font-bold mb-4 animate-slide-in">🎉 Congratulations to our Winner!</h1>
+            <img id="winner-photo" src="static/winner.jpg" alt="Winner Photo"
+                class="w-32 h-32 mx-auto rounded-full shadow-md border-4 border-white animate-bounce">
+            <h2 id="winner-name" class="text-3xl font-bold mt-4"></h2>
+            <p id="winner-reasoning" class="text-lg italic mt-2"></p>
+        </div>
+    </div>
+
+    <!-- Key Insights Section -->
+    <div class="mt-8">
+        <h2 class="text-2xl font-bold barclays-blue mb-4">🏆 Winner Insights</h2>
+        <div id="winner-section" class="bg-gray-100 p-4 rounded-md shadow-md">
+            <h3 id="winner-name-key" class="text-xl font-semibold"></h3>
+            <p id="winner-reasoning-key" class="text-gray-700 italic"></p>
+            <p><strong>Total Score:</strong> <span id="winner-score-key"></span></p>
+        </div>
+
+        <h2 class="text-2xl font-bold barclays-blue mt-6">📊 Key Insights</h2>
+        <div id="key-insights" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-white p-4 rounded-md shadow-md">
+                <h3 class="text-lg font-semibold">Best Asset Class</h3>
+                <p id="best-asset-class"></p>
+            </div>
+            <div class="bg-white p-4 rounded-md shadow-md">
+                <h3 class="text-lg font-semibold">Most Consistent Performer</h3>
+                <p id="most-consistent-performer"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaderboard Section -->
+    <h2 class="text-2xl font-bold barclays-blue mt-8 mb-4">🏅 Leaderboard</h2>
+    <div class="mb-4">
+        <input type="text" id="search" placeholder="Search by name..." 
+               class="w-full p-2 border-2 border-barclays-blue rounded-md">
+    </div>
+    <table class="w-full text-left border-collapse table-auto">
+        <thead class="bg-barclays-dark-blue text-white">
+            <tr>
+                <th class="px-4 py-2">Rank</th>
+                <th class="px-4 py-2">Name</th>
+                <th class="px-4 py-2">Total Score</th>
+            </tr>
+        </thead>
+        <tbody id="leaderboard"></tbody>
+    </table>
+
+    <!-- Visualizations Section -->
+    <h2 class="text-2xl font-bold barclays-blue mt-8 mb-4">📈 Visualizations</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+            <h3 class="text-lg font-semibold text-center">Top 10 Players</h3>
+            <canvas id="leaderboardChart"></canvas>
+        </div>
+        <div>
+            <h3 class="text-lg font-semibold text-center">Average Asset Scores</h3>
+            <canvas id="assetChart"></canvas>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        async function fetchWinner() {
+            const response = await fetch("/api/insights");
+            const data = await response.json();
+
+            const winner = data.winner;
+
+            // Populate Hero Section
+            document.getElementById("winner-name").innerText = winner.name;
+            document.getElementById("winner-reasoning").innerText = winner.reasoning;
+            document.getElementById("winner-photo").src = winner.photo;
+
+            // Populate Key Insights
+            document.getElementById("winner-name-key").innerText = `Winner: ${winner.name}`;
+            document.getElementById("winner-reasoning-key").innerText = winner.reasoning;
+            document.getElementById("winner-score-key").innerText = winner.total_score;
+            document.getElementById("best-asset-class").innerText = `${data.best_asset_class.asset} (Average: ${data.best_asset_class.average.toFixed(2)})`;
+            document.getElementById("most-consistent-performer").innerText = `${data.most_consistent.name} (Variance: ${data.most_consistent.variance.toFixed(2)})`;
+        }
+
+        async function fetchLeaderboard(query = "") {
+            const response = await fetch("/api/leaderboard");
+            const data = await response.json();
+            const filteredData = query
+                ? data.filter(player => player.name.toLowerCase().includes(query.toLowerCase()))
+                : data;
+
+            const leaderboardBody = document.getElementById("leaderboard");
+            leaderboardBody.innerHTML = filteredData.slice(0, 10).map(player => `
+                <tr class="border-b">
+                    <td class="px-4 py-2">${player.rank}</td>
+                    <td class="px-4 py-2">${player.name}</td>
+                    <td class="px-4 py-2">${player.total_score}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function fetchChartData() {
+            const response = await fetch("/api/chart-data");
+            const data = await response.json();
+
+            // Top 10 Players Chart
+            new Chart(document.getElementById("leaderboardChart"), {
+                type: 'bar',
+                data: {
+                    labels: data.top_10_names,
+                    datasets: [{
+                        label: 'Total Score',
+                        data: data.top_10_scores,
+                        backgroundColor: '#00aeef'
+                    }]
+                }
+            });
+
+            // Average Asset Scores Chart
+            new Chart(document.getElementById("assetChart"), {
+                type: 'line',
+                data: {
+                    labels: data.assets,
+                    datasets: [{
+                        label: 'Average Score',
+                        data: data.asset_averages,
+                        borderColor: '#00395d',
+                        fill: false
+                    }]
+                }
+            });
+        }
+
+        // Fetch data on page load
+        document.getElementById("search").addEventListener("input", event => {
+            fetchLeaderboard(event.target.value);
+        });
+
+        fetchWinner();
+        fetchLeaderboard();
+        fetchChartData();
+
+        // Confetti Animation
+        function generateConfetti() {
+            const confettiContainer = document.getElementById('confetti');
+            for (let i = 0; i < 50; i++) { // Reduced number of confetti elements for performance optimization
+                const confetti = document.createElement('div');
+                confetti.style.position = 'absolute';
+                confetti.style.width = '10px';
+                confetti.style.height = '10px';
+                confetti.style.backgroundColor = `hsl(${Math.random() * 360}, 100%, 50%)`;
+                confetti.style.left = `${Math.random() * 100}%`;
+                confetti.style.top = `${Math.random() * 100}%`;
+                confetti.style.animation = `fall ${3 + Math.random() * 2}s ease-out forwards`;
+                confetti.style.opacity = 0;
+                confetti.style.animationDelay = `${Math.random()}s`;
+                confettiContainer.appendChild(confetti);
+
+                setTimeout(() => confetti.remove(), 5000);
+            }
+        }
+
+        generateConfetti();
+    </script>
+</body>
+</html>
