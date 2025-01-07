@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Ecodamus Results</title>
+    <style>
+        .barclays-blue { color: #00aeef; }
+        .barclays-dark-blue { background-color: #00395d; }
+        .barclays-light-blue { background-color: #00aeef; }
+        .shadow-box { box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); }
+        .section-title { border-left: 4px solid #00aeef; padding-left: 8px; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-50 to-gray-200 min-h-screen">
+
+    <!-- Navbar -->
+    <nav class="bg-barclays-dark-blue text-white py-4 px-6 shadow-md flex justify-between items-center">
+        <h1 class="text-2xl font-bold">Ecodamus Results 2024</h1>
+        <img src="static/logo.png" alt="Logo" class="h-12">
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="text-center py-12 bg-barclays-blue text-white">
+        <h2 class="text-4xl font-bold">🎉 Congratulations to the Winner!</h2>
+        <p id="winner-name" class="text-2xl mt-4"></p>
+        <p id="winner-reasoning" class="text-lg italic mt-2"></p>
+    </header>
+
+    <!-- Insights Section -->
+    <section class="max-w-7xl mx-auto my-12 px-6">
+        <h2 class="section-title text-xl font-semibold text-gray-800 mb-6">🏆 Key Insights</h2>
+        <div id="insights" class="grid md:grid-cols-2 gap-6">
+            <div class="bg-white p-6 rounded-lg shadow-box">
+                <h3 class="font-bold text-lg">Best Performing Player</h3>
+                <p id="best-performing-player" class="mt-2 text-gray-600"></p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-box">
+                <h3 class="font-bold text-lg">Highest Scorer Across Asset Classes</h3>
+                <p id="highest-scorer-asset" class="mt-2 text-gray-600"></p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Charts Section -->
+    <section class="max-w-7xl mx-auto my-12 px-6">
+        <h2 class="section-title text-xl font-semibold text-gray-800 mb-6">📈 Visualizations</h2>
+        <div class="grid md:grid-cols-2 gap-6">
+            <div class="bg-white p-6 rounded-lg shadow-box">
+                <h3 class="font-bold text-lg text-center mb-4">Top 10 Players</h3>
+                <canvas id="chart1"></canvas>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-box">
+                <h3 class="font-bold text-lg text-center mb-4">Average Asset Scores</h3>
+                <canvas id="chart2"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <!-- Leaderboard Section -->
+    <section class="max-w-7xl mx-auto my-12 px-6">
+        <h2 class="section-title text-xl font-semibold text-gray-800 mb-6">🏅 Leaderboard</h2>
+        <input type="text" id="search" placeholder="Search by name..." 
+               class="w-full p-3 mb-4 rounded-lg border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-barclays-blue">
+        <table class="w-full bg-white rounded-lg shadow-box">
+            <thead class="bg-barclays-dark-blue text-white">
+                <tr>
+                    <th class="py-3 px-4 text-left">Rank</th>
+                    <th class="py-3 px-4 text-left">Name</th>
+                    <th class="py-3 px-4 text-left">Total Score</th>
+                </tr>
+            </thead>
+            <tbody id="leaderboard" class="text-gray-800"></tbody>
+        </table>
+    </section>
+
+    <!-- Player Comparison Section -->
+    <section class="max-w-7xl mx-auto my-12 px-6">
+        <h2 class="section-title text-xl font-semibold text-gray-800 mb-6">⚖️ Compare Players</h2>
+        <div class="grid md:grid-cols-2 gap-6">
+            <div>
+                <label for="player1" class="block font-bold text-gray-600 mb-2">Select Player 1</label>
+                <select id="player1" class="w-full p-3 rounded-lg border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-barclays-blue">
+                    <!-- Options dynamically added -->
+                </select>
+            </div>
+            <div>
+                <label for="player2" class="block font-bold text-gray-600 mb-2">Select Player 2</label>
+                <select id="player2" class="w-full p-3 rounded-lg border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-barclays-blue">
+                    <!-- Options dynamically added -->
+                </select>
+            </div>
+        </div>
+        <div class="mt-8 bg-white p-6 rounded-lg shadow-box">
+            <h3 class="font-bold text-lg text-center mb-4">Player Comparison</h3>
+            <canvas id="playerComparisonChart"></canvas>
+        </div>
+    </section>
+
+    <!-- JavaScript -->
+    <script>
+        async function fetchData(url) {
+            const response = await fetch(url);
+            return response.json();
+        }
+
+        async function loadLeaderboard() {
+            const leaderboard = await fetchData('/api/leaderboard');
+            const tableBody = document.getElementById('leaderboard');
+            tableBody.innerHTML = leaderboard.map(player => `
+                <tr class="border-b">
+                    <td class="py-3 px-4">${player.rank}</td>
+                    <td class="py-3 px-4">${player.name}</td>
+                    <td class="py-3 px-4">${player.total_score}</td>
+                </tr>`).join('');
+        }
+
+        async function loadInsights() {
+            const insights = await fetchData('/api/insights');
+            document.getElementById('winner-name').innerText = insights.best_performing_player.name;
+            document.getElementById('insights').innerHTML = `
+                <div>Best Performer: ${insights.best_performing_player.name} (Avg: ${insights.best_performing_player.average.toFixed(2)})</div>
+                <div>Highest Scorer: ${insights.highest_scorer_asset.name} (${insights.highest_scorer_asset.score})</div>`;
+        }
+
+        async function loadCharts() {
+            const data = await fetchData('/api/chart-data');
+            new Chart(document.getElementById('chart1'), {
+                type: 'bar',
+                data: {
+                    labels: data.top_10_names,
+                    datasets: [{
+                        label: 'Total Score',
+                        data: data.top_10_scores,
+                        backgroundColor: '#00aeef'
+                    }]
+                }
+            });
+            new Chart(document.getElementById('chart2'), {
+                type: 'line',
+                data: {
+                    labels: data.assets,
+                    datasets: [{
+                        label: 'Average Score',
+                        data: data.asset_averages,
+                        borderColor: '#00395d',
+                        fill: false
+                    }]
+                }
+            });
+        }
+
+        async function loadPlayerComparison() {
+            const player1 = document.getElementById('player1').value;
+            const player2 = document.getElementById('player2').value;
+            const data = await fetchData(`/api/compare?player1=${player1}&player2=${player2}`);
+            new Chart(document.getElementById('playerComparisonChart'), {
+                type: 'radar',
+                data: {
+                    labels: data.assets,
+                    datasets: [
+                        { label: player1, data: data.player1_scores, borderColor: '#00aeef', backgroundColor: 'rgba(0, 174, 239, 0.2)' },
+                        { label: player2, data: data.player2_scores, borderColor: '#00395d', backgroundColor: 'rgba(0, 57, 93, 0.2)' }
+                    ]
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadLeaderboard();
+            loadInsights();
+            loadCharts();
+            document.getElementById('player1').addEventListener('change', loadPlayerComparison);
+            document.getElementById('player2').addEventListener('change', loadPlayerComparison);
+        });
+    </script>
+</body>
+</html>
