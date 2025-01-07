@@ -1,0 +1,196 @@
+from flask import Flask, jsonify, render_template, request
+import pandas as pd
+
+app = Flask(__name__)
+
+# Load and process the data
+file_path = 'data.xlsx'  # Replace with your actual file path
+raw_data = pd.read_excel(file_path, header=None)
+
+# Extract ranks, names, asset classes, and scores
+ranks = raw_data.iloc[0, 1:].values.tolist()
+player_names = raw_data.iloc[1, 1:].values.tolist()
+asset_classes = raw_data.iloc[2:17, 0].values.tolist()
+asset_scores = raw_data.iloc[2:17, 1:].values.tolist()
+total_scores = raw_data.iloc[17, 1:].values.tolist()
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/api/leaderboard')
+def leaderboard():
+    # Combine ranks, names, and total scores into a leaderboard
+    leaderboard_data = [
+        {"rank": ranks[i], "name": player_names[i], "total_score": total_scores[i]}
+        for i in range(len(ranks))
+    ]
+    leaderboard_data = sorted(leaderboard_data, key=lambda x: x["total_score"], reverse=True)
+    return jsonify(leaderboard_data)
+
+@app.route('/api/insights')
+def insights():
+    # Best Performing Player
+    player_averages = [
+        {"name": player_names[i], "average": sum(row[i] for row in asset_scores) / len(asset_classes)}
+        for i in range(len(player_names))
+    ]
+    best_performing_player = max(player_averages, key=lambda x: x["average"])
+
+    # Highest Scorer Across All Asset Classes
+    highest_scorer_index = total_scores.index(max(total_scores))
+    highest_scorer_asset = {
+        "name": player_names[highest_scorer_index],
+        "score": max(total_scores)
+    }
+
+    # Prepare insights data
+    insights_data = {
+        "best_performing_player": best_performing_player,
+        "highest_scorer_asset": highest_scorer_asset,
+    }
+    return jsonify(insights_data)
+
+@app.route('/api/compare')
+def compare():
+    player1 = request.args.get("player1")
+    player2 = request.args.get("player2")
+
+    player1_index = player_names.index(player1)
+    player2_index = player_names.index(player2)
+
+    comparison_data = {
+        "assets": asset_classes,
+        "player1_scores": [row[player1_index] for row in asset_scores],
+        "player2_scores": [row[player2_index] for row in asset_scores],
+    }
+    return jsonify(comparison_data)
+
+@app.route('/api/chart-data')
+def chart_data():
+    # Prepare data for charts
+    top_10_indices = sorted(range(len(total_scores)), key=lambda x: total_scores[x], reverse=True)[:10]
+    chart_data = {
+        "top_10_names": [player_names[i] for i in top_10_indices],
+        "top_10_scores": [total_scores[i] for i in top_10_indices],
+        "assets": asset_classes,
+        "asset_averages": [sum(scores) / len(scores) for scores in asset_scores]
+    }
+    return jsonify(chart_data)
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Ecodamus Results</title>
+    <style>
+        .barclays-blue { color: #00aeef; }
+        .barclays-dark-blue { background-color: #00395d; }
+        .confetti { pointer-events: none; }
+    </style>
+</head>
+<body class="bg-gray-100 p-6">
+    <!-- Navbar -->
+    <nav class="bg-barclays-dark-blue text-white p-4 flex justify-between">
+        <h1 class="text-lg font-bold">Ecodamus Results 2024</h1>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="text-center my-6">
+        <h2 class="text-3xl font-bold barclays-blue">🎉 Winner: <span id="winner-name"></span></h2>
+        <p id="winner-reasoning" class="italic"></p>
+    </section>
+
+    <!-- Insights Section -->
+    <section>
+        <h2 class="text-xl font-bold barclays-blue">Key Insights</h2>
+        <div id="insights" class="grid grid-cols-2 gap-4 my-4"></div>
+    </section>
+
+    <!-- Charts -->
+    <section>
+        <h2 class="text-xl font-bold barclays-blue">Visualizations</h2>
+        <canvas id="chart1" class="my-4"></canvas>
+        <canvas id="chart2"></canvas>
+    </section>
+
+    <!-- Leaderboard -->
+    <section>
+        <h2 class="text-xl font-bold barclays-blue">Leaderboard</h2>
+        <table class="w-full bg-white rounded shadow">
+            <thead class="bg-barclays-dark-blue text-white">
+                <tr><th>Rank</th><th>Name</th><th>Total Score</th></tr>
+            </thead>
+            <tbody id="leaderboard" class="text-center"></tbody>
+        </table>
+    </section>
+
+    <script>
+        async function fetchData(url) {
+            const response = await fetch(url);
+            return response.json();
+        }
+
+        async function loadLeaderboard() {
+            const leaderboard = await fetchData('/api/leaderboard');
+            const tableBody = document.getElementById('leaderboard');
+            tableBody.innerHTML = leaderboard.map(player => `
+                <tr>
+                    <td>${player.rank}</td>
+                    <td>${player.name}</td>
+                    <td>${player.total_score}</td>
+                </tr>`).join('');
+        }
+
+        async function loadInsights() {
+            const insights = await fetchData('/api/insights');
+            document.getElementById('winner-name').innerText = insights.best_performing_player.name;
+            document.getElementById('insights').innerHTML = `
+                <div>Best Performer: ${insights.best_performing_player.name} (Avg: ${insights.best_performing_player.average.toFixed(2)})</div>
+                <div>Most 10s: ${insights.highest_scorer_asset.name} (${insights.highest_scorer_asset.score})</div>
+            `;
+        }
+
+        async function loadCharts() {
+            const data = await fetchData('/api/chart-data');
+            new Chart(document.getElementById('chart1'), {
+                type: 'bar',
+                data: {
+                    labels: data.top_10_names,
+                    datasets: [{
+                        label: 'Total Score',
+                        data: data.top_10_scores,
+                        backgroundColor: '#00aeef'
+                    }]
+                }
+            });
+            new Chart(document.getElementById('chart2'), {
+                type: 'line',
+                data: {
+                    labels: data.assets,
+                    datasets: [{
+                        data: data.asset_averages,
+                        borderColor: '#00395d',
+                        label: 'Asset Averages'
+                    }]
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadLeaderboard();
+            loadInsights();
+            loadCharts();
+        });
+    </script>
+</body>
+</html>
