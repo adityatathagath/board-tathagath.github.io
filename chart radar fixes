@@ -1,0 +1,91 @@
+let radarChart; // Declare a global variable for the radar chart instance
+
+async function loadPlayerComparison() {
+    const player1 = document.getElementById('player1').value;
+    const player2 = document.getElementById('player2').value;
+
+    if (!player1 || !player2) return;
+
+    const data = await fetchData(`/api/compare?player1=${player1}&player2=${player2}`);
+
+    // Destroy the existing chart if it exists
+    if (radarChart) {
+        radarChart.destroy();
+    }
+
+    // Create a new radar chart
+    radarChart = new Chart(document.getElementById('playerComparisonChart'), {
+        type: 'radar',
+        data: {
+            labels: data.assets,
+            datasets: [
+                {
+                    label: player1,
+                    data: data.player1_scores,
+                    borderColor: '#00aeef',
+                    backgroundColor: 'rgba(0, 174, 239, 0.2)',
+                    pointBackgroundColor: '#00aeef',
+                },
+                {
+                    label: player2,
+                    data: data.player2_scores,
+                    borderColor: '#00395d',
+                    backgroundColor: 'rgba(0, 57, 93, 0.2)',
+                    pointBackgroundColor: '#00395d',
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                }
+            },
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    angleLines: { color: '#ddd' },
+                }
+            }
+        }
+    });
+}
+
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadInsights();
+    loadCharts();
+    loadLeaderboard();
+
+    const searchInput = document.getElementById('search');
+    searchInput.addEventListener('input', (e) => loadLeaderboard(e.target.value));
+
+    const player1Select = document.getElementById('player1');
+    const player2Select = document.getElementById('player2');
+    fetchData('/api/leaderboard').then(players => {
+        players.forEach(player => {
+            const option1 = document.createElement('option');
+            option1.value = player.name;
+            option1.textContent = player.name;
+            player1Select.appendChild(option1);
+
+            const option2 = document.createElement('option');
+            option2.value = player.name;
+            option2.textContent = player.name;
+            player2Select.appendChild(option2);
+        });
+
+        // Set default players and load radar chart
+        if (players.length >= 2) {
+            player1Select.value = players[0].name;
+            player2Select.value = players[1].name;
+            loadPlayerComparison();
+        }
+    });
+
+    player1Select.addEventListener('change', loadPlayerComparison);
+    player2Select.addEventListener('change', loadPlayerComparison);
+});
