@@ -1,27 +1,43 @@
-<div class="bg-white p-6 rounded-lg shadow-md">
-    <h3 class="font-bold text-lg text-center mb-4">Player Contribution to Total Score</h3>
-    <canvas id="playerContributionChart"></canvas>
-</div>
-
-
-async function loadPlayerContributionChart() {
+async function loadPerfect10Chart() {
     const data = await fetchData('/api/chart-data');
 
-    new Chart(document.getElementById('playerContributionChart'), {
-        type: 'pie',
+    new Chart(document.getElementById('perfect10Chart'), {
+        type: 'bar',
         data: {
             labels: data.player_names, // Player names
             datasets: [{
-                label: 'Contribution (%)',
-                data: data.player_contributions, // Player contributions as percentages
-                backgroundColor: ['#00aeef', '#00395d', '#ffa500', '#6a1b9a', '#4caf50'], // Custom colors
+                label: 'Number of Perfect 10s',
+                data: data.perfect_10s, // Perfect 10 counts
+                backgroundColor: '#00aeef',
             }]
         },
         options: {
             responsive: true,
             plugins: {
                 legend: {
-                    position: 'top',
+                    display: false, // Hide the legend
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.raw} Perfect 10s`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Players',
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Number of Perfect 10s',
+                    },
+                    beginAtZero: true,
                 }
             }
         }
