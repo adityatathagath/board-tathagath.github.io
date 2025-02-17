@@ -55,11 +55,27 @@ class AddReminderThread(QThread):
         conn.close()
         self.reminder_added.emit()
 
+# Multi-threaded Reminder Deletion
+class DeleteReminderThread(QThread):
+    reminder_deleted = pyqtSignal()
+
+    def __init__(self, reminder_id):
+        super().__init__()
+        self.reminder_id = reminder_id
+
+    def run(self):
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM reminders WHERE id = ?", (self.reminder_id,))
+        conn.commit()
+        conn.close()
+        self.reminder_deleted.emit()
+
 class ReminderApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Barclays Reminder App")
-        self.setGeometry(100, 100, 550, 550)
+        self.setGeometry(100, 100, 600, 550)
 
         # Apply Barclays Theme
         self.setStyleSheet(f"""
@@ -79,7 +95,7 @@ class ReminderApp(QWidget):
                 color: {WHITE};
                 font-weight: bold;
                 border-radius: 5px;
-                padding: 8px;
+                padding: 6px;
             }}
             QPushButton:hover {{
                 background-color: {LIGHT_BLUE};
@@ -121,9 +137,6 @@ class ReminderApp(QWidget):
         self.reminder_table.setHorizontalHeaderLabels(["Date & Time", "Note", "Recurring", "Action"])
         self.reminder_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
-        self.refresh_button = QPushButton("Refresh List", self)
-        self.refresh_button.clicked.connect(self.load_reminders)
-
         self.layout.addWidget(QLabel("Set Reminder Date & Time:"))
         self.layout.addWidget(self.datetime_input)
         self.layout.addWidget(QLabel("Reminder Note:"))
@@ -131,7 +144,6 @@ class ReminderApp(QWidget):
         self.layout.addWidget(QLabel("Recurring Option:"))
         self.layout.addWidget(self.recurring_dropdown)
         self.layout.addWidget(self.add_button)
-        self.layout.addWidget(self.refresh_button)
         self.layout.addWidget(self.reminder_table)
 
         self.setLayout(self.layout)
@@ -160,23 +172,10 @@ class ReminderApp(QWidget):
         self.load_reminders()
         self.clear_input_fields()
 
-    def load_reminders(self):
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM reminders ORDER BY datetime ASC")
-        reminders = cursor.fetchall()
-        conn.close()
-
-        self.reminder_table.setRowCount(len(reminders))
-        for row_idx, (reminder_id, datetime_value, note, recurring) in enumerate(reminders):
-            self.reminder_table.setItem(row_idx, 0, QTableWidgetItem(datetime_value))
-            self.reminder_table.setItem(row_idx, 1, QTableWidgetItem(note))
-            self.reminder_table.setItem(row_idx, 2, QTableWidgetItem(recurring))
-
-    def clear_input_fields(self):
-        self.datetime_input.setDateTime(datetime.datetime.now())
-        self.note_input.clear()
-        self.recurring_dropdown.setCurrentIndex(0)
+    def delete_reminder(self, reminder_id):
+        self.delete_thread = DeleteReminderThread(reminder_id)
+        self.delete_thread.reminder_deleted.connect(self.load_reminders)
+        self.delete_thread.start()
 
     def check_reminders(self):
         now = datetime.datetime.now()
@@ -190,9 +189,9 @@ class ReminderApp(QWidget):
             reminder_time = datetime.datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
             diff = (reminder_time - now).total_seconds()
 
-            if 300 <= diff < 360:
+            if 300 <= diff < 360:  # 5 minutes before
                 self.show_notification("Reminder in 5 minutes!", note)
-            elif 900 <= diff < 960:
+            elif 900 <= diff < 960:  # 15 minutes before
                 self.show_notification("Reminder in 15 minutes!", note)
 
     def show_notification(self, title, message):
