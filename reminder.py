@@ -14,6 +14,13 @@ from PyQt6.QtGui import QGuiApplication
 os.environ["QT_LOGGING_RULES"] = "qt.qpa.*=false"
 QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
+# Barclays Colors
+BARCLAYS_BLUE = "#00AEEF"
+DARK_BLUE = "#00395D"
+LIGHT_BLUE = "#0098DA"
+WHITE = "#FFFFFF"
+TEXT_COLOR = "#333333"
+
 # Database setup
 DB_FILE = "reminders.db"
 
@@ -48,39 +55,51 @@ class AddReminderThread(QThread):
         conn.close()
         self.reminder_added.emit()
 
-# Multi-threaded Reminder Deletion
-class DeleteReminderThread(QThread):
-    reminder_deleted = pyqtSignal()
-
-    def __init__(self, reminder_id):
-        super().__init__()
-        self.reminder_id = reminder_id
-
-    def run(self):
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM reminders WHERE id = ?", (self.reminder_id,))
-        conn.commit()
-        conn.close()
-        self.reminder_deleted.emit()
-
-# Multi-threaded Reminder Loading
-class LoadRemindersThread(QThread):
-    reminders_loaded = pyqtSignal(list)
-
-    def run(self):
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM reminders ORDER BY datetime ASC")
-        reminders = cursor.fetchall()
-        conn.close()
-        self.reminders_loaded.emit(reminders)
-
 class ReminderApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Barclays Reminder App")
         self.setGeometry(100, 100, 550, 550)
+
+        # Apply Barclays Theme
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {WHITE};
+                color: {TEXT_COLOR};
+                font-family: Arial, sans-serif;
+                font-size: 14px;
+            }}
+            QLabel {{
+                font-size: 16px;
+                font-weight: bold;
+                color: {DARK_BLUE};
+            }}
+            QPushButton {{
+                background-color: {BARCLAYS_BLUE};
+                color: {WHITE};
+                font-weight: bold;
+                border-radius: 5px;
+                padding: 8px;
+            }}
+            QPushButton:hover {{
+                background-color: {LIGHT_BLUE};
+            }}
+            QTableWidget {{
+                background-color: {WHITE};
+                gridline-color: {DARK_BLUE};
+                border: 1px solid {DARK_BLUE};
+            }}
+            QHeaderView::section {{
+                background-color: {DARK_BLUE};
+                color: {WHITE};
+                font-weight: bold;
+            }}
+            QTextEdit, QDateTimeEdit, QComboBox {{
+                border: 1px solid {BARCLAYS_BLUE};
+                padding: 5px;
+                border-radius: 3px;
+            }}
+        """)
 
         self.layout = QVBoxLayout()
 
@@ -141,26 +160,18 @@ class ReminderApp(QWidget):
         self.load_reminders()
         self.clear_input_fields()
 
-    def delete_reminder(self, reminder_id):
-        self.delete_thread = DeleteReminderThread(reminder_id)
-        self.delete_thread.reminder_deleted.connect(self.load_reminders)
-        self.delete_thread.start()
-
     def load_reminders(self):
-        self.load_thread = LoadRemindersThread()
-        self.load_thread.reminders_loaded.connect(self.update_reminder_table)
-        self.load_thread.start()
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM reminders ORDER BY datetime ASC")
+        reminders = cursor.fetchall()
+        conn.close()
 
-    def update_reminder_table(self, reminders):
         self.reminder_table.setRowCount(len(reminders))
         for row_idx, (reminder_id, datetime_value, note, recurring) in enumerate(reminders):
             self.reminder_table.setItem(row_idx, 0, QTableWidgetItem(datetime_value))
             self.reminder_table.setItem(row_idx, 1, QTableWidgetItem(note))
             self.reminder_table.setItem(row_idx, 2, QTableWidgetItem(recurring))
-
-            delete_button = QPushButton("Delete")
-            delete_button.clicked.connect(lambda _, rid=reminder_id: self.delete_reminder(rid))
-            self.reminder_table.setCellWidget(row_idx, 3, delete_button)
 
     def clear_input_fields(self):
         self.datetime_input.setDateTime(datetime.datetime.now())
