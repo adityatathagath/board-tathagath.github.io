@@ -173,6 +173,19 @@ class ReminderApp(QWidget):
         self.delete_thread.reminder_deleted.connect(self.load_reminders)
         self.delete_thread.start()
 
+    def load_reminders(self):
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM reminders ORDER BY datetime ASC")
+        reminders = cursor.fetchall()
+        conn.close()
+
+        self.reminder_table.setRowCount(len(reminders))
+        for row_idx, (reminder_id, datetime_value, note, recurring) in enumerate(reminders):
+            self.reminder_table.setItem(row_idx, 0, QTableWidgetItem(datetime_value))
+            self.reminder_table.setItem(row_idx, 1, QTableWidgetItem(note))
+            self.reminder_table.setItem(row_idx, 2, QTableWidgetItem(recurring))
+
     def check_reminders(self):
         now = datetime.datetime.now()
         conn = sqlite3.connect(DB_FILE)
@@ -191,11 +204,10 @@ class ReminderApp(QWidget):
                 self.show_notification("Reminder in 15 minutes!", note)
 
     def show_notification(self, title, message):
-        """ Flash the window, bring it to front, and play a sound when a reminder is due. """
-        QApplication.beep()  # Play system beep sound
-        self.setWindowState(Qt.WindowState.WindowActive)  # Flash in taskbar
-        self.activateWindow()  # Bring to front
-        self.raise_()  # Ensure it's above all windows
+        QApplication.beep()
+        self.setWindowState(Qt.WindowState.WindowActive)
+        self.activateWindow()
+        self.raise_()
 
         alert = QMessageBox(self)
         alert.setWindowTitle("Reminder Alert 🚀")
