@@ -165,17 +165,31 @@ class ReminderApp(QWidget):
             return
 
         self.add_thread = AddReminderThread(datetime_value, note, recurring)
-        self.add_thread.reminder_added.connect(self.on_reminder_added)
+        self.add_thread.reminder_added.connect(self.load_reminders)
         self.add_thread.start()
-
-    def on_reminder_added(self):
-        self.load_reminders()
-        self.clear_input_fields()
 
     def delete_reminder(self, reminder_id):
         self.delete_thread = DeleteReminderThread(reminder_id)
         self.delete_thread.reminder_deleted.connect(self.load_reminders)
         self.delete_thread.start()
+
+    def load_reminders(self):
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM reminders ORDER BY datetime ASC")
+        reminders = cursor.fetchall()
+        conn.close()
+
+        self.reminder_table.setRowCount(len(reminders))
+        for row_idx, (reminder_id, datetime_value, note, recurring) in enumerate(reminders):
+            self.reminder_table.setItem(row_idx, 0, QTableWidgetItem(datetime_value))
+            self.reminder_table.setItem(row_idx, 1, QTableWidgetItem(note))
+            self.reminder_table.setItem(row_idx, 2, QTableWidgetItem(recurring))
+
+            delete_button = QPushButton("Delete")
+            delete_button.setStyleSheet(f"background-color: {DARK_BLUE}; color: {WHITE}; padding: 5px; border-radius: 3px;")
+            delete_button.clicked.connect(lambda _, rid=reminder_id: self.delete_reminder(rid))
+            self.reminder_table.setCellWidget(row_idx, 3, delete_button)
 
     def check_reminders(self):
         now = datetime.datetime.now()
@@ -189,9 +203,9 @@ class ReminderApp(QWidget):
             reminder_time = datetime.datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
             diff = (reminder_time - now).total_seconds()
 
-            if 300 <= diff < 360:  # 5 minutes before
+            if 300 <= diff < 360:
                 self.show_notification("Reminder in 5 minutes!", note)
-            elif 900 <= diff < 960:  # 15 minutes before
+            elif 900 <= diff < 960:
                 self.show_notification("Reminder in 15 minutes!", note)
 
     def show_notification(self, title, message):
