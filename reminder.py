@@ -132,6 +132,9 @@ class ReminderApp(QWidget):
         self.add_button = QPushButton("Add Reminder", self)
         self.add_button.clicked.connect(self.add_reminder)
 
+        self.refresh_button = QPushButton("Refresh Reminders", self)
+        self.refresh_button.clicked.connect(self.load_reminders)
+
         self.reminder_table = QTableWidget(self)
         self.reminder_table.setColumnCount(4)
         self.reminder_table.setHorizontalHeaderLabels(["Date & Time", "Note", "Recurring", "Action"])
@@ -144,6 +147,7 @@ class ReminderApp(QWidget):
         self.layout.addWidget(QLabel("Recurring Option:"))
         self.layout.addWidget(self.recurring_dropdown)
         self.layout.addWidget(self.add_button)
+        self.layout.addWidget(self.refresh_button)
         self.layout.addWidget(self.reminder_table)
 
         self.setLayout(self.layout)
@@ -185,6 +189,11 @@ class ReminderApp(QWidget):
             self.reminder_table.setItem(row_idx, 0, QTableWidgetItem(datetime_value))
             self.reminder_table.setItem(row_idx, 1, QTableWidgetItem(note))
             self.reminder_table.setItem(row_idx, 2, QTableWidgetItem(recurring))
+
+            delete_button = QPushButton("Delete")
+            delete_button.setStyleSheet(f"background-color: {DARK_BLUE}; color: {WHITE}; padding: 5px; border-radius: 3px;")
+            delete_button.clicked.connect(lambda _, rid=reminder_id: self.delete_reminder(rid))
+            self.reminder_table.setCellWidget(row_idx, 3, delete_button)
 
     def check_reminders(self):
         now = datetime.datetime.now()
