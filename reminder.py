@@ -6,11 +6,18 @@ import threading
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QVBoxLayout, QPushButton,
     QTableWidget, QTableWidgetItem, QDateTimeEdit, QTextEdit,
-    QMessageBox, QSystemTrayIcon, QMenu, QComboBox
+    QMessageBox, QSystemTrayIcon, QMenu, QComboBox, QHeaderView
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon, QAction
+from PyQt6.QtGui import QIcon, QAction, QPalette, QColor, QFont
 from plyer import notification
+
+# Barclays Colors
+BARCLAYS_BLUE = "#00AEEF"
+DARK_BLUE = "#00395D"
+LIGHT_BLUE = "#0098DA"
+WHITE = "#FFFFFF"
+TEXT_COLOR = "#333333"
 
 # Database setup
 DB_FILE = "reminders.db"
@@ -30,8 +37,48 @@ def init_db():
 class ReminderApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Reminder App")
-        self.setGeometry(100, 100, 500, 500)
+        self.setWindowTitle("Barclays Reminder App")
+        self.setGeometry(100, 100, 550, 550)
+
+        # Apply Barclays Theme
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {WHITE};
+                color: {TEXT_COLOR};
+                font-family: Arial, sans-serif;
+                font-size: 14px;
+            }}
+            QLabel {{
+                font-size: 16px;
+                font-weight: bold;
+                color: {DARK_BLUE};
+            }}
+            QPushButton {{
+                background-color: {BARCLAYS_BLUE};
+                color: {WHITE};
+                font-weight: bold;
+                border-radius: 5px;
+                padding: 8px;
+            }}
+            QPushButton:hover {{
+                background-color: {LIGHT_BLUE};
+            }}
+            QTableWidget {{
+                background-color: {WHITE};
+                gridline-color: {DARK_BLUE};
+                border: 1px solid {DARK_BLUE};
+            }}
+            QHeaderView::section {{
+                background-color: {DARK_BLUE};
+                color: {WHITE};
+                font-weight: bold;
+            }}
+            QTextEdit, QDateTimeEdit, QComboBox {{
+                border: 1px solid {BARCLAYS_BLUE};
+                padding: 5px;
+                border-radius: 3px;
+            }}
+        """)
 
         self.layout = QVBoxLayout()
 
@@ -51,9 +98,7 @@ class ReminderApp(QWidget):
         self.reminder_table = QTableWidget(self)
         self.reminder_table.setColumnCount(4)
         self.reminder_table.setHorizontalHeaderLabels(["Date & Time", "Note", "Recurring", "Action"])
-        self.reminder_table.setColumnWidth(0, 150)
-        self.reminder_table.setColumnWidth(1, 200)
-        self.reminder_table.setColumnWidth(2, 100)
+        self.reminder_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
         self.refresh_button = QPushButton("Refresh List", self)
         self.refresh_button.clicked.connect(self.load_reminders)
@@ -149,26 +194,6 @@ class ReminderApp(QWidget):
                     self.show_notification(note, "Reminder in 5 minutes!")
                 elif 900 <= diff < 915:  # 15 minutes before
                     self.show_notification(note, "Reminder in 15 minutes!")
-
-                # Handle recurring reminders
-                if diff < 0:  # Reminder time passed
-                    if recurring == "Daily":
-                        new_time = reminder_time + datetime.timedelta(days=1)
-                    elif recurring == "Weekly":
-                        new_time = reminder_time + datetime.timedelta(weeks=1)
-                    elif recurring == "Monthly":
-                        new_time = reminder_time.replace(month=(reminder_time.month % 12) + 1)
-                    elif recurring == "Yearly":
-                        new_time = reminder_time.replace(year=reminder_time.year + 1)
-                    else:
-                        continue
-
-                    # Update reminder with new date
-                    conn = sqlite3.connect(DB_FILE)
-                    cursor = conn.cursor()
-                    cursor.execute("UPDATE reminders SET datetime = ? WHERE id = ?", (new_time.strftime("%Y-%m-%d %H:%M:%S"), reminder_id))
-                    conn.commit()
-                    conn.close()
 
             time.sleep(60)
 
