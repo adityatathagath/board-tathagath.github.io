@@ -1,0 +1,124 @@
+📄 Barclays Reminder App – User Documentation
+
+Version: 1.0
+Developed By: Aditya Tathagath
+
+📌 Overview
+
+The Barclays Reminder App is a standalone desktop application that allows users to set time-based reminders with optional recurring schedules.
+It notifies users 15 and 5 minutes before a scheduled reminder using pop-up alerts and sound notifications.
+
+✨ Key Features
+
+✅ Set reminders with date, time, and notes
+✅ Recurring reminders (None, Daily, Weekly, Monthly, Yearly)
+✅ Automatic pop-up alerts 15 & 5 minutes before a reminder
+✅ Beep sound notification for added visibility
+✅ Delete reminders after completion
+✅ Refresh reminder list at any time
+✅ No Python required (Runs as a standalone .exe file)
+✅ Barclays-themed UI
+
+🖥️ System Requirements
+
+🔹 Operating System: Windows 10 / 11
+🔹 No additional software required (Standalone .exe)
+🔹 Disk Space: ~50MB
+
+📂 Installation & Setup
+
+🔹 1️⃣ Install the App
+	1.	Download the reminder_app.exe file (Shared separately).
+	2.	Move the file to a safe location (e.g., Documents or Desktop).
+
+🔹 2️⃣ (Optional) Set the App to Auto-Start on Boot
+
+If you want the Reminder App to start automatically:
+	1.	Press Win + R, type:
+
+shell:startup
+
+and hit Enter.
+
+	2.	Copy-paste reminder_app.exe into the Startup folder.
+	3.	The app will now launch automatically every time you start your PC.
+
+📌 How to Use
+
+1️⃣ Open the App
+
+Double-click reminder_app.exe to launch.
+
+2️⃣ Add a New Reminder
+	1.	Set the Date & Time for the reminder.
+	2.	Enter a note (e.g., “Team Meeting at 3 PM”).
+	3.	Select recurrence:
+	•	None (One-time reminder)
+	•	Daily
+	•	Weekly
+	•	Monthly
+	•	Yearly
+	4.	Click “Add Reminder”.
+
+3️⃣ Delete a Reminder
+	1.	Click the “Delete” button next to any reminder.
+	2.	The reminder will be removed from the list.
+
+4️⃣ Refresh the List
+
+Click “Refresh Reminders” to reload all saved reminders.
+
+🔔 Notification Alerts
+	•	15 minutes before → A pop-up appears with a sound.
+	•	5 minutes before → Another pop-up with a sound.
+	•	The app flashes in the taskbar when an alert is triggered.
+
+📌 Troubleshooting
+
+❌ Issue: Windows Blocks the .exe File
+
+If you see:
+
+	“Windows cannot access the specified device, path, or file.”
+Solution:
+
+	1.	Right-click the .exe file → Select Properties.
+	2.	Under the General tab, Unblock the file.
+	3.	Click Apply → OK.
+
+❌ Issue: No Notification Pop-ups
+	1.	Check if the reminder time is correct.
+	2.	Open the Command Prompt (CMD) and run:
+
+sqlite3 reminders.db "SELECT * FROM reminders;"
+
+If no data appears, add a new reminder and try again.
+
+❌ Issue: The App Doesn’t Start
+	1.	Try running it as Administrator (Right-click → Run as administrator).
+	2.	Move the file to Desktop or Documents and try again.
+	3.	Temporarily disable antivirus and try again.
+
+💡 FAQ
+
+Q: Can I run this app on Mac/Linux?
+
+No, this .exe is Windows-only.
+
+Q: Where does the app save my reminders?
+
+The app saves reminders in reminders.db (local SQLite database).
+
+Q: Can I edit a reminder after adding it?
+
+Not yet. You’ll need to delete and re-add the reminder.
+
+Q: Do I need to keep the app open?
+
+Yes, the app needs to be running in the background to check for reminders.
+
+📩 Support
+
+If you encounter issues, reach out to Aditya Tathagath.
+
+🚀 Enjoy using Barclays Reminder App! 🚀
