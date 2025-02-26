@@ -1,0 +1,73 @@
+Sub Create_Mailer_Button_and_Send_Email()
+    Dim ws As Worksheet
+    Dim pdfPath As String, pdfName As String
+    Dim reportDate As String
+    Dim rng As Range
+    Dim olApp As Object, olMail As Object
+    Dim cell As Range
+    Dim emailBody As String
+    Dim lastRow As Integer
+
+    ' Set references
+    Set ws = ThisWorkbook.Sheets("Summary Table")
+
+    ' Get the date from B_DATA sheet (Cell EI9)
+    On Error Resume Next
+    reportDate = ThisWorkbook.Sheets("B_DATA").Range("EI9").Value
+    On Error GoTo 0
+    If reportDate = "" Then reportDate = Format(Date, "yyyy-mm-dd") ' Default to today's date
+
+    ' Define the PDF name and path
+    pdfName = "Turkey_Stress_Report_" & reportDate & ".pdf"
+    pdfPath = "C:\Users\Public\Documents\" & pdfName ' Change to your preferred path
+
+    ' Export the entire sheet as PDF
+    ws.ExportAsFixedFormat Type:=xlTypePDF, Filename:=pdfPath, _
+                           Quality:=xlQualityStandard, IncludeDocProperties:=True, _
+                           IgnorePrintAreas:=False, OpenAfterPublish:=False
+
+    ' Get the range D2:AA121 from the active sheet
+    Set rng = ThisWorkbook.Sheets("Summary Table").Range("D2:AA121")
+
+    ' Create HTML table for email body
+    emailBody = "<html><body><p>Dear Team,</p><p>Please find attached the Turkey Stress Report.</p><table border='1'>"
+
+    ' Add headers
+    emailBody = emailBody & "<tr>"
+    For Each cell In rng.Rows(1).Cells
+        emailBody = emailBody & "<th>" & cell.Value & "</th>"
+    Next cell
+    emailBody = emailBody & "</tr>"
+
+    ' Add data rows
+    For Each cell In rng.Rows
+        emailBody = emailBody & "<tr>"
+        For Each c In cell.Cells
+            emailBody = emailBody & "<td>" & c.Value & "</td>"
+        Next c
+        emailBody = emailBody & "</tr>"
+    Next cell
+
+    emailBody = emailBody & "</table><p>Best Regards,<br>Your Name</p></body></html>"
+
+    ' Create and send an email via Outlook
+    Set olApp = CreateObject("Outlook.Application")
+    Set olMail = olApp.CreateItem(0)
+
+    With olMail
+        .To = "recipient@example.com" ' Change to the actual recipient
+        .CC = ""
+        .BCC = ""
+        .Subject = "Turkey Stress Report - " & reportDate
+        .HTMLBody = emailBody
+        .Attachments.Add pdfPath
+        .Display ' Use .Send to send automatically
+    End With
+
+    ' Cleanup
+    Set olMail = Nothing
+    Set olApp = Nothing
+    Set rng = Nothing
+
+    MsgBox "Email prepared successfully with attached PDF.", vbInformation, "Success"
+End Sub
