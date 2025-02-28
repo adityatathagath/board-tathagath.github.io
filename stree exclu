@@ -1,0 +1,39 @@
+import pandas as pd
+
+# Load Excel file (Modify file path as needed)
+input_file = "input.xlsx"  # Replace with your actual file path
+output_file = "output.xlsx"  # New file to save processed data
+sheet_name = "Sheet1"  # Change if your sheet name is different
+
+# Read the Excel file
+df = pd.read_excel(input_file, sheet_name=sheet_name)
+
+# Ensure the necessary columns exist
+required_columns = ['stress_exclusion', 'var_exclusion', 'jupyter_exclusion']
+if not all(col in df.columns for col in required_columns):
+    raise ValueError("One or more required columns are missing in the Excel file.")
+
+# Function to check Y/N column logic
+def check_yn(row):
+    values = {row['stress_exclusion'], row['var_exclusion'], row['jupyter_exclusion']}
+    values.discard('')  # Remove blanks
+    if len(values) == 1 and values.pop() in {'Y', 'N'}:
+        return "✅ Green"
+    else:
+        return "❌ Red"
+
+# Function to check Blanks column logic
+def check_blanks(row):
+    if row['stress_exclusion'] == '' and row['var_exclusion'] == '' and row['jupyter_exclusion'] == '':
+        return "✅ Green"
+    else:
+        return "❌ Red"
+
+# Apply functions to create new columns
+df['Y/N'] = df.apply(check_yn, axis=1)
+df['Blanks'] = df.apply(check_blanks, axis=1)
+
+# Save the updated DataFrame to a new Excel file
+df.to_excel(output_file, index=False)
+
+print(f"Processed file saved as: {output_file}")
