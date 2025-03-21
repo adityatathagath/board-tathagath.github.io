@@ -4,31 +4,56 @@ import sqlite3
 import pandas as pd
 from datetime import datetime
 
+DB_PATH = "historical_data.db"
+
 # ------------------------------------------------------------------
-# 1. Database & Utility Functions
+# 1. Utility & Database Functions
 # ------------------------------------------------------------------
 
-DB_PATH = "historical_data.db"
+def indent_node_name(name, level):
+    """
+    Indent Node Name based on Node Level.
+    Levels below 4 get no indentation.
+    Levels 4 and above: each level above 4 adds 4 non-breaking spaces.
+    """
+    try:
+        level_int = int(level)
+    except (ValueError, TypeError):
+        level_int = 0
+    if level_int >= 4:
+        num_spaces = (level_int - 4) * 4
+        return "&nbsp;" * num_spaces + name
+    else:
+        return name
+
+def format_number(value):
+    """
+    Format numeric values so that negative numbers appear in red,
+    and positive/zero in black.
+    """
+    if value is None:
+        return ""
+    try:
+        val = float(value)
+        if val < 0:
+            return f'<span style="color:red">{val}</span>'
+        else:
+            return f'<span style="color:black">{val}</span>'
+    except (ValueError, TypeError):
+        return str(value)
 
 def fetch_data_and_save_to_db(param1, param2, param3, param4):
     """
-    Placeholder function to:
-      1. Fetch data from an API (using the 3 string + 1 int parameters).
-      2. Insert new data into both 'Sheet1_data_alloc' and 'Sheet1_data_stand'
-         (or whichever tables you need).
-
-    For demonstration, we'll just insert a single simulated row into each table.
+    Placeholder function to fetch data (e.g. via an API) and insert
+    it into both 'Sheet1_data_alloc' and 'Sheet1_data_stand' tables with today's cob_date.
     """
     cob_date = datetime.today().strftime("%Y-%m-%d")
-
-    # Example simulated data row
-    # Adapt columns to match your actual schema exactly
     simulated_data = {
         "Node Name": ["SampleNode"],
         "Node ID": ["Node123"],
         "Node Level": [5],
         "Equities Delta": [100.0],
-        "Equities Delta Change": [-5.0],    # negative example
+        "Equities Delta Change": [-5.0],
         "Equities Vega": [200.0],
         "Equities Vega Change": [10.0],
         "Equities Curvature": [300.0],
@@ -67,19 +92,15 @@ def fetch_data_and_save_to_db(param1, param2, param3, param4):
         "Total Change": [50.0],
         "cob_date": [cob_date]
     }
-
     df = pd.DataFrame(simulated_data)
-
-    # Insert into both tables for demo (adjust to your needs)
     conn = sqlite3.connect(DB_PATH)
     df.to_sql("Sheet1_data_alloc", conn, if_exists="append", index=False)
     df.to_sql("Sheet1_data_stand", conn, if_exists="append", index=False)
     conn.close()
 
-
 def get_distinct_cob_dates(table_name):
     """
-    Get a sorted list of distinct COB dates from a given table.
+    Return a sorted list of distinct COB dates from a given table.
     """
     conn = sqlite3.connect(DB_PATH)
     query = f"SELECT DISTINCT cob_date FROM {table_name} ORDER BY cob_date"
@@ -87,10 +108,10 @@ def get_distinct_cob_dates(table_name):
     conn.close()
     return dates
 
-
 def get_data_for_cob_date(cob_date, table_name):
     """
-    Return a DataFrame of rows for the specified COB date from the given table.
+    Return a DataFrame containing all rows from the specified table
+    that match the given cob_date.
     """
     conn = sqlite3.connect(DB_PATH)
     query = f"SELECT * FROM {table_name} WHERE cob_date = '{cob_date}'"
@@ -98,209 +119,132 @@ def get_data_for_cob_date(cob_date, table_name):
     conn.close()
     return df
 
-# Indentation function for Node Name based on Node Level
-def indent_node_name(name, level):
-    """
-    If Node Level is 4 → 0 spaces,
-       Node Level is 5 → 4 spaces,
-       Node Level is 6 → 8 spaces,
-       Node Level is 7 → 12 spaces,
-       Node Level is 8 → 16 spaces,
-    etc.
-    """
-    if level >= 4:
-        # Each level above 4 adds 4 spaces
-        num_spaces = (level - 4) * 4
-        return "&nbsp;" * num_spaces + name
-    else:
-        # If below 4, no indentation
-        return name
-
-def format_number(value):
-    """
-    Return an HTML string with:
-      - Red text if value is negative,
-      - Black text if value is >= 0,
-      - Handle None gracefully.
-    """
-    if value is None:
-        return ""
-    try:
-        val = float(value)
-        if val < 0:
-            return f'<span style="color:red">{val}</span>'
-        else:
-            return f'<span style="color:black">{val}</span>'
-    except ValueError:
-        # If it's not numeric, just return as string
-        return str(value)
-
 # ------------------------------------------------------------------
-# 2. Generate Multi-Row Header Table in Raw HTML
+# 2. HTML Table Generation with Advanced Styling
 # ------------------------------------------------------------------
 
 def generate_html_table(df, table_id):
     """
-    Generates a multi-row header HTML table (with row/col spans).
-    Also applies:
-      - Indentation on 'Node Name' by 'Node Level'.
-      - Negative numbers in red, positive in black.
-      - Highlight row if 'Node Level' == 5.
-      - Each bottom header cell is clickable for sorting (using JS).
+    Generate an HTML table with a multi-row header, conditional formatting,
+    indentation for Node Name based on Node Level, and clickable headers for sorting.
     """
-
-    # 1) Build the table header with multi-row structure
-    #    Note each bottom-level <th> has an onclick to call sortTable(table_id, colIndex).
-    #    We'll produce the final colIndex carefully to match each data column in <tbody>.
-    #    For demonstration, we’ll keep the same layout for both 'Sheet1_data_alloc' & 'Sheet1_data_stand'.
-
-    # If you reorder columns in the <tbody>, ensure the onclick colIndex matches.
-    # The top rows are not used for data in sorting, so we'll skip them in JS.
-
-    # We'll define each bottom-level <th> in the third row. We have 35 columns after "All Figures in (£m)".
-    # The indexing in onclick="sortTable('table_alloc', 0)" is zero-based for the data columns in <tbody>.
-
-    # Let’s define an array that matches the order we’ll produce <td> in the body:
     column_names = [
-        # 0..2: Node Name, Node ID, Node Level
         "Node Name", "Node ID", "Node Level",
-        # 3..8: Equities (Delta, Chg, Vega, Chg, Curvature, Chg)
         "Equities Delta", "Equities Delta Change", "Equities Vega", "Equities Vega Change", 
         "Equities Curvature", "Equities Curvature Change",
-        # 9..14: FX
         "FX Delta", "FX Delta Change", "FX Vega", "FX Vega Change", 
         "FX Curvature", "FX Curvature Change",
-        # 15..20: Commodities
         "Commodities Delta", "Commodities Delta Change", "Commodities Vega", "Commodities Vega Change", 
         "Commodities Curvature", "Commodities Curvature Change",
-        # 21..26: IR
         "IR Delta", "IR Delta Change", "IR Vega", "IR Vega Change", 
         "IR Curvature", "IR Curvature Change",
-        # 27..32: CSR NS
         "CSR NS Delta", "CSR NS Delta Change", "CSR NS Vega", "CSR NS Vega Change",
         "CSR NS Curvature", "CSR NS Curvature Change",
-        # 33..34: NS JTD
         "NS JTD", "NS JTD Change",
-        # 35..36: CSR SecNon JTD
         "CSR SecNon JTD", "CSR SecNon JTD Change",
-        # 37..38: RRAO
         "RRAO", "RRAO Change",
-        # 39..40: Total
         "Total", "Total Change"
     ]
-
-    # We’ll have 41 columns of data in total. Let's define the multi-row header HTML.
-    # The first row has "All Figures in (£m)" + "Allocated" across the rest.
-    # The second and third rows break down the categories.
-
+    
+    # Multi-level header with soothing colours and modern styling
     table_header = f"""
     <thead>
-      <!-- Row 1 -->
       <tr>
-        <th rowspan="3">All Figures in (£m)</th>
-        <th colspan="41">Allocated</th>
+        <th rowspan="3" style="background-color:#2E86C1; color:white; padding:12px;">All Figures in (£m)</th>
+        <th colspan="41" style="background-color:#2E86C1; color:white; padding:12px;">Allocated</th>
       </tr>
-
-      <!-- Row 2 -->
       <tr>
-        <th rowspan="2">Node Name</th>
-        <th rowspan="2">Node ID</th>
-        <th rowspan="2">Node Level</th>
-        <th colspan="6">Equities</th>
-        <th colspan="6">Foreign Exchange</th>
-        <th colspan="6">Commodities</th>
-        <th colspan="6">Interest Rates</th>
-        <th colspan="6">CSR NS</th>
-        <th colspan="2">Non Sec JTD</th>
-        <th colspan="2">CSR SecNon JTD</th>
-        <th colspan="2">RRAO</th>
-        <th colspan="2">Total</th>
+        <th rowspan="2" style="background-color:#2980B9; color:white; padding:10px;">Node Name</th>
+        <th rowspan="2" style="background-color:#2980B9; color:white; padding:10px;">Node ID</th>
+        <th rowspan="2" style="background-color:#2980B9; color:white; padding:10px;">Node Level</th>
+        <th colspan="6" style="background-color:#3498DB; color:white; padding:10px;">Equities</th>
+        <th colspan="6" style="background-color:#3498DB; color:white; padding:10px;">Foreign Exchange</th>
+        <th colspan="6" style="background-color:#3498DB; color:white; padding:10px;">Commodities</th>
+        <th colspan="6" style="background-color:#3498DB; color:white; padding:10px;">Interest Rates</th>
+        <th colspan="6" style="background-color:#3498DB; color:white; padding:10px;">CSR NS</th>
+        <th colspan="2" style="background-color:#34495E; color:white; padding:10px;">Non Sec JTD</th>
+        <th colspan="2" style="background-color:#34495E; color:white; padding:10px;">CSR SecNon JTD</th>
+        <th colspan="2" style="background-color:#34495E; color:white; padding:10px;">RRAO</th>
+        <th colspan="2" style="background-color:#34495E; color:white; padding:10px;">Total</th>
       </tr>
-
-      <!-- Row 3 (each th has an onclick for sorting) -->
       <tr>
-        <th onclick="sortTable('{table_id}', 0)">Delta</th>
-        <th onclick="sortTable('{table_id}', 1)">Chg</th>
-        <th onclick="sortTable('{table_id}', 2)">Vega</th>
-        <th onclick="sortTable('{table_id}', 3)">Chg</th>
-        <th onclick="sortTable('{table_id}', 4)">Curv</th>
-        <th onclick="sortTable('{table_id}', 5)">Chg</th>
+        <th onclick="sortTable('{table_id}', 0)" style="cursor:pointer;">Delta</th>
+        <th onclick="sortTable('{table_id}', 1)" style="cursor:pointer;">Chg</th>
+        <th onclick="sortTable('{table_id}', 2)" style="cursor:pointer;">Vega</th>
+        <th onclick="sortTable('{table_id}', 3)" style="cursor:pointer;">Chg</th>
+        <th onclick="sortTable('{table_id}', 4)" style="cursor:pointer;">Curv</th>
+        <th onclick="sortTable('{table_id}', 5)" style="cursor:pointer;">Chg</th>
 
-        <th onclick="sortTable('{table_id}', 6)">Delta</th>
-        <th onclick="sortTable('{table_id}', 7)">Chg</th>
-        <th onclick="sortTable('{table_id}', 8)">Vega</th>
-        <th onclick="sortTable('{table_id}', 9)">Chg</th>
-        <th onclick="sortTable('{table_id}', 10)">Curv</th>
-        <th onclick="sortTable('{table_id}', 11)">Chg</th>
+        <th onclick="sortTable('{table_id}', 6)" style="cursor:pointer;">Delta</th>
+        <th onclick="sortTable('{table_id}', 7)" style="cursor:pointer;">Chg</th>
+        <th onclick="sortTable('{table_id}', 8)" style="cursor:pointer;">Vega</th>
+        <th onclick="sortTable('{table_id}', 9)" style="cursor:pointer;">Chg</th>
+        <th onclick="sortTable('{table_id}', 10)" style="cursor:pointer;">Curv</th>
+        <th onclick="sortTable('{table_id}', 11)" style="cursor:pointer;">Chg</th>
 
-        <th onclick="sortTable('{table_id}', 12)">Delta</th>
-        <th onclick="sortTable('{table_id}', 13)">Chg</th>
-        <th onclick="sortTable('{table_id}', 14)">Vega</th>
-        <th onclick="sortTable('{table_id}', 15)">Chg</th>
-        <th onclick="sortTable('{table_id}', 16)">Curv</th>
-        <th onclick="sortTable('{table_id}', 17)">Chg</th>
+        <th onclick="sortTable('{table_id}', 12)" style="cursor:pointer;">Delta</th>
+        <th onclick="sortTable('{table_id}', 13)" style="cursor:pointer;">Chg</th>
+        <th onclick="sortTable('{table_id}', 14)" style="cursor:pointer;">Vega</th>
+        <th onclick="sortTable('{table_id}', 15)" style="cursor:pointer;">Chg</th>
+        <th onclick="sortTable('{table_id}', 16)" style="cursor:pointer;">Curv</th>
+        <th onclick="sortTable('{table_id}', 17)" style="cursor:pointer;">Chg</th>
 
-        <th onclick="sortTable('{table_id}', 18)">Delta</th>
-        <th onclick="sortTable('{table_id}', 19)">Chg</th>
-        <th onclick="sortTable('{table_id}', 20)">Vega</th>
-        <th onclick="sortTable('{table_id}', 21)">Chg</th>
-        <th onclick="sortTable('{table_id}', 22)">Curv</th>
-        <th onclick="sortTable('{table_id}', 23)">Chg</th>
+        <th onclick="sortTable('{table_id}', 18)" style="cursor:pointer;">Delta</th>
+        <th onclick="sortTable('{table_id}', 19)" style="cursor:pointer;">Chg</th>
+        <th onclick="sortTable('{table_id}', 20)" style="cursor:pointer;">Vega</th>
+        <th onclick="sortTable('{table_id}', 21)" style="cursor:pointer;">Chg</th>
+        <th onclick="sortTable('{table_id}', 22)" style="cursor:pointer;">Curv</th>
+        <th onclick="sortTable('{table_id}', 23)" style="cursor:pointer;">Chg</th>
 
-        <th onclick="sortTable('{table_id}', 24)">Delta</th>
-        <th onclick="sortTable('{table_id}', 25)">Chg</th>
-        <th onclick="sortTable('{table_id}', 26)">Vega</th>
-        <th onclick="sortTable('{table_id}', 27)">Chg</th>
-        <th onclick="sortTable('{table_id}', 28)">Curv</th>
-        <th onclick="sortTable('{table_id}', 29)">Chg</th>
+        <th onclick="sortTable('{table_id}', 24)" style="cursor:pointer;">Delta</th>
+        <th onclick="sortTable('{table_id}', 25)" style="cursor:pointer;">Chg</th>
+        <th onclick="sortTable('{table_id}', 26)" style="cursor:pointer;">Vega</th>
+        <th onclick="sortTable('{table_id}', 27)" style="cursor:pointer;">Chg</th>
+        <th onclick="sortTable('{table_id}', 28)" style="cursor:pointer;">Curv</th>
+        <th onclick="sortTable('{table_id}', 29)" style="cursor:pointer;">Chg</th>
 
-        <th onclick="sortTable('{table_id}', 30)">JTD</th>
-        <th onclick="sortTable('{table_id}', 31)">Chg</th>
+        <th onclick="sortTable('{table_id}', 30)" style="cursor:pointer;">JTD</th>
+        <th onclick="sortTable('{table_id}', 31)" style="cursor:pointer;">Chg</th>
 
-        <th onclick="sortTable('{table_id}', 32)">SecNon JTD</th>
-        <th onclick="sortTable('{table_id}', 33)">Chg</th>
+        <th onclick="sortTable('{table_id}', 32)" style="cursor:pointer;">SecNon JTD</th>
+        <th onclick="sortTable('{table_id}', 33)" style="cursor:pointer;">Chg</th>
 
-        <th onclick="sortTable('{table_id}', 34)">RRAO</th>
-        <th onclick="sortTable('{table_id}', 35)">Chg</th>
+        <th onclick="sortTable('{table_id}', 34)" style="cursor:pointer;">RRAO</th>
+        <th onclick="sortTable('{table_id}', 35)" style="cursor:pointer;">Chg</th>
 
-        <th onclick="sortTable('{table_id}', 36)">Total</th>
-        <th onclick="sortTable('{table_id}', 37)">Chg</th>
+        <th onclick="sortTable('{table_id}', 36)" style="cursor:pointer;">Total</th>
+        <th onclick="sortTable('{table_id}', 37)" style="cursor:pointer;">Chg</th>
       </tr>
     </thead>
     """
 
-    # 2) Build the <tbody> by iterating over df rows
     table_rows = ""
     for _, row in df.iterrows():
-        # Determine row background color if Node Level = 5
-        row_level = row["Node Level"] if "Node Level" in row else None
-        row_style = ""
-        if row_level == 5:
-            row_style = 'style="background-color:#ffefc4;"'  # Example highlight color
+        node_level = row.get("Node Level", 0)
+        try:
+            node_level = int(node_level)
+        except (ValueError, TypeError):
+            node_level = 0
+
+        # Highlight rows with Node Level == 5 using a soft blue background
+        row_style = 'style="background-color:#f9f9f9;"'
+        if node_level == 5:
+            row_style = 'style="background-color:#e6f7ff;"'
 
         table_rows += f"<tr {row_style}>"
-
-        # First column: "All Figures in (£m)" is only in the header for demonstration,
-        # so we typically skip it in the data rows. We'll just fill data columns.
-
-        # For each column in the desired order, apply formatting:
         for col in column_names:
-            val = row.get(col, None)
-            # Special handling for Node Name indentation
+            val = row.get(col, "")
             if col == "Node Name":
-                val_str = indent_node_name(str(val), row_level)
-            # For Node Level, we just show the numeric or text value as is
+                val_str = indent_node_name(str(val), node_level)
             elif col.endswith("Level"):
-                val_str = str(val) if val is not None else ""
+                val_str = str(val)
             else:
-                # Format numeric data (negatives in red)
                 val_str = format_number(val)
-            table_rows += f"<td>{val_str}</td>"
-
+            table_rows += f"<td style='padding:8px; text-align:center;'>{val_str}</td>"
         table_rows += "</tr>"
 
     table_html = f"""
-    <table id="{table_id}" border="1" style="border-collapse: collapse; width:100%; text-align:center; margin-bottom:50px;">
+    <table id="{table_id}" style="border-collapse: collapse; width: 100%; margin-bottom: 30px; font-family: 'Arial', sans-serif;">
       {table_header}
       <tbody>
         {table_rows}
@@ -309,91 +253,82 @@ def generate_html_table(df, table_id):
     """
     return table_html
 
-
 # ------------------------------------------------------------------
-# 3. Dash App with Sorting JavaScript & Layout
+# 3. Dash App Layout & JavaScript for Sorting
 # ------------------------------------------------------------------
 
 app = dash.Dash(__name__)
 
-# We’ll load all COB dates (from either table) at startup to populate the dropdown.
-# If you want them combined from both tables, you could union them. Here, we just
-# pick from 'Sheet1_data_alloc' as an example.
+# Preload distinct cob_dates from one table for the dropdown (could combine multiple if needed)
 initial_cob_dates = get_distinct_cob_dates("Sheet1_data_alloc")
 dropdown_options = [{"label": d, "value": d} for d in initial_cob_dates]
 
 app.layout = html.Div([
-    html.H2("Generate Report & View Dashboard"),
-
-    # --- Generate Report Section ---
+    # Global styling for the page
     html.Div([
-        html.Label("String Input 1"),
-        dcc.Input(id="input1", type="text", placeholder="Enter text..."),
+        html.H2("Advanced Dashboard", style={"fontFamily": "Arial, sans-serif", "color": "#2E4053"}),
+        html.P("Generate a report or view existing reports.", style={"fontFamily": "Arial, sans-serif", "color": "#566573"})
+    ], style={"textAlign": "center", "padding": "20px", "backgroundColor": "#D6EAF8"}),
 
-        html.Label("String Input 2"),
-        dcc.Input(id="input2", type="text", placeholder="Enter text..."),
-
-        html.Label("String Input 3"),
-        dcc.Input(id="input3", type="text", placeholder="Enter text..."),
-
-        html.Label("Integer Input"),
-        dcc.Input(id="input4", type="number", placeholder="Enter an integer..."),
-
-        html.Button("Generate Report", id="generate-button", n_clicks=0),
-        html.Div(id="generate-message", style={"marginTop": "10px", "color": "green"}),
-    ], style={"marginBottom": "30px"}),
-
-    # --- View Existing Reports Section ---
     html.Div([
-        html.Label("Select COB Date to View:"),
-        dcc.Dropdown(id="cob-date-dropdown", options=dropdown_options, value=None),
-        html.Button("Show Dashboard", id="show-dashboard-button", n_clicks=0),
-    ], style={"marginBottom": "30px"}),
+        html.Div([
+            html.Label("String Input 1", style={"fontWeight": "bold"}),
+            dcc.Input(id="input1", type="text", placeholder="Enter text...", style={"width": "100%", "padding": "8px", "marginBottom": "10px"}),
 
-    html.Div(id="dashboard-container"),
+            html.Label("String Input 2", style={"fontWeight": "bold"}),
+            dcc.Input(id="input2", type="text", placeholder="Enter text...", style={"width": "100%", "padding": "8px", "marginBottom": "10px"}),
 
-    # 4) JavaScript for Sorting
-    # We insert a <script> block that defines a sortTable function:
+            html.Label("String Input 3", style={"fontWeight": "bold"}),
+            dcc.Input(id="input3", type="text", placeholder="Enter text...", style={"width": "100%", "padding": "8px", "marginBottom": "10px"}),
+
+            html.Label("Integer Input", style={"fontWeight": "bold"}),
+            dcc.Input(id="input4", type="number", placeholder="Enter an integer...", style={"width": "100%", "padding": "8px", "marginBottom": "10px"}),
+
+            html.Button("Generate Report", id="generate-button", n_clicks=0, 
+                        style={"backgroundColor": "#2E86C1", "color": "white", "padding": "10px 20px", "border": "none", "cursor": "pointer", "fontSize": "16px"}),
+            html.Div(id="generate-message", style={"marginTop": "10px", "color": "green", "fontWeight": "bold"})
+        ], style={"width": "30%", "display": "inline-block", "verticalAlign": "top", "padding": "20px", "boxShadow": "0px 0px 10px rgba(0,0,0,0.1)", "marginRight": "2%"}),
+
+        html.Div([
+            html.Label("Select COB Date to View", style={"fontWeight": "bold"}),
+            dcc.Dropdown(id="cob-date-dropdown", options=dropdown_options, value=None, style={"width": "100%", "padding": "8px", "marginBottom": "10px"}),
+            html.Button("Show Dashboard", id="show-dashboard-button", n_clicks=0,
+                        style={"backgroundColor": "#2E86C1", "color": "white", "padding": "10px 20px", "border": "none", "cursor": "pointer", "fontSize": "16px"})
+        ], style={"width": "30%", "display": "inline-block", "verticalAlign": "top", "padding": "20px", "boxShadow": "0px 0px 10px rgba(0,0,0,0.1)"})
+    ], style={"width": "90%", "margin": "auto", "marginBottom": "30px"}),
+
+    html.Div(id="dashboard-container", style={"width": "95%", "margin": "auto"}),
+
+    # JavaScript for table sorting
     html.Script("""
 function sortTable(tableId, colIndex) {
-    // This function sorts the table with ID=tableId by the given colIndex in <tbody>.
-    // It toggles between ascending and descending on each click.
-    var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount=0;
+    var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
     table = document.getElementById(tableId);
     if (!table) return;
-
     switching = true;
-    // Set the sorting direction to ascending:
-    dir = "asc"; 
-
-    // We skip the first 3 header rows. So data starts from rowIndex=3.
+    dir = "asc";
     while (switching) {
         switching = false;
         rows = table.getElementsByTagName("TR");
-        // Loop through all table rows (except the header rows):
         for (i = 3; i < (rows.length - 1); i++) {
             shouldSwitch = false;
             x = rows[i].getElementsByTagName("TD")[colIndex];
             y = rows[i + 1].getElementsByTagName("TD")[colIndex];
             if (!x || !y) { continue; }
-
-            // Try to parse as float:
             var xVal = parseFloat(x.innerText.replace(/[^0-9.-]+/g,""));
             var yVal = parseFloat(y.innerText.replace(/[^0-9.-]+/g,""));
-            // If parse fails, compare as strings:
             if (isNaN(xVal) || isNaN(yVal)) {
                 xVal = x.innerText.toLowerCase();
                 yVal = y.innerText.toLowerCase();
             }
-
             if (dir === "asc") {
                 if (xVal > yVal) {
-                    shouldSwitch= true;
+                    shouldSwitch = true;
                     break;
                 }
             } else if (dir === "desc") {
                 if (xVal < yVal) {
-                    shouldSwitch= true;
+                    shouldSwitch = true;
                     break;
                 }
             }
@@ -401,9 +336,8 @@ function sortTable(tableId, colIndex) {
         if (shouldSwitch) {
             rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
             switching = true;
-            switchcount ++; 
+            switchcount ++;
         } else {
-            // If we haven't switched at all and dir is "asc", set dir to "desc" and run again
             if (switchcount === 0 && dir === "asc") {
                 dir = "desc";
                 switching = true;
@@ -411,14 +345,13 @@ function sortTable(tableId, colIndex) {
         }
     }
 }
-""")
+    """)
 ])
 
-# -------------------------------------------------
-# 4. Callbacks
-# -------------------------------------------------
+# ------------------------------------------------------------------
+# 4. Dash Callbacks
+# ------------------------------------------------------------------
 
-# 4.1 Generate Report callback
 @app.callback(
     Output("generate-message", "children"),
     Output("cob-date-dropdown", "options"),
@@ -429,58 +362,37 @@ function sortTable(tableId, colIndex) {
     State("input4", "value")
 )
 def generate_report(n_clicks, param1, param2, param3, param4):
-    """
-    If the user clicks "Generate Report", we fetch data (placeholder)
-    and store it in the DB. Then refresh the COB date dropdown.
-    """
     if n_clicks > 0:
         fetch_data_and_save_to_db(param1, param2, param3, param4)
         message = "Report generated and data stored in DB!"
-
-        # Refresh the COB date dropdown from the 'Sheet1_data_alloc' table (or union of both)
         new_dates = get_distinct_cob_dates("Sheet1_data_alloc")
         new_options = [{"label": d, "value": d} for d in new_dates]
         return message, new_options
-    else:
-        return "", dropdown_options
+    return "", dropdown_options
 
-
-# 4.2 Show Dashboard callback
 @app.callback(
     Output("dashboard-container", "children"),
     Input("show-dashboard-button", "n_clicks"),
     State("cob-date-dropdown", "value")
 )
 def show_dashboard(n_clicks, selected_cob):
-    """
-    When the user clicks "Show Dashboard", we query both 'Sheet1_data_alloc' and 'Sheet1_data_stand'
-    for the selected COB date, then display them in two multi-row header tables (one below the other).
-    """
     if n_clicks > 0 and selected_cob:
-        # Get data from both tables
         df_alloc = get_data_for_cob_date(selected_cob, "Sheet1_data_alloc")
         df_stand = get_data_for_cob_date(selected_cob, "Sheet1_data_stand")
-
         if df_alloc.empty and df_stand.empty:
-            return html.Div("No data found for the selected COB date.")
-
-        # Generate HTML tables
+            return html.Div("No data found for the selected COB date.", style={"textAlign": "center", "fontWeight": "bold"})
         table_alloc_html = generate_html_table(df_alloc, table_id="table_alloc")
         table_stand_html = generate_html_table(df_stand, table_id="table_stand")
-
-        # Combine into one container
         return html.Div([
-            html.H3(f"Dashboard for COB Date: {selected_cob}"),
-            # Table 1: Sheet1_data_alloc
+            html.H3(f"Dashboard for COB Date: {selected_cob}", style={"textAlign": "center", "color": "#2E4053"}),
             html.Div(dangerouslySetInnerHTML={"__html": table_alloc_html}),
-            # Table 2: Sheet1_data_stand
             html.Div(dangerouslySetInnerHTML={"__html": table_stand_html})
         ])
     return ""
 
-# -------------------------------------------------
+# ------------------------------------------------------------------
 # 5. Run the App
-# -------------------------------------------------
+# ------------------------------------------------------------------
 
 if __name__ == "__main__":
     app.run_server(debug=True)
