@@ -151,7 +151,7 @@ def generate_html_table(df, table_id):
         "Total", "Total Change"
     ]
     
-    # Build multi-row header (using inline styles for colours)
+    # Build multi-row header with Bootstrap classes
     table_header = f"""
     <thead>
       <tr>
@@ -269,10 +269,8 @@ app.layout = dbc.Container([
         dbc.Col(
             html.Div([
                 html.H2("Advanced Dashboard", className="text-center text-primary my-4"),
-                html.P("Generate a report or view existing reports.",
-                       className="text-center text-secondary")
-            ]),
-            width=12
+                html.P("Generate a report or view existing reports.", className="text-center text-secondary")
+            ])
         )
     ),
     dbc.Row([
@@ -280,25 +278,25 @@ app.layout = dbc.Container([
             dbc.Card([
                 dbc.CardHeader("Generate Report"),
                 dbc.CardBody([
-                    dbc.FormGroup([
-                        dbc.Label("String Input 1", className="font-weight-bold"),
+                    html.Div([
+                        dbc.Label("String Input 1", className="fw-bold"),
                         dcc.Input(id="input1", type="text", placeholder="Enter text...", className="form-control")
-                    ]),
-                    dbc.FormGroup([
-                        dbc.Label("String Input 2", className="font-weight-bold"),
+                    ], className="mb-3"),
+                    html.Div([
+                        dbc.Label("String Input 2", className="fw-bold"),
                         dcc.Input(id="input2", type="text", placeholder="Enter text...", className="form-control")
-                    ]),
-                    dbc.FormGroup([
-                        dbc.Label("String Input 3", className="font-weight-bold"),
+                    ], className="mb-3"),
+                    html.Div([
+                        dbc.Label("String Input 3", className="fw-bold"),
                         dcc.Input(id="input3", type="text", placeholder="Enter text...", className="form-control")
-                    ]),
-                    dbc.FormGroup([
-                        dbc.Label("Integer Input", className="font-weight-bold"),
+                    ], className="mb-3"),
+                    html.Div([
+                        dbc.Label("Integer Input", className="fw-bold"),
                         dcc.Input(id="input4", type="number", placeholder="Enter an integer...", className="form-control")
-                    ]),
+                    ], className="mb-3"),
                     dbc.Button("Generate Report", id="generate-button", n_clicks=0,
                                color="primary", className="mt-2"),
-                    html.Div(id="generate-message", className="mt-2 text-success font-weight-bold")
+                    html.Div(id="generate-message", className="mt-2 text-success fw-bold")
                 ])
             ]),
             width=5, className="mb-4"
@@ -307,10 +305,10 @@ app.layout = dbc.Container([
             dbc.Card([
                 dbc.CardHeader("View Existing Reports"),
                 dbc.CardBody([
-                    dbc.FormGroup([
-                        dbc.Label("Select COB Date", className="font-weight-bold"),
+                    html.Div([
+                        dbc.Label("Select COB Date", className="fw-bold"),
                         dcc.Dropdown(id="cob-date-dropdown", options=dropdown_options, value=None,
-                                     className="mb-2")
+                                     className="mb-3")
                     ]),
                     dbc.Button("Show Dashboard", id="show-dashboard-button", n_clicks=0,
                                color="primary")
