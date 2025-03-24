@@ -1,18 +1,18 @@
 import sqlite3
 import pandas as pd
 import plotly.express as px
-from dash import Dash, html, dcc, Input, Output, callback
+from dash import Dash, html, dcc, Input, Output, State, callback
 import dash_bootstrap_components as dbc
 import dash_ag_grid as dag
 
-DB_PATH = "historical_data.db"  # update with your database path
+DB_PATH = "historical_data.db"  # update with your actual database path
 
 # --- Database Functions ---
 def get_distinct_cob_dates(table_name):
     """Return a sorted list of distinct COB dates from the given table."""
     conn = sqlite3.connect(DB_PATH)
     query = f"SELECT DISTINCT [COB Date] FROM {table_name} ORDER BY [COB Date]"
-    dates = pd.read_sql(query, conn).iloc[:,0].astype(str).tolist()
+    dates = pd.read_sql(query, conn).iloc[:, 0].astype(str).tolist()
     conn.close()
     return dates
 
@@ -27,8 +27,8 @@ def get_data_for_cob_date(cob_date, table_name):
 # --- Data Processing Functions ---
 def process_data_for_ag_grid(df):
     """
-    Process a flat DataFrame into a list of dicts that include a 'dataPath' field.
-    The dataPath is computed using a simple stack algorithm based on 'Node Level'.
+    Process a flat DataFrame into a list of dicts that include a 'path' field.
+    The 'path' is computed using a simple stack algorithm based on 'Node Level'.
     """
     rows = df.to_dict("records")
     processed = []
@@ -39,13 +39,14 @@ def process_data_for_ag_grid(df):
         except (ValueError, TypeError):
             level = 0
         node_name = row.get("Node Name", "")
+        # Pop from the stack until the top has a lower level than current row.
         while stack and stack[-1][0] >= level:
             stack.pop()
         if stack:
             path = stack[-1][1] + [node_name]
         else:
             path = [node_name]
-        row["path"] = path  # add hierarchy path for ag-grid
+        row["path"] = path  # used by AG Grid to build hierarchy
         processed.append(row)
         stack.append((level, path))
     return processed
@@ -54,7 +55,7 @@ def indent_node_name(name, level):
     """
     Return the node name preceded by a number of non-breaking space characters.
     Uses the Unicode non-breaking space (\u00A0).
-    For example, level 3: 4 spaces; level 4: 8 spaces; level 5: 12 spaces; etc.
+    For example, if Node Level is 3 then 4 spaces, if 4 then 8, if 5 then 12, etc.
     """
     try:
         level_int = int(level)
@@ -74,7 +75,7 @@ external_stylesheets = [dbc.themes.FLATLY]
 app = Dash(__name__, external_stylesheets=external_stylesheets)
 
 # --- Layout Components ---
-# Navbar with a theme toggle in the right.
+# Navbar with a theme toggle on the right.
 navbar = dbc.Navbar(
     dbc.Container([
         dbc.NavbarBrand("Modern Dashboard", className="ms-2"),
@@ -101,7 +102,7 @@ navbar = dbc.Navbar(
     sticky="top"
 )
 
-# Main body: dropdown to select COB date and a button.
+# Main body: dropdown for COB date and Show Dashboard button.
 body = dbc.Container([
     dbc.Row(
         dbc.Col(
@@ -109,8 +110,12 @@ body = dbc.Container([
                 dbc.CardBody([
                     dbc.Row(
                         dbc.Col(
-                            dcc.Dropdown(id="cob-dropdown", options=dropdown_options,
-                                         placeholder="Select a COB Date", clearable=False),
+                            dcc.Dropdown(
+                                id="cob-dropdown",
+                                options=dropdown_options,
+                                placeholder="Select a COB Date",
+                                clearable=False
+                            ),
                             width=6
                         )
                     ),
@@ -135,8 +140,9 @@ app.layout = html.Div([navbar, body])
 # --- Callback to Update Dashboard ---
 @app.callback(
     Output("dashboard-container", "children"),
-    [Input("show-btn", "n_clicks")],
-    [State("cob-dropdown", "value"), State("theme-selector", "value")]
+    Input("show-btn", "n_clicks"),
+    [State("cob-dropdown", "value"),
+     State("theme-selector", "value")]
 )
 def update_dashboard(n_clicks, selected_date, theme):
     if n_clicks and selected_date:
@@ -145,7 +151,7 @@ def update_dashboard(n_clicks, selected_date, theme):
         if df_alloc.empty and df_stand.empty:
             return dbc.Alert("No data found for the selected COB date.", color="warning", className="text-center")
         
-        # Indent Node Name using our function and drop 'Node Level' from display.
+        # Indent the Node Name column using Unicode non-breaking spaces.
         def indent_row(row):
             try:
                 level = int(row.get("Node Level", 0))
@@ -158,52 +164,44 @@ def update_dashboard(n_clicks, selected_date, theme):
         if not df_stand.empty:
             df_stand["Node Name"] = df_stand.apply(indent_row, axis=1)
         
-        # Process data for hierarchical display (add 'path' for ag-grid).
+        # Process data for AG Grid hierarchical display.
         processed_alloc = process_data_for_ag_grid(df_alloc)
         processed_stand = process_data_for_ag_grid(df_stand)
         
         # Define column definitions.
-        # Do not include "Node Level" column since we want to hide it.
-        # Set up the auto group column for Node Name.
+        # Exclude "Node Level" and "[COB Date]" from display.
+        # Use the auto-group column for "Node Name" (which displays the expand/collapse arrow).
         column_defs = [
             {"field": "Node Name", "headerName": "Node Name", "cellRenderer": "agGroupCellRenderer"},
-            {"field": "Node ID", "headerName": "Node ID"},
-            # Add all other columns except Node Level and COB Date:
+            {"field": "Node ID", "headerName": "Node ID"}
         ]
-        # Include all other columns (preserving order) except "Node Level" and "COB Date"
         for col in df_alloc.columns:
-            if col not in {"Node Name", "Node ID", "Node Level", "COB Date"}:
-                # For numeric columns, add conditional cell styling via AG Grid's built-in mechanism.
+            if col not in {"Node Name", "Node ID", "Node Level", "[COB Date]"}:
                 column_defs.append({"field": col, "headerName": col})
         
-        # Create AG Grid components.
+        # Create two AG Grid components.
+        # Note: We no longer pass any getDataPath-related argument here;
+        # the function is defined in the asset file.
         grid_alloc = dag.AgGrid(
             id="grid-alloc",
             columnDefs=column_defs,
             rowData=processed_alloc,
-            dashGridOptions={
-                "enableSorting": True,
-                "treeData": True,
-                "js_getDataPath": "function(data) { return data.path; }",
-                "groupDefaultExpanded": 1
-            },
+            treeData=True,
+            groupDefaultExpanded=1,
+            dashGridOptions={"enableSorting": True},
             style={"height": "400px", "width": "100%"}
         )
-        
         grid_stand = dag.AgGrid(
             id="grid-stand",
             columnDefs=column_defs,
             rowData=processed_stand,
-            dashGridOptions={
-                "enableSorting": True,
-                "treeData": True,
-                "js_getDataPath": "function(data) { return data.path; }",
-                "groupDefaultExpanded": 1
-            },
+            treeData=True,
+            groupDefaultExpanded=1,
+            dashGridOptions={"enableSorting": True},
             style={"height": "400px", "width": "100%"}
         )
         
-        # Create a sunburst chart from df_alloc (using 'Total' column for values).
+        # Create a sunburst chart from df_alloc using Plotly Express.
         if "Total" in df_alloc.columns:
             fig = px.sunburst(
                 df_alloc,
