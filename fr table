@@ -1,16 +1,13 @@
 import dash
-from dash import html, dcc, Input, Output, State
-import dash_table
+from dash import html, dcc, Input, Output, State, dash_table
+import dash_bootstrap_components as dbc
 import sqlite3
 import pandas as pd
-
-# Initialize Dash app
-app = dash.Dash(__name__)
 
 DB_PATH = "historical_data.db"
 
 def get_distinct_cob_dates(table_name):
-    """Return a sorted list of distinct cob_date values from the given table."""
+    """Return a sorted list of distinct COB dates from the given table."""
     conn = sqlite3.connect(DB_PATH)
     query = f"SELECT DISTINCT cob_date FROM {table_name} ORDER BY cob_date"
     dates = pd.read_sql(query, conn)["cob_date"].tolist()
@@ -18,66 +15,157 @@ def get_distinct_cob_dates(table_name):
     return dates
 
 def get_data_for_cob_date(cob_date, table_name):
-    """Fetch and return data from the specified table for the given cob_date."""
+    """Fetch data from the specified table for the given COB date."""
     conn = sqlite3.connect(DB_PATH)
     query = f"SELECT * FROM {table_name} WHERE cob_date = '{cob_date}'"
     df = pd.read_sql(query, conn)
     conn.close()
     return df
 
-# Create initial dropdown options from one of the tables.
+# Initial dropdown options from one table
 initial_dates = get_distinct_cob_dates("Sheet1_data_alloc")
 dropdown_options = [{"label": d, "value": d} for d in initial_dates]
 
-# Define the layout: a dropdown, a button, and a container for the tables.
-app.layout = html.Div([
-    html.H2("Dashboard"),
-    html.Div([
-        dcc.Dropdown(id="cob-dropdown", options=dropdown_options, placeholder="Select a COB date"),
-        html.Button("Show Dashboard", id="show-button", n_clicks=0)
-    ], style={"width": "50%", "margin": "auto", "padding": "20px"}),
-    html.Div(id="dashboard-container", style={"width": "90%", "margin": "auto"})
-])
+# Use a Bootstrap theme; here we start with Flatly for light mode.
+external_stylesheets = [dbc.themes.FLATLY]
+app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
-# Callback: When the user selects a COB date and clicks the button,
-# fetch the data from both tables and display them as DataTables.
+def generate_datatable(df, theme):
+    """
+    Returns a dash_table.DataTable with:
+      • Conditional formatting: negative numbers red, positive numbers black.
+      • A row hover effect.
+      • Different header and cell styles based on the selected theme.
+      • The Node Name column is rendered as Markdown (to allow HTML) and left‑aligned.
+    """
+    # Define theme-specific styles.
+    if theme == "dark":
+        header_style = {"backgroundColor": "#343a40", "color": "white", "fontWeight": "bold"}
+        cell_style = {"backgroundColor": "#212529", "color": "white", "textAlign": "center", "padding": "5px"}
+    else:
+        header_style = {"backgroundColor": "#0074D9", "color": "white", "fontWeight": "bold"}
+        cell_style = {"backgroundColor": "white", "color": "black", "textAlign": "center", "padding": "5px"}
+    
+    # For numeric columns (all except a few text columns), if a value is negative then color red.
+    numeric_columns = [col for col in df.columns if col not in ["Node Name", "Node ID", "Node Level", "cob_date"]]
+    negative_style = [
+        {
+            'if': {
+                'filter_query': '{{{}}} < 0'.format(col),
+                'column_id': col
+            },
+            'color': 'red'
+        } for col in numeric_columns
+    ]
+    
+    # Define a hover style.
+    hover_style = {
+        'if': {'state': 'hover'},
+        'backgroundColor': 'rgba(0,123,255,0.2)',
+        'cursor': 'pointer'
+    }
+    
+    # Build the columns list.
+    # For the "Node Name" column, set presentation to "markdown" so that the HTML (non‑breaking spaces) is rendered.
+    columns = [
+        {"name": col, "id": col, **({"presentation": "markdown"} if col == "Node Name" else {})}
+        for col in df.columns
+    ]
+    
+    # Force left alignment for the Node Name column.
+    style_cell_conditional = [{"if": {"column_id": "Node Name"}, "textAlign": "left"}]
+    
+    return dash_table.DataTable(
+        data=df.to_dict("records"),
+        columns=columns,
+        sort_action="native",
+        style_table={"overflowX": "auto"},
+        style_header=header_style,
+        style_cell=cell_style,
+        style_cell_conditional=style_cell_conditional,
+        style_data_conditional=negative_style + [hover_style],
+        page_size=10
+    )
+
+app.layout = dbc.Container([
+    dbc.Row(
+        dbc.Col(
+            html.Div([
+                html.H2("Modern Dashboard", className="text-center my-4"),
+                html.P("View reports with a modern look. Toggle between Light and Dark modes.", className="text-center")
+            ])
+        )
+    ),
+    dbc.Row([
+        dbc.Col([
+            dbc.Label("Select Theme:", className="fw-bold"),
+            dcc.RadioItems(
+                id="theme-selector",
+                options=[
+                    {"label": "Light Mode", "value": "light"},
+                    {"label": "Dark Mode", "value": "dark"}
+                ],
+                value="light",
+                inline=True,
+                labelStyle={'margin-right': '15px'}
+            )
+        ], width=4),
+        dbc.Col([
+            dbc.Label("Select COB Date:", className="fw-bold"),
+            dcc.Dropdown(id="cob-dropdown", options=dropdown_options, placeholder="Select a COB date")
+        ], width=4)
+    ], justify="center", className="mb-4"),
+    dbc.Row(
+        dbc.Col(
+            dbc.Button("Show Dashboard", id="show-button", color="primary", className="mb-4"),
+            width={"size": 2, "offset": 5}
+        )
+    ),
+    dbc.Row(
+        dbc.Col(
+            html.Div(id="dashboard-container")
+        )
+    )
+], fluid=True)
+
 @app.callback(
     Output("dashboard-container", "children"),
-    Input("show-button", "n_clicks"),
-    State("cob-dropdown", "value")
+    [Input("show-button", "n_clicks")],
+    [State("cob-dropdown", "value"),
+     State("theme-selector", "value")]
 )
-def update_dashboard(n_clicks, selected_cob):
-    if n_clicks > 0 and selected_cob:
-        # Fetch data for the selected COB date from both tables.
+def update_dashboard(n_clicks, selected_cob, theme):
+    if n_clicks and selected_cob:
         df_alloc = get_data_for_cob_date(selected_cob, "Sheet1_data_alloc")
         df_stand = get_data_for_cob_date(selected_cob, "Sheet1_data_stand")
         
-        # Create DataTables for each table.
-        table_alloc = dash_table.DataTable(
-            data=df_alloc.to_dict("records"),
-            columns=[{"name": col, "id": col} for col in df_alloc.columns],
-            sort_action="native",
-            style_table={"overflowX": "auto"},
-            style_cell={"textAlign": "center", "padding": "5px"},
-            style_header={"backgroundColor": "#0074D9", "color": "white", "fontWeight": "bold"}
-        )
+        # Update the Node Name column in both dataframes with indentation based on Node Level.
+        def indent_node(row):
+            try:
+                level = int(row["Node Level"])
+            except (ValueError, TypeError):
+                level = 0
+            # For Node Levels 3 and above, prepend (level - 2)*4 non-breaking spaces.
+            if level >= 3:
+                indent_count = (level - 2) * 4
+                return "&nbsp;" * indent_count + row["Node Name"]
+            return row["Node Name"]
         
-        table_stand = dash_table.DataTable(
-            data=df_stand.to_dict("records"),
-            columns=[{"name": col, "id": col} for col in df_stand.columns],
-            sort_action="native",
-            style_table={"overflowX": "auto"},
-            style_cell={"textAlign": "center", "padding": "5px"},
-            style_header={"backgroundColor": "#0074D9", "color": "white", "fontWeight": "bold"}
-        )
+        if not df_alloc.empty:
+            df_alloc["Node Name"] = df_alloc.apply(indent_node, axis=1)
+        if not df_stand.empty:
+            df_stand["Node Name"] = df_stand.apply(indent_node, axis=1)
+        
+        table_alloc = generate_datatable(df_alloc, theme)
+        table_stand = generate_datatable(df_stand, theme)
         
         return html.Div([
-            html.H3(f"Data from Sheet1_data_alloc for COB Date: {selected_cob}"),
+            html.H4(f"Sheet1_data_alloc for COB Date: {selected_cob}", className="my-3"),
             table_alloc,
-            html.H3(f"Data from Sheet1_data_stand for COB Date: {selected_cob}", style={"marginTop": "40px"}),
+            html.H4(f"Sheet1_data_stand for COB Date: {selected_cob}", className="my-3"),
             table_stand
         ])
-    return html.Div("Please select a COB date and click 'Show Dashboard'.")
+    return html.Div("Please select a COB date and click 'Show Dashboard'.", className="text-center")
 
 if __name__ == "__main__":
     app.run_server(debug=True)
