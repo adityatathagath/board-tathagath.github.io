@@ -1,9 +1,14 @@
 import dash
-from dash import html, dcc, Input, Output, State, dash_table
+from dash import html, dcc, Input, Output, State
 import dash_bootstrap_components as dbc
+import dash_ag_grid as dag
+import plotly.express as px
 import sqlite3
 import pandas as pd
 
+# ---------------------------
+# Database & Data Functions
+# ---------------------------
 DB_PATH = "historical_data.db"
 
 def get_distinct_cob_dates(table_name):
@@ -22,77 +27,49 @@ def get_data_for_cob_date(cob_date, table_name):
     conn.close()
     return df
 
-def indent_node_name(name, level):
+def process_data_for_ag_grid(df):
     """
-    Prepend non‑breaking spaces to Node Name based on Node Level.
-    For example, if Node Level is 3 then 4 spaces, if 4 then 8, if 5 then 12, etc.
+    Process a flat DataFrame into a list of dictionaries that include a 'dataPath' field.
+    The dataPath field is computed using a simple stack algorithm: for each row,
+    we assume that it is a child of the most recent row with a lower Node Level.
     """
-    try:
-        level_int = int(level)
-    except (ValueError, TypeError):
-        level_int = 0
-    if level_int >= 3:
-        indent_count = (level_int - 2) * 4  # level 3 -> 4 spaces, level 4 -> 8, etc.
-        return "&nbsp;" * indent_count + name
-    return name
+    rows = df.to_dict("records")
+    processed = []
+    stack = []
+    for row in rows:
+        try:
+            level = int(row["Node Level"])
+        except (ValueError, TypeError):
+            level = 0
+        node_name = row["Node Name"]
+        # Pop from stack until the top has a lower level than the current row.
+        while stack and stack[-1][0] >= level:
+            stack.pop()
+        if stack:
+            path = stack[-1][1] + [node_name]
+        else:
+            path = [node_name]
+        row["dataPath"] = path
+        stack.append((level, path))
+        processed.append(row)
+    return processed
 
-# Preload COB dates from one table.
+# ---------------------------
+# Preload Dropdown Options
+# ---------------------------
 initial_dates = get_distinct_cob_dates("Sheet1_data_alloc")
 dropdown_options = [{"label": d, "value": d} for d in initial_dates]
 
-# Use a Bootstrap theme (Flatly for light mode by default)
-external_stylesheets = [dbc.themes.FLATLY]
+# ---------------------------
+# Initialize Dash App with Bootstrap
+# ---------------------------
+external_stylesheets = [dbc.themes.FLATLY]  # Light mode default; dark mode will be toggled via our radio items
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
-def generate_datatable(df, theme):
-    """
-    Return a DataTable with:
-      • Conditional formatting (negative numbers red, positive black),
-      • The "Node Name" column rendered as markdown (to allow HTML indentation),
-      • Basic styling based on the selected theme.
-    """
-    # Theme-specific styles.
-    if theme == "dark":
-        header_style = {"backgroundColor": "#343a40", "color": "white", "fontWeight": "bold"}
-        cell_style = {"backgroundColor": "#212529", "color": "white", "textAlign": "center", "padding": "5px"}
-    else:
-        header_style = {"backgroundColor": "#0074D9", "color": "white", "fontWeight": "bold"}
-        cell_style = {"backgroundColor": "white", "color": "black", "textAlign": "center", "padding": "5px"}
-    
-    # For numeric columns, apply conditional formatting so negatives appear red.
-    numeric_columns = [col for col in df.columns if col not in ["Node Name", "Node ID", "Node Level", "cob_date"]]
-    negative_style = [
-        {
-            'if': {
-                'filter_query': '{{{}}} < 0'.format(col),
-                'column_id': col
-            },
-            'color': 'red'
-        } for col in numeric_columns
-    ]
-    
-    # Build columns list; for "Node Name", use markdown presentation.
-    columns = [
-        {"name": col, "id": col, **({"presentation": "markdown"} if col == "Node Name" else {})}
-        for col in df.columns
-    ]
-    
-    # Force left alignment for the "Node Name" column.
-    style_cell_conditional = [{"if": {"column_id": "Node Name"}, "textAlign": "left"}]
-    
-    return dash_table.DataTable(
-        data=df.to_dict("records"),
-        columns=columns,
-        sort_action="native",
-        style_table={"overflowX": "auto"},
-        style_header=header_style,
-        style_cell=cell_style,
-        style_cell_conditional=style_cell_conditional,
-        style_data_conditional=negative_style,
-        page_size=10
-    )
-
-# Create a modern navbar with a theme toggle on the right.
+# ---------------------------
+# Layout Components
+# ---------------------------
+# Navbar with theme toggle placed on the right.
 navbar = dbc.Navbar(
     dbc.Container([
         dbc.NavbarBrand("Modern Dashboard", className="ms-2"),
@@ -119,7 +96,7 @@ navbar = dbc.Navbar(
     sticky="top"
 )
 
-# Layout body with a dropdown and button.
+# Main body: dropdown to select COB date and a button to show dashboard.
 body = dbc.Container([
     dbc.Row(
         dbc.Col(
@@ -148,23 +125,12 @@ body = dbc.Container([
     )
 ], fluid=True)
 
-# Inject custom CSS via dcc.Markdown (to add row hover effect)
-custom_css = dcc.Markdown(
-    """
-    <style>
-    /* Hover effect for DataTable rows */
-    .dash-table-container .dash-spreadsheet tr:hover {
-      background-color: rgba(0,123,255,0.2) !important;
-    }
-    </style>
-    """,
-    dangerously_allow_html=True
-)
+# Final layout: navbar at top, then body.
+app.layout = html.Div([navbar, body])
 
-# Set the final layout.
-app.layout = html.Div([navbar, custom_css, body])
-
-# Callback: When a COB date is selected and "Show Dashboard" is clicked.
+# ---------------------------
+# Callback for Dashboard Update
+# ---------------------------
 @app.callback(
     Output("dashboard-container", "children"),
     [Input("show-button", "n_clicks")],
@@ -173,34 +139,103 @@ app.layout = html.Div([navbar, custom_css, body])
 )
 def update_dashboard(n_clicks, selected_cob, theme):
     if n_clicks and selected_cob:
+        # Fetch data from both tables.
         df_alloc = get_data_for_cob_date(selected_cob, "Sheet1_data_alloc")
         df_stand = get_data_for_cob_date(selected_cob, "Sheet1_data_stand")
         
-        # Update the "Node Name" column with indentation based on Node Level.
-        def indent_row(row):
-            try:
-                level = int(row["Node Level"])
-            except (ValueError, TypeError):
-                level = 0
-            # For level 3: 4 spaces, level 4: 8, level 5: 12, level 6: 16, level 7: 20, level 8: 24.
-            if level >= 3:
-                indent_count = (level - 2) * 4
-                return "&nbsp;" * indent_count + row["Node Name"]
-            return row["Node Name"]
+        if df_alloc.empty and df_stand.empty:
+            return dbc.Alert("No data found for the selected COB date.", color="warning", className="text-center")
         
-        if not df_alloc.empty:
-            df_alloc["Node Name"] = df_alloc.apply(indent_row, axis=1)
-        if not df_stand.empty:
-            df_stand["Node Name"] = df_stand.apply(indent_row, axis=1)
+        # (Optional) For the table display, you may want to remove any existing indentation.
+        # Then compute the hierarchical data for ag-grid.
+        processed_alloc = process_data_for_ag_grid(df_alloc)
+        processed_stand = process_data_for_ag_grid(df_stand)
         
-        table_alloc = generate_datatable(df_alloc, theme)
-        table_stand = generate_datatable(df_stand, theme)
+        # Define column definitions for ag-grid.
+        # Use 'agGroupCellRenderer' for the "Node Name" column to show the expand/collapse button.
+        column_defs = [
+            {"field": "Node Name", "headerName": "Node Name", "cellRenderer": "agGroupCellRenderer"},
+            {"field": "Node ID", "headerName": "Node ID"},
+            {"field": "Node Level", "headerName": "Node Level"},
+            {"field": "Equities Delta", "headerName": "Equities Delta"},
+            {"field": "Equities Delta Change", "headerName": "Equities Delta Change"},
+            {"field": "Equities Vega", "headerName": "Equities Vega"},
+            {"field": "Equities Vega Change", "headerName": "Equities Vega Change"},
+            {"field": "Equities Curvature", "headerName": "Equities Curvature"},
+            {"field": "Equities Curvature Change", "headerName": "Equities Curvature Change"},
+            {"field": "FX Delta", "headerName": "FX Delta"},
+            {"field": "FX Delta Change", "headerName": "FX Delta Change"},
+            {"field": "FX Vega", "headerName": "FX Vega"},
+            {"field": "FX Vega Change", "headerName": "FX Vega Change"},
+            {"field": "FX Curvature", "headerName": "FX Curvature"},
+            {"field": "FX Curvature Change", "headerName": "FX Curvature Change"},
+            {"field": "Commodities Delta", "headerName": "Commodities Delta"},
+            {"field": "Commodities Delta Change", "headerName": "Commodities Delta Change"},
+            {"field": "Commodities Vega", "headerName": "Commodities Vega"},
+            {"field": "Commodities Vega Change", "headerName": "Commodities Vega Change"},
+            {"field": "Commodities Curvature", "headerName": "Commodities Curvature"},
+            {"field": "Commodities Curvature Change", "headerName": "Commodities Curvature Change"},
+            {"field": "IR Delta", "headerName": "IR Delta"},
+            {"field": "IR Delta Change", "headerName": "IR Delta Change"},
+            {"field": "IR Vega", "headerName": "IR Vega"},
+            {"field": "IR Vega Change", "headerName": "IR Vega Change"},
+            {"field": "IR Curvature", "headerName": "IR Curvature"},
+            {"field": "IR Curvature Change", "headerName": "IR Curvature Change"},
+            {"field": "CSR NS Delta", "headerName": "CSR NS Delta"},
+            {"field": "CSR NS Delta Change", "headerName": "CSR NS Delta Change"},
+            {"field": "CSR NS Vega", "headerName": "CSR NS Vega"},
+            {"field": "CSR NS Vega Change", "headerName": "CSR NS Vega Change"},
+            {"field": "CSR NS Curvature", "headerName": "CSR NS Curvature"},
+            {"field": "CSR NS Curvature Change", "headerName": "CSR NS Curvature Change"},
+            {"field": "NS JTD", "headerName": "NS JTD"},
+            {"field": "NS JTD Change", "headerName": "NS JTD Change"},
+            {"field": "CSR SecNon JTD", "headerName": "CSR SecNon JTD"},
+            {"field": "CSR SecNon JTD Change", "headerName": "CSR SecNon JTD Change"},
+            {"field": "RRAO", "headerName": "RRAO"},
+            {"field": "RRAO Change", "headerName": "RRAO Change"},
+            {"field": "Total", "headerName": "Total"},
+            {"field": "Total Change", "headerName": "Total Change"}
+        ]
+        
+        # Create two ag-grid components for the two tables.
+        grid_alloc = dag.AgGrid(
+            id="grid-alloc",
+            columnDefs=column_defs,
+            rowData=processed_alloc,
+            treeData=True,
+            getDataPath="function(data) { return data.dataPath; }",
+            groupDefaultExpanded=1,
+            dashGridOptions={"enableSorting": True},
+            style={"height": "400px", "width": "100%"}
+        )
+        
+        grid_stand = dag.AgGrid(
+            id="grid-stand",
+            columnDefs=column_defs,
+            rowData=processed_stand,
+            treeData=True,
+            getDataPath="function(data) { return data.dataPath; }",
+            groupDefaultExpanded=1,
+            dashGridOptions={"enableSorting": True},
+            style={"height": "400px", "width": "100%"}
+        )
+        
+        # Create a sunburst chart from the Sheet1_data_alloc data using Plotly Express.
+        fig = px.sunburst(
+            df_alloc,
+            path=['Node Level', 'Node Name'],
+            values='Total',
+            title="Sunburst of Total by Node Level and Node Name"
+        )
+        sunburst_chart = dcc.Graph(figure=fig)
         
         return html.Div([
             html.H4(f"Sheet1_data_alloc for COB Date: {selected_cob}", className="my-3 text-center"),
-            table_alloc,
+            grid_alloc,
             html.H4(f"Sheet1_data_stand for COB Date: {selected_cob}", className="my-3 text-center"),
-            table_stand
+            grid_stand,
+            html.H4("Sunburst Visualization", className="my-3 text-center"),
+            sunburst_chart
         ])
     return html.Div("Please select a COB date and click 'Show Dashboard'.", className="text-center")
 
