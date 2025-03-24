@@ -25,15 +25,14 @@ def get_data_for_cob_date(cob_date, table_name):
 def indent_node_name(name, level):
     """
     Prepend non‑breaking spaces to Node Name based on Node Level.
-    For example, if Node Level is 3 then 4 spaces, if 4 then 8 spaces,
-    if 5 then 12 spaces, if 6 then 16, 7 then 20, if 8 then 24.
+    For example, if Node Level is 3 then 4 spaces, if 4 then 8, if 5 then 12, etc.
     """
     try:
         level_int = int(level)
     except (ValueError, TypeError):
         level_int = 0
     if level_int >= 3:
-        indent_count = (level_int - 2) * 4  # 3 -> 4, 4 -> 8, etc.
+        indent_count = (level_int - 2) * 4  # level 3 -> 4 spaces, level 4 -> 8, etc.
         return "&nbsp;" * indent_count + name
     return name
 
@@ -48,11 +47,11 @@ app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 def generate_datatable(df, theme):
     """
     Return a DataTable with:
-      • Conditional formatting that renders negative numbers in red
-      • Basic styling based on theme (light/dark)
-      • The "Node Name" column is rendered as markdown to allow HTML indentation and forced left‑alignment.
+      • Conditional formatting: negative numbers red, positive numbers black.
+      • A row hover effect via custom CSS.
+      • The "Node Name" column rendered as markdown (to allow HTML) and left‑aligned.
     """
-    # Define theme-specific styles.
+    # Theme-specific styles.
     if theme == "dark":
         header_style = {"backgroundColor": "#343a40", "color": "white", "fontWeight": "bold"}
         cell_style = {"backgroundColor": "#212529", "color": "white", "textAlign": "center", "padding": "5px"}
@@ -60,7 +59,7 @@ def generate_datatable(df, theme):
         header_style = {"backgroundColor": "#0074D9", "color": "white", "fontWeight": "bold"}
         cell_style = {"backgroundColor": "white", "color": "black", "textAlign": "center", "padding": "5px"}
     
-    # For numeric columns (all except a few text columns), make negative numbers red.
+    # For numeric columns, apply conditional formatting so negatives appear red.
     numeric_columns = [col for col in df.columns if col not in ["Node Name", "Node ID", "Node Level", "cob_date"]]
     negative_style = [
         {
@@ -72,13 +71,13 @@ def generate_datatable(df, theme):
         } for col in numeric_columns
     ]
     
-    # Build columns list; for "Node Name", use markdown presentation.
+    # Build the columns list; for "Node Name" use markdown presentation.
     columns = [
         {"name": col, "id": col, **({"presentation": "markdown"} if col == "Node Name" else {})}
         for col in df.columns
     ]
     
-    # Force left alignment for Node Name.
+    # Force left alignment for the "Node Name" column.
     style_cell_conditional = [{"if": {"column_id": "Node Name"}, "textAlign": "left"}]
     
     return dash_table.DataTable(
@@ -93,7 +92,7 @@ def generate_datatable(df, theme):
         page_size=10
     )
 
-# Create a modern navbar with a theme toggle in the nav bar.
+# Create a modern navbar with a theme toggle placed inside an HTML Div.
 navbar = dbc.Navbar(
     dbc.Container([
         dbc.NavbarBrand("Modern Dashboard", className="ms-2"),
@@ -101,7 +100,8 @@ navbar = dbc.Navbar(
             [dbc.NavItem(dbc.NavLink("Home", href="#"))],
             className="me-auto", navbar=True
         ),
-        dbc.NavbarText(
+        # Instead of NavbarText, wrap the theme toggle in an html.Div
+        html.Div(
             dcc.RadioItems(
                 id="theme-selector",
                 options=[
@@ -149,18 +149,18 @@ body = dbc.Container([
     )
 ], fluid=True)
 
-# Add custom CSS for row hover effect in DataTable.
+# Inject custom CSS for row hover effect in the DataTable.
 custom_css = html.Style("""
 /* Hover effect for DataTable rows */
 .dash-table-container .dash-spreadsheet tr:hover {
-  background-color: rgba(0, 123, 255, 0.2) !important;
+  background-color: rgba(0,123,255,0.2) !important;
 }
 """)
 
-# Set the final app layout.
+# Set the final layout.
 app.layout = html.Div([navbar, custom_css, body])
 
-# Callback: When user selects a COB date and clicks "Show Dashboard"
+# Callback: When a COB date is selected and "Show Dashboard" is clicked.
 @app.callback(
     Output("dashboard-container", "children"),
     [Input("show-button", "n_clicks")],
@@ -172,7 +172,7 @@ def update_dashboard(n_clicks, selected_cob, theme):
         df_alloc = get_data_for_cob_date(selected_cob, "Sheet1_data_alloc")
         df_stand = get_data_for_cob_date(selected_cob, "Sheet1_data_stand")
         
-        # Update the Node Name column in both DataFrames with indentation.
+        # Update the "Node Name" column in both DataFrames with indentation based on Node Level.
         def indent_row(row):
             try:
                 level = int(row["Node Level"])
