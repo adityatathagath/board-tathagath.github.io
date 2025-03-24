@@ -40,7 +40,7 @@ def indent_node_name(name, level):
 initial_dates = get_distinct_cob_dates("Sheet1_data_alloc")
 dropdown_options = [{"label": d, "value": d} for d in initial_dates]
 
-# Use a Bootstrap theme (Flatly for light mode by default).
+# Use a Bootstrap theme (Flatly for light mode by default)
 external_stylesheets = [dbc.themes.FLATLY]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
@@ -48,8 +48,8 @@ def generate_datatable(df, theme):
     """
     Return a DataTable with:
       • Conditional formatting (negative numbers red, positive black),
-      • A row hover effect (via CSS),
-      • The "Node Name" column rendered as markdown to allow HTML indentation.
+      • The "Node Name" column rendered as markdown (to allow HTML indentation),
+      • Basic styling based on the selected theme.
     """
     # Theme-specific styles.
     if theme == "dark":
@@ -92,7 +92,7 @@ def generate_datatable(df, theme):
         page_size=10
     )
 
-# Create a modern navbar with a theme toggle placed on the right.
+# Create a modern navbar with a theme toggle on the right.
 navbar = dbc.Navbar(
     dbc.Container([
         dbc.NavbarBrand("Modern Dashboard", className="ms-2"),
@@ -119,7 +119,7 @@ navbar = dbc.Navbar(
     sticky="top"
 )
 
-# Layout body with a dropdown and a button.
+# Layout body with a dropdown and button.
 body = dbc.Container([
     dbc.Row(
         dbc.Col(
@@ -148,7 +148,7 @@ body = dbc.Container([
     )
 ], fluid=True)
 
-# Instead of html.Style (which doesn't exist), inject custom CSS via dcc.Markdown.
+# Inject custom CSS via dcc.Markdown (to add row hover effect)
 custom_css = dcc.Markdown(
     """
     <style>
@@ -176,7 +176,7 @@ def update_dashboard(n_clicks, selected_cob, theme):
         df_alloc = get_data_for_cob_date(selected_cob, "Sheet1_data_alloc")
         df_stand = get_data_for_cob_date(selected_cob, "Sheet1_data_stand")
         
-        # Update the "Node Name" column in both DataFrames with indentation based on Node Level.
+        # Update the "Node Name" column with indentation based on Node Level.
         def indent_row(row):
             try:
                 level = int(row["Node Level"])
@@ -189,4 +189,20 @@ def update_dashboard(n_clicks, selected_cob, theme):
             return row["Node Name"]
         
         if not df_alloc.empty:
-            df
+            df_alloc["Node Name"] = df_alloc.apply(indent_row, axis=1)
+        if not df_stand.empty:
+            df_stand["Node Name"] = df_stand.apply(indent_row, axis=1)
+        
+        table_alloc = generate_datatable(df_alloc, theme)
+        table_stand = generate_datatable(df_stand, theme)
+        
+        return html.Div([
+            html.H4(f"Sheet1_data_alloc for COB Date: {selected_cob}", className="my-3 text-center"),
+            table_alloc,
+            html.H4(f"Sheet1_data_stand for COB Date: {selected_cob}", className="my-3 text-center"),
+            table_stand
+        ])
+    return html.Div("Please select a COB date and click 'Show Dashboard'.", className="text-center")
+
+if __name__ == "__main__":
+    app.run_server(debug=True)
