@@ -36,20 +36,20 @@ def indent_node_name(name, level):
         return "&nbsp;" * indent_count + name
     return name
 
-# Preload COB dates from one table
+# Preload COB dates from one table.
 initial_dates = get_distinct_cob_dates("Sheet1_data_alloc")
 dropdown_options = [{"label": d, "value": d} for d in initial_dates]
 
-# Use a Bootstrap theme (Flatly for light mode by default)
+# Use a Bootstrap theme (Flatly for light mode by default).
 external_stylesheets = [dbc.themes.FLATLY]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 def generate_datatable(df, theme):
     """
     Return a DataTable with:
-      • Conditional formatting: negative numbers red, positive numbers black.
-      • A row hover effect via custom CSS.
-      • The "Node Name" column rendered as markdown (to allow HTML) and left‑aligned.
+      • Conditional formatting (negative numbers red, positive black),
+      • A row hover effect (via CSS),
+      • The "Node Name" column rendered as markdown to allow HTML indentation.
     """
     # Theme-specific styles.
     if theme == "dark":
@@ -71,7 +71,7 @@ def generate_datatable(df, theme):
         } for col in numeric_columns
     ]
     
-    # Build the columns list; for "Node Name" use markdown presentation.
+    # Build columns list; for "Node Name", use markdown presentation.
     columns = [
         {"name": col, "id": col, **({"presentation": "markdown"} if col == "Node Name" else {})}
         for col in df.columns
@@ -92,7 +92,7 @@ def generate_datatable(df, theme):
         page_size=10
     )
 
-# Create a modern navbar with a theme toggle placed inside an HTML Div.
+# Create a modern navbar with a theme toggle placed on the right.
 navbar = dbc.Navbar(
     dbc.Container([
         dbc.NavbarBrand("Modern Dashboard", className="ms-2"),
@@ -100,7 +100,6 @@ navbar = dbc.Navbar(
             [dbc.NavItem(dbc.NavLink("Home", href="#"))],
             className="me-auto", navbar=True
         ),
-        # Instead of NavbarText, wrap the theme toggle in an html.Div
         html.Div(
             dcc.RadioItems(
                 id="theme-selector",
@@ -120,7 +119,7 @@ navbar = dbc.Navbar(
     sticky="top"
 )
 
-# Layout body with a dropdown and button.
+# Layout body with a dropdown and a button.
 body = dbc.Container([
     dbc.Row(
         dbc.Col(
@@ -149,13 +148,18 @@ body = dbc.Container([
     )
 ], fluid=True)
 
-# Inject custom CSS for row hover effect in the DataTable.
-custom_css = html.Style("""
-/* Hover effect for DataTable rows */
-.dash-table-container .dash-spreadsheet tr:hover {
-  background-color: rgba(0,123,255,0.2) !important;
-}
-""")
+# Instead of html.Style (which doesn't exist), inject custom CSS via dcc.Markdown.
+custom_css = dcc.Markdown(
+    """
+    <style>
+    /* Hover effect for DataTable rows */
+    .dash-table-container .dash-spreadsheet tr:hover {
+      background-color: rgba(0,123,255,0.2) !important;
+    }
+    </style>
+    """,
+    dangerously_allow_html=True
+)
 
 # Set the final layout.
 app.layout = html.Div([navbar, custom_css, body])
@@ -185,20 +189,4 @@ def update_dashboard(n_clicks, selected_cob, theme):
             return row["Node Name"]
         
         if not df_alloc.empty:
-            df_alloc["Node Name"] = df_alloc.apply(indent_row, axis=1)
-        if not df_stand.empty:
-            df_stand["Node Name"] = df_stand.apply(indent_row, axis=1)
-        
-        table_alloc = generate_datatable(df_alloc, theme)
-        table_stand = generate_datatable(df_stand, theme)
-        
-        return html.Div([
-            html.H4(f"Sheet1_data_alloc for COB Date: {selected_cob}", className="my-3 text-center"),
-            table_alloc,
-            html.H4(f"Sheet1_data_stand for COB Date: {selected_cob}", className="my-3 text-center"),
-            table_stand
-        ])
-    return html.Div("Please select a COB date and click 'Show Dashboard'.", className="text-center")
-
-if __name__ == "__main__":
-    app.run_server(debug=True)
+            df
