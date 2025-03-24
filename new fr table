@@ -1,0 +1,194 @@
+import sqlite3
+import pandas as pd
+import plotly.express as px
+from dash import Dash, html, dcc, Input, Output, callback
+import dash_ag_grid as dag
+import dash_bootstrap_components as dbc
+
+# --- Connect to SQLite database and fetch initial data (dates and column info) ---
+conn = sqlite3.connect('my_data.db')  # path to your SQLite database
+# Get distinct COB dates for dropdown
+dates_df = pd.read_sql("SELECT DISTINCT [COB Date] FROM Sheet1_data_alloc", conn)
+dates = sorted(dates_df.iloc[:, 0].astype(str))  # ensure sorted and as strings
+date_options = [{"label": d, "value": d} for d in dates]
+
+# Optionally, get column names from the tables to set up grid columns (exclude hierarchy cols)
+col_info = pd.read_sql("PRAGMA table_info(Sheet1_data_alloc)", conn)
+all_columns = [col_info.iloc[i]["name"] for i in range(len(col_info))]
+# Determine columns to display (exclude Node Level, Node Name, and COB Date if present)
+exclude_cols = {"Node Level", "Node Name", "COB Date"}
+display_columns = [col for col in all_columns if col not in exclude_cols]
+
+# Prepare Dash AG Grid column definitions for numeric columns
+# We create style conditions to color negatives red and positives black
+style_conditions = [
+    {"condition": "params.value < 0", "style": {"color": "red"}},
+    {"condition": "params.value > 0", "style": {"color": "black"}}
+]
+column_defs = []
+for col in display_columns:
+    # Human-readable header (replace underscores with spaces, capitalize each word)
+    header = " ".join(word.capitalize() for word in col.replace("_", " ").split())
+    col_def = {"headerName": header, "field": col}
+    # Assume non-hierarchy columns are numeric (you can adjust if some are text)
+    col_def["cellStyle"] = {"styleConditions": style_conditions}
+    column_defs.append(col_def)
+
+# Define the auto-group (tree view) column for Node Name
+auto_group_column = {
+    "headerName": "Node Name",
+    "cellRendererParams": {"suppressCount": True},  # don't show child count
+    # Value formatter to prepend spaces based on level (4 spaces per depth level)
+    "valueFormatter": {
+        "function": (
+            "return String.fromCharCode(160).repeat(params.node.level * 4) + params.value;"
+        )
+    }
+}
+
+# Dash app setup with Bootstrap (including Font Awesome for icons)
+app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME])
+
+# Light/Dark mode toggle switch component (moon icon, switch, sun icon)
+theme_switch = html.Span([
+    dbc.Label(className="fa fa-moon", html_for="theme-switch"),  # moon icon
+    dbc.Switch(id="theme-switch", value=True, className="d-inline-block ms-1", persistence=True),
+    dbc.Label(className="fa fa-sun", html_for="theme-switch")    # sun icon
+], className="ms-auto text-nowrap")  # push to right in navbar
+
+# Navbar with brand title and theme toggle
+navbar = dbc.Navbar(
+    dbc.Container([
+        dbc.NavbarBrand("My Dashboard"),  # you can change the title
+        theme_switch
+    ], fluid=True),
+    color="light", light=True, sticky="top", className="mb-4"
+)
+
+# Layout: dropdown + button, output area for tables and chart
+app.layout = html.Div([
+    navbar,
+    dbc.Container([
+        dbc.Row([
+            dbc.Col(dcc.Dropdown(id="date-dropdown", options=date_options, placeholder="Select COB Date",
+                                  value=None, clearable=False), width="auto"),
+            dbc.Col(dbc.Button("Show Dashboard", id="show-btn", color="primary"), width="auto")
+        ], className="gy-2", align="center"),
+        html.Hr(),
+        # Containers for the tables and chart (will be populated via callback)
+        dbc.Row([
+            dbc.Col(dag.AgGrid(
+                id="alloc-grid",
+                columnDefs=column_defs,
+                dashGridOptions={
+                    "treeData": True,
+                    "getDataPath": {"function": "getDataPath(params)"},  # uses JS function defined in assets
+                    "autoGroupColumnDef": auto_group_column
+                },
+                style={"height": "400px"},  # adjust height as needed
+            ), width=6),
+            dbc.Col(dag.AgGrid(
+                id="stand-grid",
+                columnDefs=column_defs,
+                dashGridOptions={
+                    "treeData": True,
+                    "getDataPath": {"function": "getDataPath(params)"},
+                    "autoGroupColumnDef": auto_group_column
+                },
+                style={"height": "400px"},
+            ), width=6)
+        ], className="gy-4"),
+        dcc.Graph(id="sunburst-chart")
+    ], fluid=True)
+])
+
+# Clientside callback to toggle Bootstrap theme (light/dark) [oai_citation_attribution:5‡dash-bootstrap-components.opensource.faculty.ai](https://dash-bootstrap-components.opensource.faculty.ai/docs/themes/#:~:text=clientside_callback%28%20,id)
+app.clientside_callback(
+    """
+    function(switchOn) {
+        document.documentElement.setAttribute('data-bs-theme', switchOn ? 'light' : 'dark');
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("theme-switch", "id"),  # dummy output just to trigger the callback
+    Input("theme-switch", "value")
+)
+
+# Server-side callback to update tables and chart when a date is selected and button clicked
+@callback(
+    Output("alloc-grid", "rowData"),
+    Output("stand-grid", "rowData"),
+    Output("sunburst-chart", "figure"),
+    Input("show-btn", "n_clicks"),
+    Input("date-dropdown", "value")
+)
+def update_dashboard(n_clicks, selected_date):
+    if not n_clicks or selected_date is None:
+        # No update until button is clicked with a date
+        return [], [], {}  # empty data and chart
+    # Query the database for the selected date
+    query_date = selected_date
+    df_alloc = pd.read_sql(f"SELECT * FROM Sheet1_data_alloc WHERE [COB Date] = ?", conn, params=[query_date])
+    df_stand = pd.read_sql(f"SELECT * FROM Sheet1_data_stand WHERE [COB Date] = ?", conn, params=[query_date])
+    # Drop the date column as it's the same for all rows after filtering
+    if "COB Date" in df_alloc.columns:
+        df_alloc = df_alloc.drop(columns=["COB Date"])
+    if "COB Date" in df_stand.columns:
+        df_stand = df_stand.drop(columns=["COB Date"])
+    # Function to compute hierarchy path and indent names for a given DataFrame
+    def prepare_hierarchy(df):
+        rows = df.to_dict('records')
+        path_stack = {}  # map of level to current path of node names
+        result = []
+        for row in rows:
+            level = int(row.get("Node Level", 0))
+            name = str(row.get("Node Name", ""))
+            # Pop out deeper or same-level keys (to maintain hierarchy correctly)
+            for lvl in list(path_stack.keys()):
+                if lvl >= level:
+                    path_stack.pop(lvl, None)
+            # Add current node to the path stack and build its full path
+            path_stack[level] = name
+            path_list = [path_stack[lvl] for lvl in sorted(path_stack.keys())]
+            # Prepare the row data for output
+            # Indent the Node Name text (4 spaces per level beyond level 2)
+            indent_spaces = max(0, level - 2) * 4
+            indented_name = "\u00A0" * indent_spaces + name
+            new_row = {k: v for k, v in row.items() if k not in ["Node Level"]}  # drop Node Level from row data
+            new_row["Node Name"] = indented_name
+            new_row["path"] = path_list
+            result.append(new_row)
+        return result
+
+    # Prepare hierarchical data for both tables
+    alloc_data = prepare_hierarchy(df_alloc)
+    stand_data = prepare_hierarchy(df_stand)
+
+    # Build sunburst chart for allocation data (Total by hierarchy)
+    # Use only leaf nodes (those with no children) for the sunburst values
+    df_alloc_hier = pd.DataFrame(alloc_data)
+    # Identify leaf nodes by checking if next row is a deeper level
+    # (This assumes the data is already sorted in hierarchical order)
+    levels = df_alloc["Node Level"].tolist()
+    is_leaf = [True] * len(levels)
+    for i in range(len(levels) - 1):
+        if levels[i+1] > levels[i]:
+            is_leaf[i] = False
+    leaf_df = df_alloc_hier[is_leaf]
+    # If no numeric 'Total' column exists, adjust the code accordingly.
+    if "Total" in leaf_df.columns:
+        # Create hierarchy columns (Level1, Level2, ...) from the path list
+        max_depth = leaf_df["path"].map(len).max() if not leaf_df.empty else 0
+        for lvl in range(max_depth):
+            leaf_df[f"Level{lvl+1}"] = leaf_df["path"].apply(lambda p: p[lvl] if len(p) > lvl else None)
+        # Define the path through the level columns
+        path_cols = [f"Level{i+1}" for i in range(max_depth)]
+        fig_sunburst = px.sunburst(leaf_df, path=path_cols, values="Total", title="Total Breakdown by Node")
+    else:
+        fig_sunburst = px.sunburst(title="Total Breakdown by Node")  # empty chart if no Total column
+    fig_sunburst.update_layout(margin=dict(t=40, l=0, r=0, b=0))
+
+    return alloc_data, stand_data, fig_sunburst
+
+if __name__ == "__main__":
+    app.run_server(debug=True)
