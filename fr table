@@ -1,110 +1,16 @@
 import dash
-import dash_bootstrap_components as dbc
 from dash import html, dcc, Input, Output, State
+import dash_table
 import sqlite3
 import pandas as pd
-from datetime import datetime
 
-# Use the Flatly Bootstrap theme for a modern look.
-external_stylesheets = [dbc.themes.FLATLY]
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+# Initialize Dash app
+app = dash.Dash(__name__)
 
 DB_PATH = "historical_data.db"
 
-# ---------------------------
-# Utility & Database Functions
-# ---------------------------
-def indent_node_name(name, level):
-    """
-    Indent Node Name based on Node Level.
-    If level is missing or not convertible, defaults to 0.
-    For Node Level 4: no indentation; each level above adds 4 non-breaking spaces.
-    """
-    try:
-        level_int = int(level)
-    except (ValueError, TypeError):
-        level_int = 0
-    if level_int >= 4:
-        num_spaces = (level_int - 4) * 4
-        return "&nbsp;" * num_spaces + name
-    else:
-        return name
-
-def format_number(value):
-    """
-    Format numeric values so that negative numbers appear in red, positive/zero in black.
-    """
-    if value is None:
-        return ""
-    try:
-        val = float(value)
-        if val < 0:
-            return f'<span style="color:red">{val}</span>'
-        else:
-            return f'<span style="color:black">{val}</span>'
-    except (ValueError, TypeError):
-        return str(value)
-
-def fetch_data_and_save_to_db(param1, param2, param3, param4):
-    """
-    (Placeholder) Fetch data from an API and insert a simulated row into both
-    'Sheet1_data_alloc' and 'Sheet1_data_stand' with today's cob_date.
-    """
-    cob_date = datetime.today().strftime("%Y-%m-%d")
-    simulated_data = {
-        "Node Name": ["SampleNode"],
-        "Node ID": ["Node123"],
-        "Node Level": [5],
-        "Equities Delta": [100.0],
-        "Equities Delta Change": [-5.0],
-        "Equities Vega": [200.0],
-        "Equities Vega Change": [10.0],
-        "Equities Curvature": [300.0],
-        "Equities Curvature Change": [-15.0],
-        "FX Delta": [110.0],
-        "FX Delta Change": [6.0],
-        "FX Vega": [210.0],
-        "FX Vega Change": [11.0],
-        "FX Curvature": [310.0],
-        "FX Curvature Change": [16.0],
-        "Commodities Delta": [120.0],
-        "Commodities Delta Change": [7.0],
-        "Commodities Vega": [220.0],
-        "Commodities Vega Change": [12.0],
-        "Commodities Curvature": [320.0],
-        "Commodities Curvature Change": [17.0],
-        "IR Delta": [130.0],
-        "IR Delta Change": [8.0],
-        "IR Vega": [230.0],
-        "IR Vega Change": [13.0],
-        "IR Curvature": [330.0],
-        "IR Curvature Change": [18.0],
-        "CSR NS Delta": [99.0],
-        "CSR NS Delta Change": [1.0],
-        "CSR NS Vega": [101.0],
-        "CSR NS Vega Change": [2.0],
-        "CSR NS Curvature": [102.0],
-        "CSR NS Curvature Change": [3.0],
-        "NS JTD": [50.0],
-        "NS JTD Change": [5.0],
-        "CSR SecNon JTD": [60.0],
-        "CSR SecNon JTD Change": [6.0],
-        "RRAO": [70.0],
-        "RRAO Change": [7.0],
-        "Total": [1000.0],
-        "Total Change": [50.0],
-        "cob_date": [cob_date]
-    }
-    df = pd.DataFrame(simulated_data)
-    conn = sqlite3.connect(DB_PATH)
-    df.to_sql("Sheet1_data_alloc", conn, if_exists="append", index=False)
-    df.to_sql("Sheet1_data_stand", conn, if_exists="append", index=False)
-    conn.close()
-
 def get_distinct_cob_dates(table_name):
-    """
-    Return a sorted list of distinct COB dates from the given table.
-    """
+    """Return a sorted list of distinct cob_date values from the given table."""
     conn = sqlite3.connect(DB_PATH)
     query = f"SELECT DISTINCT cob_date FROM {table_name} ORDER BY cob_date"
     dates = pd.read_sql(query, conn)["cob_date"].tolist()
@@ -112,311 +18,66 @@ def get_distinct_cob_dates(table_name):
     return dates
 
 def get_data_for_cob_date(cob_date, table_name):
-    """
-    Return a DataFrame of rows from the given table matching the specified cob_date.
-    """
+    """Fetch and return data from the specified table for the given cob_date."""
     conn = sqlite3.connect(DB_PATH)
     query = f"SELECT * FROM {table_name} WHERE cob_date = '{cob_date}'"
     df = pd.read_sql(query, conn)
     conn.close()
     return df
 
-# ---------------------------
-# HTML Table Generation
-# ---------------------------
-def generate_html_table(df, table_id):
-    """
-    Generate a multi-row header HTML table with:
-      • Conditional formatting (negative numbers red),
-      • Indented Node Name based on Node Level,
-      • Highlighting for rows with Node Level == 5,
-      • Clickable headers for sorting.
-    Uses Bootstrap classes for a modern look.
-    """
-    column_names = [
-        "Node Name", "Node ID", "Node Level",
-        "Equities Delta", "Equities Delta Change", "Equities Vega", "Equities Vega Change", 
-        "Equities Curvature", "Equities Curvature Change",
-        "FX Delta", "FX Delta Change", "FX Vega", "FX Vega Change", 
-        "FX Curvature", "FX Curvature Change",
-        "Commodities Delta", "Commodities Delta Change", "Commodities Vega", "Commodities Vega Change", 
-        "Commodities Curvature", "Commodities Curvature Change",
-        "IR Delta", "IR Delta Change", "IR Vega", "IR Vega Change", 
-        "IR Curvature", "IR Curvature Change",
-        "CSR NS Delta", "CSR NS Delta Change", "CSR NS Vega", "CSR NS Vega Change",
-        "CSR NS Curvature", "CSR NS Curvature Change",
-        "NS JTD", "NS JTD Change",
-        "CSR SecNon JTD", "CSR SecNon JTD Change",
-        "RRAO", "RRAO Change",
-        "Total", "Total Change"
-    ]
-    
-    # Build multi-row header with Bootstrap classes
-    table_header = f"""
-    <thead>
-      <tr>
-        <th rowspan="3" class="bg-primary text-white py-2">All Figures in (£m)</th>
-        <th colspan="41" class="bg-primary text-white py-2">Allocated</th>
-      </tr>
-      <tr>
-        <th rowspan="2" class="bg-info text-white py-2">Node Name</th>
-        <th rowspan="2" class="bg-info text-white py-2">Node ID</th>
-        <th rowspan="2" class="bg-info text-white py-2">Node Level</th>
-        <th colspan="6" class="bg-secondary text-white py-2">Equities</th>
-        <th colspan="6" class="bg-secondary text-white py-2">Foreign Exchange</th>
-        <th colspan="6" class="bg-secondary text-white py-2">Commodities</th>
-        <th colspan="6" class="bg-secondary text-white py-2">Interest Rates</th>
-        <th colspan="6" class="bg-secondary text-white py-2">CSR NS</th>
-        <th colspan="2" class="bg-dark text-white py-2">Non Sec JTD</th>
-        <th colspan="2" class="bg-dark text-white py-2">CSR SecNon JTD</th>
-        <th colspan="2" class="bg-dark text-white py-2">RRAO</th>
-        <th colspan="2" class="bg-dark text-white py-2">Total</th>
-      </tr>
-      <tr>
-        <!-- Each header cell below is clickable for sorting -->
-        <th onclick="sortTable('{table_id}', 0)" style="cursor:pointer;">Delta</th>
-        <th onclick="sortTable('{table_id}', 1)" style="cursor:pointer;">Chg</th>
-        <th onclick="sortTable('{table_id}', 2)" style="cursor:pointer;">Vega</th>
-        <th onclick="sortTable('{table_id}', 3)" style="cursor:pointer;">Chg</th>
-        <th onclick="sortTable('{table_id}', 4)" style="cursor:pointer;">Curv</th>
-        <th onclick="sortTable('{table_id}', 5)" style="cursor:pointer;">Chg</th>
+# Create initial dropdown options from one of the tables.
+initial_dates = get_distinct_cob_dates("Sheet1_data_alloc")
+dropdown_options = [{"label": d, "value": d} for d in initial_dates]
 
-        <th onclick="sortTable('{table_id}', 6)" style="cursor:pointer;">Delta</th>
-        <th onclick="sortTable('{table_id}', 7)" style="cursor:pointer;">Chg</th>
-        <th onclick="sortTable('{table_id}', 8)" style="cursor:pointer;">Vega</th>
-        <th onclick="sortTable('{table_id}', 9)" style="cursor:pointer;">Chg</th>
-        <th onclick="sortTable('{table_id}', 10)" style="cursor:pointer;">Curv</th>
-        <th onclick="sortTable('{table_id}', 11)" style="cursor:pointer;">Chg</th>
+# Define the layout: a dropdown, a button, and a container for the tables.
+app.layout = html.Div([
+    html.H2("Dashboard"),
+    html.Div([
+        dcc.Dropdown(id="cob-dropdown", options=dropdown_options, placeholder="Select a COB date"),
+        html.Button("Show Dashboard", id="show-button", n_clicks=0)
+    ], style={"width": "50%", "margin": "auto", "padding": "20px"}),
+    html.Div(id="dashboard-container", style={"width": "90%", "margin": "auto"})
+])
 
-        <th onclick="sortTable('{table_id}', 12)" style="cursor:pointer;">Delta</th>
-        <th onclick="sortTable('{table_id}', 13)" style="cursor:pointer;">Chg</th>
-        <th onclick="sortTable('{table_id}', 14)" style="cursor:pointer;">Vega</th>
-        <th onclick="sortTable('{table_id}', 15)" style="cursor:pointer;">Chg</th>
-        <th onclick="sortTable('{table_id}', 16)" style="cursor:pointer;">Curv</th>
-        <th onclick="sortTable('{table_id}', 17)" style="cursor:pointer;">Chg</th>
-
-        <th onclick="sortTable('{table_id}', 18)" style="cursor:pointer;">Delta</th>
-        <th onclick="sortTable('{table_id}', 19)" style="cursor:pointer;">Chg</th>
-        <th onclick="sortTable('{table_id}', 20)" style="cursor:pointer;">Vega</th>
-        <th onclick="sortTable('{table_id}', 21)" style="cursor:pointer;">Chg</th>
-        <th onclick="sortTable('{table_id}', 22)" style="cursor:pointer;">Curv</th>
-        <th onclick="sortTable('{table_id}', 23)" style="cursor:pointer;">Chg</th>
-
-        <th onclick="sortTable('{table_id}', 24)" style="cursor:pointer;">Delta</th>
-        <th onclick="sortTable('{table_id}', 25)" style="cursor:pointer;">Chg</th>
-        <th onclick="sortTable('{table_id}', 26)" style="cursor:pointer;">Vega</th>
-        <th onclick="sortTable('{table_id}', 27)" style="cursor:pointer;">Chg</th>
-        <th onclick="sortTable('{table_id}', 28)" style="cursor:pointer;">Curv</th>
-        <th onclick="sortTable('{table_id}', 29)" style="cursor:pointer;">Chg</th>
-
-        <th onclick="sortTable('{table_id}', 30)" style="cursor:pointer;">JTD</th>
-        <th onclick="sortTable('{table_id}', 31)" style="cursor:pointer;">Chg</th>
-
-        <th onclick="sortTable('{table_id}', 32)" style="cursor:pointer;">SecNon JTD</th>
-        <th onclick="sortTable('{table_id}', 33)" style="cursor:pointer;">Chg</th>
-
-        <th onclick="sortTable('{table_id}', 34)" style="cursor:pointer;">RRAO</th>
-        <th onclick="sortTable('{table_id}', 35)" style="cursor:pointer;">Chg</th>
-
-        <th onclick="sortTable('{table_id}', 36)" style="cursor:pointer;">Total</th>
-        <th onclick="sortTable('{table_id}', 37)" style="cursor:pointer;">Chg</th>
-      </tr>
-    </thead>
-    """
-    
-    # Build table body
-    table_rows = ""
-    for _, row in df.iterrows():
-        node_level = row.get("Node Level", 0)
-        try:
-            node_level_int = int(node_level)
-        except (ValueError, TypeError):
-            node_level_int = 0
-
-        # Highlight rows with Node Level == 5 using a soft background color
-        row_style = 'style="background-color:#e8f6ff;"' if node_level_int == 5 else 'style="background-color:#ffffff;"'
-        table_rows += f"<tr {row_style}>"
-        for col in column_names:
-            val = row.get(col, "")
-            if col == "Node Name":
-                val_str = indent_node_name(str(val), node_level_int)
-            elif col.endswith("Level"):
-                val_str = str(val)
-            else:
-                val_str = format_number(val)
-            table_rows += f"<td class='text-center py-2'>{val_str}</td>"
-        table_rows += "</tr>"
-    
-    table_html = f"""
-    <table id="{table_id}" class="table table-bordered table-hover" style="font-family: Arial, sans-serif; font-size: 14px;">
-      {table_header}
-      <tbody>
-        {table_rows}
-      </tbody>
-    </table>
-    """
-    return table_html
-
-# ---------------------------
-# Dash Layout & Callbacks
-# ---------------------------
-# Preload COB dates from one table for the dropdown.
-initial_cob_dates = get_distinct_cob_dates("Sheet1_data_alloc")
-dropdown_options = [{"label": d, "value": d} for d in initial_cob_dates]
-
-app.layout = dbc.Container([
-    dbc.Row(
-        dbc.Col(
-            html.Div([
-                html.H2("Advanced Dashboard", className="text-center text-primary my-4"),
-                html.P("Generate a report or view existing reports.", className="text-center text-secondary")
-            ])
-        )
-    ),
-    dbc.Row([
-        dbc.Col(
-            dbc.Card([
-                dbc.CardHeader("Generate Report"),
-                dbc.CardBody([
-                    html.Div([
-                        dbc.Label("String Input 1", className="fw-bold"),
-                        dcc.Input(id="input1", type="text", placeholder="Enter text...", className="form-control")
-                    ], className="mb-3"),
-                    html.Div([
-                        dbc.Label("String Input 2", className="fw-bold"),
-                        dcc.Input(id="input2", type="text", placeholder="Enter text...", className="form-control")
-                    ], className="mb-3"),
-                    html.Div([
-                        dbc.Label("String Input 3", className="fw-bold"),
-                        dcc.Input(id="input3", type="text", placeholder="Enter text...", className="form-control")
-                    ], className="mb-3"),
-                    html.Div([
-                        dbc.Label("Integer Input", className="fw-bold"),
-                        dcc.Input(id="input4", type="number", placeholder="Enter an integer...", className="form-control")
-                    ], className="mb-3"),
-                    dbc.Button("Generate Report", id="generate-button", n_clicks=0,
-                               color="primary", className="mt-2"),
-                    html.Div(id="generate-message", className="mt-2 text-success fw-bold")
-                ])
-            ]),
-            width=5, className="mb-4"
-        ),
-        dbc.Col(
-            dbc.Card([
-                dbc.CardHeader("View Existing Reports"),
-                dbc.CardBody([
-                    html.Div([
-                        dbc.Label("Select COB Date", className="fw-bold"),
-                        dcc.Dropdown(id="cob-date-dropdown", options=dropdown_options, value=None,
-                                     className="mb-3")
-                    ]),
-                    dbc.Button("Show Dashboard", id="show-dashboard-button", n_clicks=0,
-                               color="primary")
-                ])
-            ]),
-            width=5, className="mb-4", align="center"
-        )
-    ], justify="center"),
-    dbc.Row(
-        dbc.Col(
-            html.Div(id="dashboard-container"),
-            width=12
-        )
-    ),
-    # JavaScript for client-side table sorting
-    html.Script("""
-function sortTable(tableId, colIndex) {
-    var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
-    table = document.getElementById(tableId);
-    if (!table) return;
-    switching = true;
-    dir = "asc";
-    while (switching) {
-        switching = false;
-        rows = table.getElementsByTagName("TR");
-        for (i = 3; i < (rows.length - 1); i++) {
-            shouldSwitch = false;
-            x = rows[i].getElementsByTagName("TD")[colIndex];
-            y = rows[i + 1].getElementsByTagName("TD")[colIndex];
-            if (!x || !y) { continue; }
-            var xVal = parseFloat(x.innerText.replace(/[^0-9.-]+/g,""));
-            var yVal = parseFloat(y.innerText.replace(/[^0-9.-]+/g,""));
-            if (isNaN(xVal) || isNaN(yVal)) {
-                xVal = x.innerText.toLowerCase();
-                yVal = y.innerText.toLowerCase();
-            }
-            if (dir === "asc") {
-                if (xVal > yVal) {
-                    shouldSwitch = true;
-                    break;
-                }
-            } else if (dir === "desc") {
-                if (xVal < yVal) {
-                    shouldSwitch = true;
-                    break;
-                }
-            }
-        }
-        if (shouldSwitch) {
-            rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-            switching = true;
-            switchcount ++;
-        } else {
-            if (switchcount === 0 && dir === "asc") {
-                dir = "desc";
-                switching = true;
-            }
-        }
-    }
-}
-    """)
-], fluid=True)
-
-# ---------------------------
-# Callbacks
-# ---------------------------
-@app.callback(
-    [Output("generate-message", "children"),
-     Output("cob-date-dropdown", "options")],
-    [Input("generate-button", "n_clicks")],
-    [State("input1", "value"),
-     State("input2", "value"),
-     State("input3", "value"),
-     State("input4", "value")]
-)
-def generate_report(n_clicks, param1, param2, param3, param4):
-    if n_clicks > 0:
-        fetch_data_and_save_to_db(param1, param2, param3, param4)
-        message = "Report generated and data stored in DB!"
-        new_dates = get_distinct_cob_dates("Sheet1_data_alloc")
-        new_options = [{"label": d, "value": d} for d in new_dates]
-        return message, new_options
-    return "", dropdown_options
-
+# Callback: When the user selects a COB date and clicks the button,
+# fetch the data from both tables and display them as DataTables.
 @app.callback(
     Output("dashboard-container", "children"),
-    [Input("show-dashboard-button", "n_clicks")],
-    [State("cob-date-dropdown", "value")]
+    Input("show-button", "n_clicks"),
+    State("cob-dropdown", "value")
 )
-def show_dashboard(n_clicks, selected_cob):
+def update_dashboard(n_clicks, selected_cob):
     if n_clicks > 0 and selected_cob:
+        # Fetch data for the selected COB date from both tables.
         df_alloc = get_data_for_cob_date(selected_cob, "Sheet1_data_alloc")
         df_stand = get_data_for_cob_date(selected_cob, "Sheet1_data_stand")
-        if df_alloc.empty and df_stand.empty:
-            return dbc.Alert("No data found for the selected COB date.", color="warning", className="text-center")
-        table_alloc_html = generate_html_table(df_alloc, table_id="table_alloc")
-        table_stand_html = generate_html_table(df_stand, table_id="table_stand")
+        
+        # Create DataTables for each table.
+        table_alloc = dash_table.DataTable(
+            data=df_alloc.to_dict("records"),
+            columns=[{"name": col, "id": col} for col in df_alloc.columns],
+            sort_action="native",
+            style_table={"overflowX": "auto"},
+            style_cell={"textAlign": "center", "padding": "5px"},
+            style_header={"backgroundColor": "#0074D9", "color": "white", "fontWeight": "bold"}
+        )
+        
+        table_stand = dash_table.DataTable(
+            data=df_stand.to_dict("records"),
+            columns=[{"name": col, "id": col} for col in df_stand.columns],
+            sort_action="native",
+            style_table={"overflowX": "auto"},
+            style_cell={"textAlign": "center", "padding": "5px"},
+            style_header={"backgroundColor": "#0074D9", "color": "white", "fontWeight": "bold"}
+        )
+        
         return html.Div([
-            html.H3(f"Dashboard for COB Date: {selected_cob}", className="text-center text-primary my-3"),
-            html.H4("Sheet1_data_alloc", className="text-center text-secondary"),
-            html.Div(dangerouslySetInnerHTML={"__html": table_alloc_html}),
-            html.H4("Sheet1_data_stand", className="text-center text-secondary mt-4"),
-            html.Div(dangerouslySetInnerHTML={"__html": table_stand_html})
+            html.H3(f"Data from Sheet1_data_alloc for COB Date: {selected_cob}"),
+            table_alloc,
+            html.H3(f"Data from Sheet1_data_stand for COB Date: {selected_cob}", style={"marginTop": "40px"}),
+            table_stand
         ])
-    return ""
+    return html.Div("Please select a COB date and click 'Show Dashboard'.")
 
-# ---------------------------
-# Run the App
-# ---------------------------
 if __name__ == "__main__":
     app.run_server(debug=True)
