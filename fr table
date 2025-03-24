@@ -29,9 +29,8 @@ def get_data_for_cob_date(cob_date, table_name):
 
 def process_data_for_ag_grid(df):
     """
-    Process a flat DataFrame into a list of dictionaries that include a 'dataPath' field.
-    The dataPath field is computed using a simple stack algorithm: for each row,
-    we assume that it is a child of the most recent row with a lower Node Level.
+    Process a flat DataFrame into a list of dicts that include a 'dataPath' field.
+    The dataPath is computed using a simple stack algorithm based on 'Node Level'.
     """
     rows = df.to_dict("records")
     processed = []
@@ -54,6 +53,20 @@ def process_data_for_ag_grid(df):
         processed.append(row)
     return processed
 
+def indent_node_name(name, level):
+    """
+    Prepend non‑breaking spaces to Node Name based on Node Level.
+    For example, if Node Level is 3 then 4 spaces; level 4 → 8; level 5 → 12; etc.
+    """
+    try:
+        level_int = int(level)
+    except (ValueError, TypeError):
+        level_int = 0
+    if level_int >= 3:
+        indent_count = (level_int - 2) * 4
+        return "&nbsp;" * indent_count + name
+    return name
+
 # ---------------------------
 # Preload Dropdown Options
 # ---------------------------
@@ -63,13 +76,13 @@ dropdown_options = [{"label": d, "value": d} for d in initial_dates]
 # ---------------------------
 # Initialize Dash App with Bootstrap
 # ---------------------------
-external_stylesheets = [dbc.themes.FLATLY]  # Light mode default; dark mode will be toggled via our radio items
+external_stylesheets = [dbc.themes.FLATLY]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 # ---------------------------
 # Layout Components
 # ---------------------------
-# Navbar with theme toggle placed on the right.
+# Navbar with theme toggle on the right.
 navbar = dbc.Navbar(
     dbc.Container([
         dbc.NavbarBrand("Modern Dashboard", className="ms-2"),
@@ -96,7 +109,7 @@ navbar = dbc.Navbar(
     sticky="top"
 )
 
-# Main body: dropdown to select COB date and a button to show dashboard.
+# Main body: dropdown to select COB date and a button.
 body = dbc.Container([
     dbc.Row(
         dbc.Col(
@@ -129,7 +142,7 @@ body = dbc.Container([
 app.layout = html.Div([navbar, body])
 
 # ---------------------------
-# Callback for Dashboard Update
+# Callback: Update Dashboard
 # ---------------------------
 @app.callback(
     Output("dashboard-container", "children"),
@@ -139,20 +152,33 @@ app.layout = html.Div([navbar, body])
 )
 def update_dashboard(n_clicks, selected_cob, theme):
     if n_clicks and selected_cob:
-        # Fetch data from both tables.
         df_alloc = get_data_for_cob_date(selected_cob, "Sheet1_data_alloc")
         df_stand = get_data_for_cob_date(selected_cob, "Sheet1_data_stand")
         
         if df_alloc.empty and df_stand.empty:
             return dbc.Alert("No data found for the selected COB date.", color="warning", className="text-center")
         
-        # (Optional) For the table display, you may want to remove any existing indentation.
-        # Then compute the hierarchical data for ag-grid.
+        # Update the "Node Name" column with indentation.
+        def indent_row(row):
+            try:
+                level = int(row["Node Level"])
+            except (ValueError, TypeError):
+                level = 0
+            if level >= 3:
+                indent_count = (level - 2) * 4
+                return "&nbsp;" * indent_count + row["Node Name"]
+            return row["Node Name"]
+        
+        if not df_alloc.empty:
+            df_alloc["Node Name"] = df_alloc.apply(indent_row, axis=1)
+        if not df_stand.empty:
+            df_stand["Node Name"] = df_stand.apply(indent_row, axis=1)
+        
+        # Process data for hierarchical grid display.
         processed_alloc = process_data_for_ag_grid(df_alloc)
         processed_stand = process_data_for_ag_grid(df_stand)
         
-        # Define column definitions for ag-grid.
-        # Use 'agGroupCellRenderer' for the "Node Name" column to show the expand/collapse button.
+        # Define column definitions.
         column_defs = [
             {"field": "Node Name", "headerName": "Node Name", "cellRenderer": "agGroupCellRenderer"},
             {"field": "Node ID", "headerName": "Node ID"},
@@ -197,15 +223,18 @@ def update_dashboard(n_clicks, selected_cob, theme):
             {"field": "Total Change", "headerName": "Total Change"}
         ]
         
-        # Create two ag-grid components for the two tables.
+        # Create two ag-grid components.
+        # Note: We use the property "js_getDataPath" (instead of "getDataPath") inside dashGridOptions.
         grid_alloc = dag.AgGrid(
             id="grid-alloc",
             columnDefs=column_defs,
             rowData=processed_alloc,
-            treeData=True,
-            getDataPath="function(data) { return data.dataPath; }",
-            groupDefaultExpanded=1,
-            dashGridOptions={"enableSorting": True},
+            dashGridOptions={
+                "enableSorting": True,
+                "treeData": True,
+                "js_getDataPath": "function(data) { return data.dataPath; }",
+                "groupDefaultExpanded": 1
+            },
             style={"height": "400px", "width": "100%"}
         )
         
@@ -213,14 +242,16 @@ def update_dashboard(n_clicks, selected_cob, theme):
             id="grid-stand",
             columnDefs=column_defs,
             rowData=processed_stand,
-            treeData=True,
-            getDataPath="function(data) { return data.dataPath; }",
-            groupDefaultExpanded=1,
-            dashGridOptions={"enableSorting": True},
+            dashGridOptions={
+                "enableSorting": True,
+                "treeData": True,
+                "js_getDataPath": "function(data) { return data.dataPath; }",
+                "groupDefaultExpanded": 1
+            },
             style={"height": "400px", "width": "100%"}
         )
         
-        # Create a sunburst chart from the Sheet1_data_alloc data using Plotly Express.
+        # Create a sunburst chart from df_alloc using Plotly Express.
         fig = px.sunburst(
             df_alloc,
             path=['Node Level', 'Node Name'],
@@ -239,5 +270,8 @@ def update_dashboard(n_clicks, selected_cob, theme):
         ])
     return html.Div("Please select a COB date and click 'Show Dashboard'.", className="text-center")
 
+# ---------------------------
+# Run the App
+# ---------------------------
 if __name__ == "__main__":
     app.run_server(debug=True)
