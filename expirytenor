@@ -1,0 +1,59 @@
+import pandas as pd
+from openpyxl import load_workbook
+
+# File paths
+template_path = 'template.xlsx'
+shocks_path = 'shocks.xlsx'
+
+# Load the shocks workbook (openpyxl used for matrix-style sheet access)
+shocks_wb = load_workbook(shocks_path, data_only=True)
+
+# Load the template as a DataFrame
+template_df = pd.read_excel(template_path)
+
+# Helper: normalize labels (handle 1B → ON)
+def normalize(value):
+    val = str(value).strip().upper()
+    return 'ON' if val == '1B' else val
+
+# Function to extract shock from appropriate shocks sheet
+def get_shock(currency, expiry, tenor):
+    sheet_name = f"{normalize(currency)} SANV"
+    if sheet_name not in shocks_wb.sheetnames:
+        print(f"[Sheet Missing] '{sheet_name}' not found.")
+        return None
+
+    sheet = shocks_wb[sheet_name]
+
+    # Get normalized tenor headers (row 1)
+    tenors = [normalize(cell) for cell in next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))]
+
+    try:
+        col_index = tenors.index(normalize(tenor))
+    except ValueError:
+        print(f"[Tenor Not Found] '{tenor}' not in {sheet_name}. Tenors: {tenors}")
+        return None
+
+    # Search expiry match in column A (rows start from 2)
+    for row in sheet.iter_rows(min_row=2, values_only=True):
+        if normalize(row[0]) == normalize(expiry):
+            return row[col_index]
+
+    print(f"[Expiry Not Found] '{expiry}' not in {sheet_name}.")
+    return None
+
+# Loop through template rows and populate Shock
+shock_values = []
+for idx, row in template_df.iterrows():
+    currency = row['Currency']
+    expiry = row['Expiry']
+    tenor = row['Tenor']
+    shock = get_shock(currency, expiry, tenor)
+    shock_values.append(shock)
+
+# Add/overwrite Shock column
+template_df['Shock'] = shock_values
+
+# Overwrite original file
+template_df.to_excel(template_path, index=False)
+print("Shocks inserted successfully into template.xlsx.")
