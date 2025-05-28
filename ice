@@ -1,24 +1,31 @@
 import xlwings as xw
 
 def copy_range_with_format(src_range, dest_range):
-    # Copy values
-    dest_range.value = src_range.value
+    values = src_range.value
+    dest_range.value = values  # Copy values first
 
-    # Copy formatting cell-by-cell
-    for i in range(src_range.rows.count):
-        for j in range(src_range.columns.count):
-            src_cell = src_range[i, j]
-            dest_cell = dest_range[i, j]
-            dest_cell.api.Interior.Color = src_cell.api.Interior.Color  # background color
-            dest_cell.api.Font.Color = src_cell.api.Font.Color  # font color
-            dest_cell.api.Font.Bold = src_cell.api.Font.Bold
-            dest_cell.api.Font.Size = src_cell.api.Font.Size
-            dest_cell.api.Font.Name = src_cell.api.Font.Name
-            # Borders (optional)
-            for b in range(7, 13):  # Excel border indices 7–12
-                dest_cell.api.Borders(b).LineStyle = src_cell.api.Borders(b).LineStyle
-                dest_cell.api.Borders(b).Weight = src_cell.api.Borders(b).Weight
-                dest_cell.api.Borders(b).Color = src_cell.api.Borders(b).Color
+    rows = src_range.rows.count
+    cols = src_range.columns.count
+
+    for i in range(rows):
+        for j in range(cols):
+            try:
+                src_cell = src_range.cells[i * cols + j]
+                dest_cell = dest_range.cells[i * cols + j]
+
+                dest_cell.api.Interior.Color = src_cell.api.Interior.Color
+                dest_cell.api.Font.Color = src_cell.api.Font.Color
+                dest_cell.api.Font.Bold = src_cell.api.Font.Bold
+                dest_cell.api.Font.Size = src_cell.api.Font.Size
+                dest_cell.api.Font.Name = src_cell.api.Font.Name
+
+                for b in range(7, 13):  # Border indices
+                    dest_cell.api.Borders(b).LineStyle = src_cell.api.Borders(b).LineStyle
+                    dest_cell.api.Borders(b).Weight = src_cell.api.Borders(b).Weight
+                    dest_cell.api.Borders(b).Color = src_cell.api.Borders(b).Color
+
+            except Exception as e:
+                print(f"Formatting error at cell ({i},{j}): {e}")
 
 # Load source .xlsb file
 source_path = r"C:\path\to\ice_vectors.xlsb"
