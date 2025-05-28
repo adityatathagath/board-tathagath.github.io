@@ -1,0 +1,77 @@
+import xlwings as xw
+import os
+
+def copy_range_exact(src_range, dest_sheet, top_left_cell_address='A1'):
+    """
+    Copies a range with full formatting (not as image), using Excel COM methods.
+    """
+    try:
+        # Activate source and copy
+        src_sheet = src_range.sheet
+        src_sheet.activate()
+        src_range.api.Copy()
+
+        # Activate destination and select top-left cell
+        dest_sheet.activate()
+        dest_cell = dest_sheet.range(top_left_cell_address)
+        dest_cell.api.Select()
+
+        # Paste with all formatting (xlPasteAll = -4104)
+        dest_cell.api.Worksheet.Paste(dest_cell.api, -4104)
+
+    except Exception as e:
+        print(f"⚠️ Paste failed at {dest_sheet.name}:{top_left_cell_address} → {e}")
+
+# === File Paths ===
+source_path = r"C:\path\to\ice_vectors.xlsb"         # 🔁 Update this to your file location
+output_path = r"C:\path\to\output\DVaR_Output.xlsx"  # 🔁 Update this as needed
+
+# === Start Excel App ===
+app = xw.App(visible=False)  # Set True for debugging
+wb = app.books.open(source_path)
+summary = wb.sheets['summary']
+
+# === Refresh All Calculations ===
+app.calculate()
+
+# === Set VAR Type to DVaR ===
+summary.range('C3').value = "DVaR"
+
+# === Create New Output Workbook ===
+output_wb = xw.Book()
+output_wb.sheets[0].name = 'DVaR'
+
+# === Loop through P&L Rank: 1, 2, 3 ===
+for rank in range(1, 4):
+    print(f"⏳ Processing P&L Rank: {rank}")
+    summary.range('C2').value = rank
+    app.calculate()
+
+    if rank == 1:
+        # Copy AA14:BB54 → DVaR sheet
+        src_range1 = summary.range('AA14:BB54')
+        dest_sheet1 = output_wb.sheets['DVaR']
+        copy_range_exact(src_range1, dest_sheet1, 'A1')
+
+    # Copy B13:Y140 → DVaR PLx sheet
+    sheet_name = f"DVaR PL{rank}"
+    output_wb.sheets.add(name=sheet_name)
+    dest_sheet2 = output_wb.sheets[sheet_name]
+    src_range2 = summary.range('B13:Y140')
+    copy_range_exact(src_range2, dest_sheet2, 'A1')
+
+# === Save Final Output ===
+try:
+    output_dir = os.path.dirname(output_path)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    output_wb.save(output_path)
+    print(f"\n✅ File saved successfully at: {output_path}")
+except Exception as e:
+    print(f"❌ Failed to save file: {e}")
+
+# === Cleanup Excel ===
+output_wb.close()
+wb.close()
+app.quit()
