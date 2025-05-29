@@ -1,4 +1,4 @@
-Sub ExportDVaRWithFormatting()
+Sub ExportDVaRAndSVaRWithFeedback()
 
     Dim srcWB As Workbook
     Dim newWB As Workbook
@@ -7,6 +7,7 @@ Sub ExportDVaRWithFormatting()
     Dim icePrevWS As Worksheet
     Dim destWS As Worksheet
     Dim rank As Integer
+    Dim varType As Variant
     Dim rng1 As Range, rng2 As Range
     Dim savePath As String
 
@@ -19,58 +20,91 @@ Sub ExportDVaRWithFormatting()
     Set iceWS = srcWB.Sheets("ice")
     Set icePrevWS = srcWB.Sheets("ice_prev_cob")
 
-    ' Set the constant Var type
-    summaryWS.Range("C3").Value = "DVaR"
-
     ' Create new workbook
     Set newWB = Workbooks.Add(xlWBATWorksheet)
-    newWB.Sheets(1).Name = "DVaR"
+    newWB.Sheets(1).Name = "DVaR" ' Placeholder; real sheet will be overwritten below
 
-    ' Copy AA14:BB54 to "DVaR" sheet with formatting and values
-    Set rng1 = summaryWS.Range("AA14:BB54")
-    rng1.Copy
-    With newWB.Sheets("DVaR").Range("A1")
-        .PasteSpecial Paste:=xlPasteAllUsingSourceTheme
-        .PasteSpecial Paste:=xlPasteValues
-    End With
-    Application.CutCopyMode = False
+    ' Loop over both Var types
+    For Each varType In Array("DVaR", "SVaR")
 
-    ' Loop through P&L Rank 1 to 3
-    For rank = 1 To 3
+        summaryWS.Range("A1").Value = "Running " & varType
+        Application.StatusBar = "Running " & varType & " export..."
 
-        ' Set Rank
-        summaryWS.Range("C2").Value = rank
+        ' Set Var type
+        summaryWS.Range("C3").Value = varType
 
-        ' Refresh sheets in the correct order
-        icePrevWS.Calculate
-        iceWS.Calculate
-        summaryWS.Calculate
+        ' ---- Step 1: Copy AA14:BB54 to a new sheet named DVaR or SVaR ----
+        Application.StatusBar = "Copying " & varType & " summary data..."
+        Set rng1 = summaryWS.Range("AA14:BB54")
+        rng1.Copy
 
-        ' Copy B13:Y140 and paste to new sheet
-        Set rng2 = summaryWS.Range("B13:Y140")
-        rng2.Copy
-
-        ' Add new sheet and name it
-        Set destWS = newWB.Sheets.Add(After:=newWB.Sheets(newWB.Sheets.Count))
-        destWS.Name = "DVaR PL" & rank
+        ' Create summary sheet
+        On Error Resume Next
+        Set destWS = newWB.Sheets(varType)
+        If destWS Is Nothing Then
+            Set destWS = newWB.Sheets.Add(After:=newWB.Sheets(newWB.Sheets.Count))
+            destWS.Name = varType
+        End If
+        On Error GoTo 0
 
         With destWS.Range("A1")
-            .PasteSpecial Paste:=xlPasteAllUsingSourceTheme
-            .PasteSpecial Paste:=xlPasteValues
+            .PasteSpecial Paste:=xlPasteFormats
+            .PasteSpecial Paste:=xlPasteValuesAndNumberFormats
         End With
         Application.CutCopyMode = False
 
-    Next rank
+        ' ---- Step 2: Loop through P&L Ranks ----
+        For rank = 1 To 3
+            summaryWS.Range("A1").Value = "Running " & varType & " PL" & rank
+            Application.StatusBar = "Setting P&L Rank " & rank & " for " & varType
+
+            summaryWS.Range("C2").Value = rank
+
+            ' Recalculate sheets in strict order
+            Application.StatusBar = "Refreshing ice_prev_cob..."
+            icePrevWS.Calculate
+            DoEvents
+
+            Application.StatusBar = "Refreshing ice..."
+            iceWS.Calculate
+            DoEvents
+
+            Application.StatusBar = "Refreshing summary..."
+            summaryWS.Calculate
+            DoEvents
+
+            ' Copy B13:Y140 and paste into PL sheet
+            Application.StatusBar = "Copying data for " & varType & " PL" & rank
+            Set rng2 = summaryWS.Range("B13:Y140")
+            rng2.Copy
+
+            ' Create new sheet for each PL
+            Set destWS = newWB.Sheets.Add(After:=newWB.Sheets(newWB.Sheets.Count))
+            destWS.Name = varType & " PL" & rank
+
+            With destWS.Range("A1")
+                .PasteSpecial Paste:=xlPasteFormats
+                .PasteSpecial Paste:=xlPasteValuesAndNumberFormats
+            End With
+            Application.CutCopyMode = False
+
+        Next rank
+
+    Next varType
 
     ' Save the new workbook
-    savePath = srcWB.Path & "\DVaR_Export_" & Format(Now, "yyyymmdd_hhmmss") & ".xlsx"
+    savePath = srcWB.Path & "\" & "VaR_Export_" & Format(Now, "yyyymmdd_hhmmss") & ".xlsx"
     newWB.SaveAs Filename:=savePath, FileFormat:=xlOpenXMLWorkbook
 
     newWB.Close SaveChanges:=False
+    summaryWS.Range("A1").Value = "Export Completed"
+    Application.StatusBar = "Export completed and saved to: " & savePath
     MsgBox "Export completed and saved to:" & vbCrLf & savePath, vbInformation
 
+    ' Reset application settings
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
+    Application.StatusBar = False
     Application.Calculation = xlCalculationAutomatic
 
 End Sub
