@@ -1,0 +1,76 @@
+Sub ExportDVaRWithFormatting()
+
+    Dim srcWB As Workbook
+    Dim newWB As Workbook
+    Dim summaryWS As Worksheet
+    Dim iceWS As Worksheet
+    Dim icePrevWS As Worksheet
+    Dim destWS As Worksheet
+    Dim rank As Integer
+    Dim rng1 As Range, rng2 As Range
+    Dim savePath As String
+
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    Application.Calculation = xlCalculationManual
+
+    Set srcWB = ThisWorkbook
+    Set summaryWS = srcWB.Sheets("summary")
+    Set iceWS = srcWB.Sheets("ice")
+    Set icePrevWS = srcWB.Sheets("ice_prev_cob")
+
+    ' Set the constant Var type
+    summaryWS.Range("C3").Value = "DVaR"
+
+    ' Create new workbook
+    Set newWB = Workbooks.Add(xlWBATWorksheet)
+    newWB.Sheets(1).Name = "DVaR"
+
+    ' Copy AA14:BB54 to "DVaR" sheet with formatting and values
+    Set rng1 = summaryWS.Range("AA14:BB54")
+    rng1.Copy
+    With newWB.Sheets("DVaR").Range("A1")
+        .PasteSpecial Paste:=xlPasteAllUsingSourceTheme
+        .PasteSpecial Paste:=xlPasteValues
+    End With
+    Application.CutCopyMode = False
+
+    ' Loop through P&L Rank 1 to 3
+    For rank = 1 To 3
+
+        ' Set Rank
+        summaryWS.Range("C2").Value = rank
+
+        ' Refresh sheets in the correct order
+        icePrevWS.Calculate
+        iceWS.Calculate
+        summaryWS.Calculate
+
+        ' Copy B13:Y140 and paste to new sheet
+        Set rng2 = summaryWS.Range("B13:Y140")
+        rng2.Copy
+
+        ' Add new sheet and name it
+        Set destWS = newWB.Sheets.Add(After:=newWB.Sheets(newWB.Sheets.Count))
+        destWS.Name = "DVaR PL" & rank
+
+        With destWS.Range("A1")
+            .PasteSpecial Paste:=xlPasteAllUsingSourceTheme
+            .PasteSpecial Paste:=xlPasteValues
+        End With
+        Application.CutCopyMode = False
+
+    Next rank
+
+    ' Save the new workbook
+    savePath = srcWB.Path & "\DVaR_Export_" & Format(Now, "yyyymmdd_hhmmss") & ".xlsx"
+    newWB.SaveAs Filename:=savePath, FileFormat:=xlOpenXMLWorkbook
+
+    newWB.Close SaveChanges:=False
+    MsgBox "Export completed and saved to:" & vbCrLf & savePath, vbInformation
+
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    Application.Calculation = xlCalculationAutomatic
+
+End Sub
