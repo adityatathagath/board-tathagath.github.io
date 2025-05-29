@@ -1,4 +1,4 @@
-Sub ExportDVaRAndSVaRWithFeedback()
+Sub ExportDVaRAndSVaRWithFullRefresh()
 
     Dim srcWB As Workbook
     Dim newWB As Workbook
@@ -22,7 +22,7 @@ Sub ExportDVaRAndSVaRWithFeedback()
 
     ' Create new workbook
     Set newWB = Workbooks.Add(xlWBATWorksheet)
-    newWB.Sheets(1).Name = "DVaR" ' Placeholder; real sheet will be overwritten below
+    newWB.Sheets(1).Name = "DVaR" ' Placeholder
 
     ' Loop over both Var types
     For Each varType In Array("DVaR", "SVaR")
@@ -33,8 +33,17 @@ Sub ExportDVaRAndSVaRWithFeedback()
         ' Set Var type
         summaryWS.Range("C3").Value = varType
 
+        ' ---- Recalculate sheets before copying summary block ----
+        Application.StatusBar = "Refreshing sheets for " & varType & " block..."
+        icePrevWS.Calculate
+        DoEvents
+        iceWS.Calculate
+        DoEvents
+        summaryWS.Calculate
+        DoEvents
+
         ' ---- Step 1: Copy AA14:BB54 to a new sheet named DVaR or SVaR ----
-        Application.StatusBar = "Copying " & varType & " summary data..."
+        Application.StatusBar = "Copying " & varType & " summary block..."
         Set rng1 = summaryWS.Range("AA14:BB54")
         rng1.Copy
 
@@ -60,7 +69,7 @@ Sub ExportDVaRAndSVaRWithFeedback()
 
             summaryWS.Range("C2").Value = rank
 
-            ' Recalculate sheets in strict order
+            ' Recalculate in order again before each data pull
             Application.StatusBar = "Refreshing ice_prev_cob..."
             icePrevWS.Calculate
             DoEvents
