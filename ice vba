@@ -20,21 +20,23 @@ Sub ExportDVaRAndSVaRWithFullRefresh()
     Set iceWS = srcWB.Sheets("ice")
     Set icePrevWS = srcWB.Sheets("ice_prev_cob")
 
-    ' Create new workbook
-    Set newWB = Workbooks.Add(xlWBATWorksheet)
-    newWB.Sheets(1).Name = "DVaR" ' Placeholder
+    ' Create a completely new workbook
+    Set newWB = Workbooks.Add
+    ' Remove default sheet
+    Application.DisplayAlerts = False
+    Do While newWB.Sheets.Count > 0
+        newWB.Sheets(1).Delete
+    Loop
+    Application.DisplayAlerts = True
 
     ' Loop over both Var types
     For Each varType In Array("DVaR", "SVaR")
 
+        summaryWS.Range("C3").Value = varType ' Set Var
         summaryWS.Range("A1").Value = "Running " & varType
-        Application.StatusBar = "Running " & varType & " export..."
 
-        ' Set Var type
-        summaryWS.Range("C3").Value = varType
-
-        ' ---- Recalculate sheets before copying summary block ----
-        Application.StatusBar = "Refreshing sheets for " & varType & " block..."
+        ' ---- Refresh before copying summary block ----
+        Application.StatusBar = "Refreshing sheets for " & varType & " summary block..."
         icePrevWS.Calculate
         DoEvents
         iceWS.Calculate
@@ -42,19 +44,13 @@ Sub ExportDVaRAndSVaRWithFullRefresh()
         summaryWS.Calculate
         DoEvents
 
-        ' ---- Step 1: Copy AA14:BB54 to a new sheet named DVaR or SVaR ----
+        ' ---- Copy AA14:BB54 to main varType sheet ----
         Application.StatusBar = "Copying " & varType & " summary block..."
         Set rng1 = summaryWS.Range("AA14:BB54")
         rng1.Copy
 
-        ' Create summary sheet
-        On Error Resume Next
-        Set destWS = newWB.Sheets(varType)
-        If destWS Is Nothing Then
-            Set destWS = newWB.Sheets.Add(After:=newWB.Sheets(newWB.Sheets.Count))
-            destWS.Name = varType
-        End If
-        On Error GoTo 0
+        Set destWS = newWB.Sheets.Add(After:=newWB.Sheets(newWB.Sheets.Count))
+        destWS.Name = varType
 
         With destWS.Range("A1")
             .PasteSpecial Paste:=xlPasteFormats
@@ -62,32 +58,24 @@ Sub ExportDVaRAndSVaRWithFullRefresh()
         End With
         Application.CutCopyMode = False
 
-        ' ---- Step 2: Loop through P&L Ranks ----
+        ' ---- Loop over P&L Ranks ----
         For rank = 1 To 3
+            summaryWS.Range("C2").Value = rank ' Set P&L Rank
             summaryWS.Range("A1").Value = "Running " & varType & " PL" & rank
-            Application.StatusBar = "Setting P&L Rank " & rank & " for " & varType
 
-            summaryWS.Range("C2").Value = rank
-
-            ' Recalculate in order again before each data pull
-            Application.StatusBar = "Refreshing ice_prev_cob..."
+            ' Refresh again for each Rank
+            Application.StatusBar = "Refreshing for " & varType & " PL" & rank
             icePrevWS.Calculate
             DoEvents
-
-            Application.StatusBar = "Refreshing ice..."
             iceWS.Calculate
             DoEvents
-
-            Application.StatusBar = "Refreshing summary..."
             summaryWS.Calculate
             DoEvents
 
-            ' Copy B13:Y140 and paste into PL sheet
-            Application.StatusBar = "Copying data for " & varType & " PL" & rank
+            ' Copy PL block
             Set rng2 = summaryWS.Range("B13:Y140")
             rng2.Copy
 
-            ' Create new sheet for each PL
             Set destWS = newWB.Sheets.Add(After:=newWB.Sheets(newWB.Sheets.Count))
             destWS.Name = varType & " PL" & rank
 
@@ -96,24 +84,23 @@ Sub ExportDVaRAndSVaRWithFullRefresh()
                 .PasteSpecial Paste:=xlPasteValuesAndNumberFormats
             End With
             Application.CutCopyMode = False
-
         Next rank
 
     Next varType
 
-    ' Save the new workbook
+    ' Save final workbook
     savePath = srcWB.Path & "\" & "VaR_Export_" & Format(Now, "yyyymmdd_hhmmss") & ".xlsx"
     newWB.SaveAs Filename:=savePath, FileFormat:=xlOpenXMLWorkbook
 
     newWB.Close SaveChanges:=False
     summaryWS.Range("A1").Value = "Export Completed"
     Application.StatusBar = "Export completed and saved to: " & savePath
-    MsgBox "Export completed and saved to:" & vbCrLf & savePath, vbInformation
+    MsgBox "Export complete!" & vbCrLf & savePath, vbInformation
 
-    ' Reset application settings
-    Application.ScreenUpdating = True
-    Application.DisplayAlerts = True
-    Application.StatusBar = False
+    ' Reset Excel environment
     Application.Calculation = xlCalculationAutomatic
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+    Application.StatusBar = False
 
 End Sub
