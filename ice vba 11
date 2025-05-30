@@ -1,0 +1,112 @@
+Sub ExportDVaRAndSVaR_COB()
+
+    Dim srcWB As Workbook
+    Dim newWB As Workbook
+    Dim summaryWS As Worksheet
+    Dim iceWS As Worksheet
+    Dim icePrevWS As Worksheet
+    Dim destWS As Worksheet
+    Dim rank As Integer
+    Dim varType As Variant
+    Dim rng1 As Range, rng2 As Range
+    Dim savePath As String
+    Dim cobDate As Date
+    Dim cobFormatted As String
+    Dim ws As Worksheet
+
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    Application.Calculation = xlCalculationManual
+
+    Set srcWB = ThisWorkbook
+    Set summaryWS = srcWB.Sheets("summary")
+    Set iceWS = srcWB.Sheets("ice")
+    Set icePrevWS = srcWB.Sheets("ice_prev_cob")
+
+    ' Create a new workbook and delete default sheets
+    Set newWB = Workbooks.Add
+    For Each ws In newWB.Sheets
+        ws.Delete
+    Next ws
+
+    ' Loop over both Var types: DVaR and SVaR
+    For Each varType In Array("DVaR", "SVaR")
+
+        summaryWS.Range("C3").Value = varType
+        summaryWS.Range("A1").Value = "Running " & varType
+
+        ' Refresh sheets in proper order
+        Application.StatusBar = "Refreshing for " & varType & "..."
+        icePrevWS.Calculate: DoEvents
+        iceWS.Calculate: DoEvents
+        summaryWS.Calculate: DoEvents
+
+        ' Copy summary block AA14:BB54
+        Set rng1 = summaryWS.Range("AA14:BB54")
+        rng1.Copy
+
+        Set destWS = newWB.Sheets.Add(After:=newWB.Sheets(newWB.Sheets.Count))
+        destWS.Name = varType
+
+        With destWS.Range("A1")
+            .PasteSpecial Paste:=xlPasteFormats
+            .PasteSpecial Paste:=xlPasteValuesAndNumberFormats
+        End With
+
+        Application.CutCopyMode = False
+        destWS.Cells.EntireColumn.AutoFit
+        destWS.Range("A1").Select
+
+        ' Loop over P&L Ranks 1, 2, 3
+        For rank = 1 To 3
+            summaryWS.Range("C2").Value = rank
+            summaryWS.Range("A1").Value = "Running " & varType & " PL" & rank
+
+            Application.StatusBar = "Refreshing for " & varType & " PL" & rank & "..."
+            icePrevWS.Calculate: DoEvents
+            iceWS.Calculate: DoEvents
+            summaryWS.Calculate: DoEvents
+
+            Set rng2 = summaryWS.Range("B13:Y140")
+            rng2.Copy
+
+            Set destWS = newWB.Sheets.Add(After:=newWB.Sheets(newWB.Sheets.Count))
+            destWS.Name = varType & " PL" & rank
+
+            With destWS.Range("A1")
+                .PasteSpecial Paste:=xlPasteFormats
+                .PasteSpecial Paste:=xlPasteValuesAndNumberFormats
+            End With
+
+            Application.CutCopyMode = False
+            destWS.Cells.EntireColumn.AutoFit
+            destWS.Range("A1").Select
+        Next rank
+
+    Next varType
+
+    ' Final touch: autofit and select A1 in all sheets
+    For Each ws In newWB.Sheets
+        ws.Cells.EntireColumn.AutoFit
+        ws.Range("A1").Select
+    Next ws
+
+    ' Generate filename based on yesterday’s date
+    cobDate = Date - 1
+    cobFormatted = Format(cobDate, "DD MMM YYYY")
+    savePath = srcWB.Path & "\" & "Top tails DVaR and SVaR COB " & cobFormatted & ".xlsx"
+
+    newWB.SaveAs Filename:=savePath, FileFormat:=xlOpenXMLWorkbook
+    newWB.Close SaveChanges:=False
+
+    summaryWS.Range("A1").Value = "Export Completed"
+    Application.StatusBar = "Export completed and saved to: " & savePath
+    MsgBox "Export complete!" & vbCrLf & savePath, vbInformation
+
+    ' Reset settings
+    Application.Calculation = xlCalculationAutomatic
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+    Application.StatusBar = False
+
+End Sub
