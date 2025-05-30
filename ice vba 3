@@ -1,0 +1,101 @@
+Sub ExportDVaRAndSVaRTopTails()
+    Dim srcWB As Workbook
+    Dim newWB As Workbook
+    Dim destWS As Worksheet
+    Dim varType As String
+    Dim rank As Integer
+    Dim cobDate As Date
+    Dim cobFormatted As String
+    Dim savePath As String
+    Dim wsTemp As Worksheet
+    Dim i As Integer
+    Dim srcRange1 As Range, srcRange2 As Range
+    Dim destRange As Range
+    
+    Set srcWB = ThisWorkbook
+    
+    ' Create a new workbook
+    Set newWB = Workbooks.Add
+
+    ' Delete default Sheet1
+    Application.DisplayAlerts = False
+    Do While newWB.Sheets.Count > 0
+        newWB.Sheets(1).Delete
+    Loop
+    Application.DisplayAlerts = True
+
+    ' Disable screen updates and set to manual calc
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.StatusBar = "Starting export..."
+
+    ' Loop for both DVaR and SVaR
+    For Each varType In Array("DVaR", "SVaR")
+        ' Set Var type in summary
+        With srcWB.Sheets("summary")
+            .Range("C3").Value = varType
+        End With
+
+        ' Refresh order: ice_prev_cob → ice → summary
+        srcWB.Sheets("ice_prev_cob").Calculate
+        Application.CalculateUntilAsyncQueriesDone
+        Application.Wait Now + TimeValue("0:00:02")
+
+        srcWB.Sheets("ice").Calculate
+        Application.CalculateUntilAsyncQueriesDone
+        Application.Wait Now + TimeValue("0:00:02")
+
+        ' Copy AA14:BB54 for varType sheet
+        srcWB.Sheets("summary").Calculate
+        Application.CalculateUntilAsyncQueriesDone
+        Application.Wait Now + TimeValue("0:00:02")
+
+        Set destWS = newWB.Sheets.Add(After:=newWB.Sheets(newWB.Sheets.Count))
+        destWS.Name = varType
+
+        srcWB.Sheets("summary").Range("AA14:BB54").Copy
+        destWS.Range("A1").PasteSpecial Paste:=xlPasteAllUsingSourceTheme
+        destWS.Range("A1").PasteSpecial Paste:=xlPasteValues
+        Application.CutCopyMode = False
+
+        ' Auto-fit columns, select A1
+        destWS.Cells.EntireColumn.AutoFit
+        destWS.Range("A1").Select
+
+        ' Loop for P&L Rank 1 to 3
+        For rank = 1 To 3
+            srcWB.Sheets("summary").Range("C2").Value = rank
+
+            srcWB.Sheets("summary").Calculate
+            Application.CalculateUntilAsyncQueriesDone
+            Application.Wait Now + TimeValue("0:00:02")
+
+            Set destWS = newWB.Sheets.Add(After:=newWB.Sheets(newWB.Sheets.Count))
+            destWS.Name = varType & " PL" & rank
+
+            srcWB.Sheets("summary").Range("B13:Y140").Copy
+            destWS.Range("A1").PasteSpecial Paste:=xlPasteAllUsingSourceTheme
+            destWS.Range("A1").PasteSpecial Paste:=xlPasteValues
+            Application.CutCopyMode = False
+
+            destWS.Cells.EntireColumn.AutoFit
+            destWS.Range("A1").Select
+        Next rank
+    Next varType
+
+    ' Save file with yesterday's date
+    cobDate = Date - 1
+    cobFormatted = Format(cobDate, "DD MMM YYYY")
+    savePath = srcWB.Path & "\" & "Top tails DVaR and SVaR COB " & cobFormatted & ".xlsx"
+
+    Application.StatusBar = "Saving final output..."
+    newWB.SaveAs Filename:=savePath, FileFormat:=xlOpenXMLWorkbook
+    newWB.Close SaveChanges:=False
+
+    ' Cleanup
+    Application.StatusBar = False
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+
+    MsgBox "Export complete! File saved as:" & vbCrLf & savePath, vbInformation
+End Sub
