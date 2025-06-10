@@ -1,0 +1,256 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+from datetime import date, timedelta
+
+# --- Configuration ---
+# File paths for your Excel data
+DVAR_DATA_FILE = 'dvar_data.xlsx'
+RISK_FACTORS_PRICES_FILE = 'risk_factors_prices.xlsx'
+
+# Define thresholds for "Quiet Big Days" analysis
+# Broad market (e.g., rf3) daily change threshold (e.g., +/- 0.1%)
+MARKET_QUIET_THRESHOLD_PCT = 0.1
+# Macro P&L tail quantile (e.g., top/bottom 5%)
+PNL_TAIL_QUANTILE = 0.05
+# Name of your broad market proxy risk factor (from your rf columns)
+BROAD_MARKET_PROXY_NAME = 'rf3' # We'll use the returns of rf3
+
+
+# --- 1. Load Data from XLSX Files ---
+
+print("--- Loading Data from Excel Files ---")
+
+# Load DVaR Data (focusing on 'Macro' column for P&L)
+try:
+    df_dvar_macro = pd.read_excel(DVAR_DATA_FILE, parse_dates=['Date'], index_col='Date')
+    # Ensure 'Macro' column exists after loading
+    if 'Macro' not in df_dvar_macro.columns:
+        raise ValueError(f"'{DVAR_DATA_FILE}' must contain a 'Macro' column for P&L.")
+    print(f"Successfully loaded {DVAR_DATA_FILE}.")
+except FileNotFoundError:
+    print(f"Error: {DVAR_DATA_FILE} not found. Please ensure the file exists in the script's directory.")
+    print("Exiting script.")
+    exit() # Exit if crucial file is missing
+except ValueError as e:
+    print(f"Error processing {DVAR_DATA_FILE}: {e}")
+    print("Exiting script.")
+    exit()
+
+# Load Risk Factors Price Time Series (rf1 to rf5)
+try:
+    df_rf_prices = pd.read_excel(RISK_FACTORS_PRICES_FILE, parse_dates=['Date'], index_col='Date')
+    # Ensure all expected risk factor columns exist
+    expected_rf_cols = ['rf1', 'rf2', 'rf3', 'rf4', 'rf5']
+    if not all(col in df_rf_prices.columns for col in expected_rf_cols):
+        missing_cols = [col for col in expected_rf_cols if col not in df_rf_prices.columns]
+        raise ValueError(f"'{RISK_FACTORS_PRICES_FILE}' must contain columns: {missing_cols}")
+    print(f"Successfully loaded {RISK_FACTORS_PRICES_FILE}.")
+except FileNotFoundError:
+    print(f"Error: {RISK_FACTORS_PRICES_FILE} not found. Please ensure the file exists in the script's directory.")
+    print("Exiting script.")
+    exit() # Exit if crucial file is missing
+except ValueError as e:
+    print(f"Error processing {RISK_FACTORS_PRICES_FILE}: {e}")
+    print("Exiting script.")
+    exit()
+
+# --- Calculate Risk Factor Returns ---
+# Assuming 'rf2' is a yield, calculate basis point changes. Others are percentage returns.
+df_rf_returns = pd.DataFrame(index=df_rf_prices.index)
+for col in df_rf_prices.columns:
+    if col == 'rf2': # Specific handling for rf2 as a yield proxy (e.g., 0.01 change is 1 basis point)
+        df_rf_returns[col] = df_rf_prices[col].diff() * 100 # Basis Points change
+    else: # Default to percentage returns for other risk factors
+        df_rf_returns[col] = df_rf_prices[col].pct_change() * 100 # Percentage returns
+
+# Drop the first row which will have NaNs due to diff/pct_change calculation
+df_rf_returns = df_rf_returns.dropna()
+
+print("\n--- Data Loaded and Prepared ---")
+print("Macro P&L (from DVaR structure) Head:")
+# Display using .to_string() for better formatting in console output
+print(df_dvar_macro.head().to_string())
+print("\nRisk Factor Returns Head:")
+print(df_rf_returns.head().to_string())
+
+# Check if dataframes are empty after loading/processing
+if df_dvar_macro.empty or df_rf_returns.empty:
+    print("\nError: One or both dataframes are empty after loading/processing. Please check your Excel files and data.")
+    exit()
+
+print(f"\nData Period: {df_dvar_macro.index.min().strftime('%d-%m-%Y')} to {df_dvar_macro.index.max().strftime('%d-%m-%Y')}")
+
+
+# --- 2. Data Merging/Alignment ---
+print("\n--- Merging Data ---")
+# Merge the 'Macro' P&L column with the Risk Factor Returns on their common date index.
+# Using 'inner' join ensures we only analyze dates present in both datasets.
+df_combined = pd.merge(df_dvar_macro[['Macro']], df_rf_returns, left_index=True, right_index=True, how='inner')
+
+# Identify your risk factor return columns dynamically from the merged dataframe.
+risk_factor_columns = [col for col in df_rf_returns.columns if col in df_combined.columns]
+
+# Ensure we have enough data after merging
+if len(df_combined) < 2:
+    print("\nError: Not enough common dates found after merging Macro P&L and Risk Factor Returns. Ensure dates align.")
+    exit()
+
+print("\nCombined Data Head (Macro P&L and Risk Factor Returns):")
+print(df_combined.head().to_string())
+print(f"Combined data has {len(df_combined)} rows.")
+
+
+# --- 3. Implement Visualizations and Analysis ---
+
+# Define P&L thresholds for highlighting "tail days" (e.g., top/bottom 5% of Macro P&L).
+pnl_threshold_upper = df_combined['Macro'].quantile(1 - PNL_TAIL_QUANTILE)
+pnl_threshold_lower = df_combined['Macro'].quantile(PNL_TAIL_QUANTILE)
+
+#### 3.1. Time Series Plots: Risk Factor Movements vs. Macro P&L Tail
+print("\n--- 3.1 Time Series Plots: Risk Factor Movements vs. Macro P&L Tail ---")
+
+# Calculate the total number of subplots needed: 1 for Macro P&L + number of risk factors.
+num_plots = len(risk_factor_columns) + 1
+# Create a figure and a set of subplots, sharing the x-axis for easy comparison across time.
+fig, axes = plt.subplots(num_plots, 1, figsize=(15, 3 * num_plots), sharex=True)
+
+# Plot Macro P&L in the top subplot (axes[0])
+ax1 = axes[0]
+df_combined['Macro'].plot(ax=ax1, color='purple', linewidth=1.5, label='Macro P&L')
+# Add horizontal lines to indicate the P&L tail thresholds.
+ax1.axhline(pnl_threshold_upper, color='red', linestyle='--', alpha=0.7, label=f'Macro P&L Upper Tail ({100*(1-PNL_TAIL_QUANTILE):.0f}%)')
+ax1.axhline(pnl_threshold_lower, color='red', linestyle='--', alpha=0.7, label=f'Macro P&L Lower Tail ({100*PNL_TAIL_QUANTILE:.0f}%)')
+ax1.set_title('Macro Business P&L and Risk Factor Returns Over 260 Days')
+ax1.set_ylabel('P&L')
+ax1.legend(loc='upper left')
+ax1.grid(True, linestyle=':', alpha=0.6)
+ax1.tick_params(axis='x', labelbottom=False) # Hide x-labels for the top plot.
+
+# Plot each Risk Factor's returns in subsequent subplots
+for i, rf_col in enumerate(risk_factor_columns):
+    ax = axes[i + 1] # Get the current subplot axis for the risk factor.
+    df_combined[rf_col].plot(ax=ax, linewidth=1, label=rf_col)
+    # Determine the unit for the y-axis label based on the risk factor name (e.g., bps for rf2).
+    unit = ' (bps)' if rf_col == 'rf2' else ' (%)'
+    ax.set_ylabel(f'{rf_col}{unit}')
+    ax.legend(loc='upper left')
+    ax.grid(True, linestyle=':', alpha=0.6)
+    if i < len(risk_factor_columns) - 1: # Hide x-labels for all but the very last subplot.
+        ax.tick_params(axis='x', labelbottom=False)
+    else: # For the last subplot, display x-axis labels (dates).
+        ax.set_xlabel('Date (DD-MM-YYYY)')
+        # Format x-axis ticks to DD-MM-YYYY for clarity.
+        ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: pd.to_datetime(x, unit='D').strftime('%d-%m-%Y')))
+        plt.xticks(rotation=45, ha='right') # Rotate dates for better readability.
+
+plt.tight_layout() # Adjust subplot parameters for a tight layout.
+plt.show() # Display the plots.
+
+print("\n--- Insight: This plot allows you to visually identify days when large Macro P&L moves occurred and see which specific risk factors contributed to those movements. It also helps spot significant risk factor movements on days with relatively small overall P&L changes (hidden risk). ---")
+
+
+#### 3.2. Histograms/Density Plots: Distribution of Risk Factor Moves
+print("\n--- 3.2 Histograms/Density Plots ---")
+
+# Determine grid layout for histograms.
+num_cols = 3
+num_rows = int(np.ceil(len(risk_factor_columns) / num_cols))
+plt.figure(figsize=(num_cols * 5, num_rows * 4)) # Dynamically set figure size.
+for i, rf_col in enumerate(risk_factor_columns):
+    plt.subplot(num_rows, num_cols, i + 1) # Create subplot for each risk factor.
+    sns.histplot(df_combined[rf_col].dropna(), kde=True, bins=30, color='skyblue') # Plot histogram with KDE.
+    plt.title(f'Distribution of {rf_col} Movements')
+    unit = ' (bps)' if rf_col == 'rf2' else ' (%)'
+    plt.xlabel(f'Daily Movement{unit}')
+    plt.ylabel('Frequency')
+    plt.grid(True, linestyle=':', alpha=0.6)
+plt.tight_layout()
+plt.show()
+
+print("\n--- Insight: These histograms show the frequency of different magnitudes of daily movements for each risk factor. 'Fat tails' in these distributions indicate that extreme movements occur more often than would be expected in a normal distribution, signaling higher risk. ---")
+
+
+#### 3.3. Scatter Plots: Risk Factor Moves vs. Macro P&L Magnitude
+print("\n--- 3.3 Scatter Plots ---")
+
+# Determine grid layout for scatter plots.
+num_cols = 3
+num_rows = int(np.ceil(len(risk_factor_columns) / num_cols))
+plt.figure(figsize=(num_cols * 5, num_rows * 4))
+for i, rf_col in enumerate(risk_factor_columns):
+    plt.subplot(num_rows, num_cols, i + 1) # Create subplot for each risk factor.
+    sns.scatterplot(x=df_combined[rf_col], y=df_combined['Macro'], alpha=0.6, color='blue') # Plot scatter.
+    plt.title(f'{rf_col} Movements vs. Macro P&L')
+    unit = ' (bps)' if rf_col == 'rf2' else ' (%)'
+    plt.xlabel(f'{rf_col}{unit}')
+    plt.ylabel('Macro P&L')
+    plt.grid(True, linestyle=':', alpha=0.6)
+plt.tight_layout()
+plt.show()
+
+print("\n--- Insight: Scatter plots help visualize the direct relationship between individual risk factor movements and your Macro P&L. They can quickly reveal if a risk factor tends to drive large P&L changes (linear correlation) or if its impact is more complex. ---")
+
+
+#### 3.4. Correlation Matrix/Heatmap: Relationships Among Risk Factors
+print("\n--- 3.4 Correlation Matrix/Heatmap ---")
+
+# Create a copy of the relevant columns for correlation calculation, including 'Macro' P&L.
+correlation_data = df_combined[['Macro'] + risk_factor_columns].copy()
+corr_matrix = correlation_data.corr() # Calculate the pairwise correlation matrix.
+
+plt.figure(figsize=(10, 8)) # Set figure size for the heatmap.
+sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt=".2f", linewidths=.5) # Plot heatmap.
+plt.title('Correlation Matrix of Risk Factors and Macro P&L')
+plt.show()
+
+print("\n--- Insight: The correlation heatmap shows how strongly different risk factors (and Macro P&L) move together. High absolute correlation values (close to 1 or -1) indicate stronger relationships. Positive values mean they tend to move in the same direction, while negative values mean they tend to move in opposite directions. This is key for understanding diversification or concentration of risk. ---")
+
+
+#### 3.5. Conditional Analysis: "Big Days when Market Doesn't Move Much"
+print("\n--- 3.5 Conditional Analysis: 'Big Days when Market Doesn't Move Much' ---")
+
+# Filter the combined data for days that meet both criteria:
+# 1. Broad market proxy (rf3) has absolute daily return less than or equal to MARKET_QUIET_THRESHOLD_PCT.
+# 2. Macro P&L falls into its defined upper or lower tail (top/bottom PNL_TAIL_QUANTILE).
+quiet_big_days_df = df_combined[
+    (df_combined[BROAD_MARKET_PROXY_NAME].abs() <= MARKET_QUIET_THRESHOLD_PCT) &
+    ((df_combined['Macro'] >= pnl_threshold_upper) | (df_combined['Macro'] <= pnl_threshold_lower))
+].copy() # Use .copy() to avoid SettingWithCopyWarning for future operations.
+
+print(f"\nFound {len(quiet_big_days_df)} 'Quiet Big Days' (Broad Market Proxy '{BROAD_MARKET_PROXY_NAME}' Change <= +/- {MARKET_QUIET_THRESHOLD_PCT}%, Macro P&L in top/bottom {100*PNL_TAIL_QUANTILE:.0f}% tail).")
+
+if not quiet_big_days_df.empty:
+    print("\nDetails of 'Quiet Big Days':")
+    # Display Macro P&L and risk factor returns for these specific days, sorted by Macro P&L.
+    # Format date index for clearer printing in the console.
+    quiet_big_days_display = quiet_big_days_df[['Macro'] + risk_factor_columns].copy()
+    quiet_big_days_display.index = quiet_big_days_display.index.strftime('%d-%m-%Y')
+    print(quiet_big_days_display.sort_values(by='Macro', ascending=False).to_string())
+
+    # Visualize risk factor movements specifically on these "Quiet Big Days".
+    plt.figure(figsize=(14, 7))
+    # Ensure only numeric columns are selected for plotting.
+    numeric_quiet_big_days = quiet_big_days_df[risk_factor_columns]
+    if not numeric_quiet_big_days.empty:
+         sns.lineplot(data=numeric_quiet_big_days, markers=True, dashes=False)
+         plt.title(f'Risk Factor Movements on "Quiet Big Days" (Broad Market: {BROAD_MARKET_PROXY_NAME} <= {MARKET_QUIET_THRESHOLD_PCT}%)')
+         plt.xlabel('Date (DD-MM-YYYY)')
+         plt.ylabel('Daily Movement (%) / (bps)')
+         plt.xticks(rotation=45, ha='right')
+         # Format x-axis ticks for quiet_big_days_df to DD-MM-YYYY.
+         plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: pd.to_datetime(x, unit='D').strftime('%d-%m-%Y')))
+         plt.legend(title='Risk Factor', bbox_to_anchor=(1.05, 1), loc='upper left')
+         plt.grid(True, linestyle=':', alpha=0.6)
+         plt.tight_layout()
+         plt.show()
+    else:
+        print("No numeric data to plot for 'Quiet Big Days' after filtering (this is unexpected if the DataFrame is not empty).")
+
+    print("\n--- Insight: On these 'Quiet Big Days', observe which specific risk factors had significant movements, even though the overall market (represented by rf3) was calm. These movements are often the key drivers of your Macro P&L tail, revealing exposures not apparent from headline market moves, which is precisely what the request aims to uncover. ---")
+
+else:
+    print("\nNo 'Quiet Big Days' found with the current thresholds. Consider adjusting `MARKET_QUIET_THRESHOLD_PCT` or `PNL_TAIL_QUANTILE` if you expect to see such days, or verify your Excel data content.")
+
+print("\n--- Analysis Complete ---")
