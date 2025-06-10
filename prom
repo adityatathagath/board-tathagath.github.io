@@ -1,51 +1,11 @@
-Ah, my apologies for the misunderstanding! You're looking for a prompt to give to GitLab Duo AI so it can generate the Python code for you, rather than me providing the code directly. That's a clever way to leverage your internal tools!
-Here's a detailed prompt designed for an AI assistant like GitLab Duo, structured to give it all the necessary context and requirements:
-GitLab Duo AI Prompt for Risk Factor Analysis and Visualization
-You are an expert Python data analyst specializing in financial risk. Your task is to generate a complete, self-contained Python script to analyze and visualize daily risk factor movements against actual business P&L tails.
-Here's the context and specific requirements:
-1. Objective:
-The primary goal is to understand what kind of underlying risk is running on days where the overall market appears calm but the business experiences significant P&L "tail" events. The analysis should cover a 260-day historical period.
-2. Data Availability (Assume Synthetic Data Generation):
- * Crucially, do NOT attempt to read from external files (e.g., CSVs). Instead, generate synthetic (dummy) data directly within the Python script for both the "Actual P&L" and "Risk Factor Prices."
- * The synthetic data should cover 260 business days.
- * Actual P&L: Representing the daily P&L of a macro business. It should simulate typical daily fluctuations with occasional, larger "tail" events (both positive and negative).
- * Risk Factor Prices: Generate daily price time series for at least 5 relevant macro risk factors. Good examples include:
-   * A major currency pair (e.g., USD/JPY)
-   * A key government bond yield (e.g., US 10-year yield)
-   * A major equity index (e.g., S&P 500) - this will serve as the broad market proxy
-   * A key commodity (e.g., WTI Crude)
-   * Another major currency pair (e.g., EUR/USD)
- * Calculate daily returns for these risk factors. For yields, calculate basis point changes instead of percentage changes.
-3. Required Analysis and Visualizations:
-The script should generate the following using pandas, matplotlib, and seaborn:
- * Time Series Plots (Risk Factors vs. Actual P&L Tail):
-   * One figure with multiple subplots.
-   * The top subplot should show the Actual P&L over time. Clearly mark (e.g., with horizontal lines) the upper and lower 5th percentile P&L thresholds to highlight "tail" events.
-   * Below the P&L plot, have separate subplots for the daily returns/changes of each of the 5 risk factors.
-   * All subplots must share the same time (x) axis.
-   * Title and labels should be clear.
- * Histograms/Density Plots:
-   * For each of the 5 risk factors, display a histogram (with KDE overlay) of its daily returns/changes.
-   * Use appropriate titles and axis labels.
- * Scatter Plots (Risk Factors vs. Actual P&L Magnitude):
-   * For each of the 5 risk factors, create a scatter plot.
-   * X-axis: Daily return/change of the risk factor.
-   * Y-axis: Actual P&L.
-   * Include appropriate titles and labels.
- * Correlation Matrix/Heatmap:
-   * Generate a heatmap showing the pairwise correlations between the Actual P&L and all 5 risk factor returns.
-   * Annotate the heatmap with correlation coefficients.
- * Conditional Analysis: "Quiet Big Days" (Crucial for the objective):
-   * Define "Quiet Day": The absolute daily return of the broad market proxy (e.g., S&P 500) is less than or equal to 0.1%.
-   * Define "Big Day": The Actual P&L falls into the top 5% or bottom 5% of its historical distribution.
-   * Filter the data to identify days that meet both "Quiet Day" AND "Big Day" criteria.
-   * Print a summary of these "Quiet Big Days," showing their dates, Actual P&L, and the movements of all 5 risk factors on those specific days.
-   * Optional Visualization: If there are a significant number of "Quiet Big Days," consider generating a separate time series plot showing only the risk factor movements on those specific days to visually highlight the drivers.
-4. Code Structure & Best Practices:
- * Self-contained: The entire solution must be in a single Python script.
- * Include all necessary import statements at the beginning.
- * Use clear comments to explain different sections of the code.
- * Ensure proper plot titles, labels, and legends.
- * Make plot sizes reasonable for readability.
- * Use plt.show() after each plot or group of plots to display them.
-This prompt is detailed enough that GitLab Duo AI should be able to generate a robust and accurate script for your needs!
+I currently send out daily DVaR and SVaR tail data for the Macro business, along with sub-businesses like Rates, FX, and EM Macro. Now there’s an ask to include additional context showing the Day-over-Day (DoD) movement of key risk factors versus their tail contributions.
+
+I already have the following data for ~260 trading days:
+	•	Top DVaR/SVaR tail contributors (by risk factor)
+	•	Time series of risk factor prices
+	•	Daily returns for these risk factors
+
+Can you help me clearly understand what exactly this new ask is trying to achieve?
+Also, given the data I have, what is the best way to visualize or report this comparison of price movements vs tail risks?
+I want to highlight cases where tail risks appear large even when market moves are small, to help the team understand position-driven risks or hidden sensitivities.
+Please suggest a structured approach with the best chart types, analysis techniques, and reporting format I can use.
