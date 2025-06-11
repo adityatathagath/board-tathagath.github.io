@@ -42,9 +42,9 @@ BARCLAYS_COLOR_PALETTE = [
     '#28a745',  # Green for positive changes
 ]
 
-# --- Data Storage (for simplicity, storing in memory for now) ---
-# In a real app, you might use a database or more persistent storage
+# --- Data Storage and Caching ---
 processed_data_store = {} # Stores results of calculate_var_tails
+processed_data_loaded_flag = False # Flag to indicate if data has been loaded and processed
 
 # --- Helper Functions (Adapted from Streamlit app) ---
 
@@ -70,22 +70,26 @@ def load_data_backend(file_path):
         raise FileNotFoundError(f"Excel file not found at: {file_path}")
 
     # Use a single file handle for all sheets to avoid re-opening
+    # Using pd.ExcelFile context manager is more robust
     with pd.ExcelFile(file_path) as xls:
         for sheet_name in sheets_to_load:
+            # Added more robust error handling for each sheet's header parsing
             try:
                 # Read the first two rows to get dates and column names
-                raw_df_header_dates = pd.read_excel(xls, sheet_name=sheet_name, header=None, nrows=2)
+                # It's better to read data directly via pd.read_excel if pd.ExcelFile causes issues
+                # with header=None and nrows=2
+                # Re-opening with pd.read_excel per sheet is safer if ExcelFile is buggy with headers
+                df_temp = pd.read_excel(xls, sheet_name=sheet_name, header=None, nrows=2)
                 
-                if raw_df_header_dates.empty:
-                    raise ValueError(f"Sheet '{sheet_name}' appears to be empty or could not be read.")
-                if len(raw_df_header_dates) < 2:
-                    raise ValueError(f"Sheet '{sheet_name}' has fewer than 2 header rows. "
-                                     "Expected first row for dates, second for column names.")
+                if df_temp.empty:
+                    raise ValueError(f"Sheet '{sheet_name}' is empty or could not be read.")
+                if len(df_temp) < 2:
+                    raise ValueError(f"Sheet '{sheet_name}' has fewer than 2 rows (expected dates in row 1, headers in row 2). Found {len(df_temp)} rows.")
 
-                dates_row = raw_df_header_dates.iloc[0]
-                column_names_row = raw_df_header_dates.iloc[1]
+                dates_row = df_temp.iloc[0]
+                column_names_row = df_temp.iloc[1]
 
-                # Read the actual data, skipping the first two rows
+                # Read the actual data, skipping the first two rows, using the same ExcelFile object
                 df = pd.read_excel(xls, sheet_name=sheet_name, header=None, skiprows=2)
                 df.columns = column_names_row # Assign the second row as column headers
                 
@@ -114,7 +118,7 @@ def load_data_backend(file_path):
                 date_mappings[sheet_name] = pnl_date_map
 
             except Exception as e:
-                raise Exception(f"Error loading data from sheet '{sheet_name}': {e}")
+                raise Exception(f"Error processing sheet '{sheet_name}': {e}")
     
     return data_frames, date_mappings
 
@@ -228,7 +232,7 @@ def calculate_var_tails_backend(df, pnl_date_map, sheet_type="current", var_type
            macro_var_df, \
            df_filtered_var_type
 
-# --- Bokeh Plotting Functions ---
+# --- Bokeh Plotting Functions (remain the same as they operate on DataFrames) ---
 
 def create_dvar_trends_bokeh_plot(df, title, y_column, legend_title="Type"):
     """Generates a Bokeh line chart for DVaR trends."""
@@ -248,16 +252,20 @@ def create_dvar_trends_bokeh_plot(df, title, y_column, legend_title="Type"):
     )
 
     sheet_types = df['Sheet_Type'].unique()
-    colors = Category10[len(sheet_types)] if len(sheet_types) <= 10 else Category20[len(sheet_types)]
+    
+    # Use BARCLAYS_COLOR_PALETTE directly
+    colors = BARCLAYS_COLOR_PALETTE 
 
     for i, sheet_type in enumerate(sheet_types):
         view = ColumnDataSource(df[df['Sheet_Type'] == sheet_type])
+        # Ensure that the index is within the bounds of BARCLAYS_COLOR_PALETTE
+        color_index = i % len(colors)
         p.line(
             x='Date', 
             y=y_column, 
             source=view, 
             legend_label=sheet_type, 
-            line_color=colors[i % len(colors)],
+            line_color=colors[color_index],
             line_width=2
         )
         p.circle(
@@ -265,7 +273,7 @@ def create_dvar_trends_bokeh_plot(df, title, y_column, legend_title="Type"):
             y=y_column, 
             source=view, 
             size=6, 
-            color=colors[i % len(colors)], 
+            color=colors[color_index], 
             alpha=0.6,
             legend_label=sheet_type
         )
@@ -293,8 +301,15 @@ def create_dvar_trends_bokeh_plot(df, title, y_column, legend_title="Type"):
 def index():
     return render_template('index.html')
 
-@app.route('/process_data', methods=['POST']) # Renamed route from /process_excel
+@app.route('/process_data', methods=['POST'])
 def process_data():
+    global processed_data_loaded_flag # Declare global to modify it
+    global processed_data_store # Declare global to modify it
+
+    if processed_data_loaded_flag:
+        # Data already loaded and cached, return success
+        return jsonify({'success': True, 'message': 'Data already processed from cache.', 'key_metrics': get_key_metrics_from_store()}), 200
+
     try:
         # Directly load from pre-defined path
         data_sheets, date_mappings = load_data_backend(EXCEL_FILE_PATH)
@@ -338,7 +353,7 @@ def process_data():
                                         DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
                                         SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
 
-        # Store processed data in a global dictionary (in-memory for this example)
+        # Store processed data in the global dictionary
         processed_data_store['macro_dvar_curr'] = macro_dvar_curr
         processed_data_store['macro_dvar_prev'] = macro_dvar_prev
         processed_data_store['fx_dvar_curr'] = fx_dvar_curr
@@ -349,31 +364,42 @@ def process_data():
         processed_data_store['em_macro_dvar_prev'] = em_macro_dvar_prev
         processed_data_store['macro_svar_curr'] = macro_svar_curr
         processed_data_store['macro_svar_prev'] = macro_svar_prev
+        
+        processed_data_loaded_flag = True # Set flag to true as data is now processed
 
         # Prepare data for "Lowest Metrics" cards
-        lowest_dvar_row = macro_dvar_curr.nsmallest(1, 'Macro_DVaR_Value').iloc[0] if not macro_dvar_curr.empty else None
-        lowest_svar_row = macro_svar_curr.nsmallest(1, 'Macro_SVaR_Value').iloc[0] if not macro_svar_curr.empty else None
-
-        key_metrics = {
-            'lowest_dvar': {
-                'value': f"{lowest_dvar_row['Macro_DVaR_Value']:,.2f}",
-                'date': lowest_dvar_row['Date'].strftime('%d-%m-%Y'),
-                'pnl_vector': lowest_dvar_row['Pnl_Vector_Name']
-            } if lowest_dvar_row is not None and 'Macro_DVaR_Value' in lowest_dvar_row else None,
-            'lowest_svar': {
-                'value': f"{lowest_svar_row['Macro_SVaR_Value']:,.2f}",
-                'date': lowest_svar_row['Date'].strftime('%d-%m-%Y'),
-                'pnl_vector': lowest_svar_row['Pnl_Vector_Name']
-            } if lowest_svar_row is not None and 'Macro_SVaR_Value' in lowest_svar_row else None,
-        }
+        key_metrics = get_key_metrics_from_store()
 
         return jsonify({'success': True, 'message': 'Data processed successfully', 'key_metrics': key_metrics}), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+def get_key_metrics_from_store():
+    """Helper to extract lowest metrics from the processed_data_store."""
+    macro_dvar_curr = processed_data_store.get('macro_dvar_curr', pd.DataFrame())
+    macro_svar_curr = processed_data_store.get('macro_svar_curr', pd.DataFrame())
+
+    lowest_dvar_row = macro_dvar_curr.nsmallest(1, 'Macro_DVaR_Value').iloc[0] if not macro_dvar_curr.empty else None
+    lowest_svar_row = macro_svar_curr.nsmallest(1, 'Macro_SVaR_Value').iloc[0] if not macro_svar_curr.empty else None
+
+    return {
+        'lowest_dvar': {
+            'value': f"{lowest_dvar_row['Macro_DVaR_Value']:,.2f}",
+            'date': lowest_dvar_row['Date'].strftime('%d-%m-%Y'),
+            'pnl_vector': lowest_dvar_row['Pnl_Vector_Name']
+        } if lowest_dvar_row is not None and 'Macro_DVaR_Value' in lowest_dvar_row else None,
+        'lowest_svar': {
+            'value': f"{lowest_svar_row['Macro_SVaR_Value']:,.2f}",
+            'date': lowest_svar_row['Date'].strftime('%d-%m-%Y'),
+            'pnl_vector': lowest_svar_row['Pnl_Vector_Name']
+        } if lowest_svar_row is not None and 'Macro_SVaR_Value' in lowest_svar_row else None,
+    }
+
+
 @app.route('/get_top_bottom_tails', methods=['GET'])
 def get_top_bottom_tails():
+    # Retrieve from cache
     macro_dvar_curr = processed_data_store.get('macro_dvar_curr', pd.DataFrame())
     macro_dvar_prev = processed_data_store.get('macro_dvar_prev', pd.DataFrame())
     fx_dvar_curr = processed_data_store.get('fx_dvar_curr', pd.DataFrame())
@@ -439,7 +465,6 @@ def get_top_bottom_tails():
     top_20_positive_aggrid = final_display_df.nlargest(min(20, len(final_display_df)), 'Macro_DVaR_Value_Current', keep='all')
     top_20_negative_aggrid = final_display_df.nsmallest(min(20, len(final_display_df)), 'Macro_DVaR_Value_Current', keep='all')
 
-    # Convert dates to string for JSON serialization
     top_20_positive_aggrid['Date'] = top_20_positive_aggrid['Date'].dt.strftime('%Y-%m-%d')
     top_20_negative_aggrid['Date'] = top_20_negative_aggrid['Date'].dt.strftime('%Y-%m-%d')
 
@@ -475,16 +500,20 @@ def get_dvar_trends_plot():
 def static_files(filename):
     return send_from_directory('static', filename)
 
-# Route to serve JavaScript files from the 'static/js' folder specifically
-@app.route('/static/js/<path:filename>')
-def serve_js(filename):
-    return send_from_directory(os.path.join(app.root_path, 'static', 'js'), filename)
-
-# Route to serve CSS files from the 'static/css' folder specifically
-@app.route('/static/css/<path:filename>')
-def serve_css(filename):
-    return send_from_directory(os.path.join(app.root_path, 'static', 'css'), filename)
-
+# Initial data processing on Flask startup/first request
+@app.before_first_request
+def initialize_data():
+    global processed_data_loaded_flag
+    if not processed_data_loaded_flag:
+        try:
+            # Simulate a POST request to /process_data to trigger loading
+            with app.test_request_context('/process_data', method='POST'):
+                response = app.full_dispatch_request()
+                if response.status_code != 200:
+                    print(f"Error during initial data load: {response.get_data(as_text=True)}")
+                    # Optionally, log this error more persistently
+        except Exception as e:
+            print(f"Unhandled exception during initial data load: {e}")
 
 if __name__ == '__main__':
     # Create the 'data' directory if it doesn't exist
