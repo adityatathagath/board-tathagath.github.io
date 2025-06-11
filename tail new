@@ -1,331 +1,326 @@
 import streamlit as st
 import pandas as pd
-import altair as alt
-import io
 import numpy as np
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
+import altair as alt
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+import re
+from functools import reduce
 
-# --- Configuration (UPDATED) ---
-CURRENT_DAY_SHEET_NAME = "DVaR_COB"
-PREVIOUS_DAY_SHEET_NAME = "DVaR_Prev_COB"
-SVAR_COB_SHEET_NAME = "SVaR_COB"
-SVAR_PREV_COB_SHEET_NAME = "SVaR_Prev_COB"
-
-# UPDATED: Node values for DVaR calculations
-FX_DVAR_NODE = 10
-RATES_DVAR_NODE = 22194
-EM_MACRO_DVAR_NODE = 137354
-
-# Asset Class mapping for internal keys to display names (UPDATED)
-ASSET_CLASS_MAP = {
-    'fx': 'FX',
-    'rates': 'Rates',
-    'em macro': 'EM Macro'
-}
-
-PNL_VECTOR_START = 261
-PNL_VECTOR_END = 520
-
-# --- Streamlit Application Setup ---
-st.set_page_config(layout="wide", page_title="Market Risk DVaR Tail Analysis")
-st.title("📊 Comprehensive Market Risk DVaR Tail Analysis")
-
-# --- Sidebar for Controls & Filters ---
-st.sidebar.title("⚙️ Controls & Filters")
-uploaded_file = st.sidebar.file_uploader(
-    "Upload Tail_analysis_auto.xlsx",
-    type="xlsx",
-    help="Upload your Excel workbook to perform detailed DVaR and SVaR tail analysis."
+# --- 1. Page Configuration & Initial Setup ---
+st.set_page_config(
+    page_title="Market Risk DVaR & SVaR Tail Analysis",
+    page_icon="📉",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
-DEBUG_MODE = st.sidebar.checkbox("Show Debug Info", value=False)
 
+# --- 2. Helper Functions (with Caching) ---
 
-# --- Helper Functions ---
-
-@st.cache_data
-def load_data(file_buffer, debug_mode):
-    """Loads data from the specified sheets in the Excel workbook."""
-    data_frames = {}
-    date_mappings = {}
-    sheets_to_load = [
-        CURRENT_DAY_SHEET_NAME, PREVIOUS_DAY_SHEET_NAME,
-        SVAR_COB_SHEET_NAME, SVAR_PREV_COB_SHEET_NAME
-    ]
-    for sheet_name in sheets_to_load:
-        try:
-            file_buffer.seek(0)
-            header_df = pd.read_excel(file_buffer, sheet_name=sheet_name, header=None, nrows=2)
-            dates_row, column_names_row = header_df.iloc[0], header_df.iloc[1]
-
-            file_buffer.seek(0)
-            df = pd.read_excel(file_buffer, sheet_name=sheet_name, header=None, skiprows=2)
-            df.columns = column_names_row
-            df = df.dropna(axis=1, how='all')
-
-            if 'Node' in df.columns:
-                df['Node'] = pd.to_numeric(df['Node'], errors='coerce').astype('Int64')
-
-            pnl_date_map = {}
-            for idx, col_name in enumerate(column_names_row):
-                if pd.notna(col_name) and str(col_name).startswith('pnl_vector'):
-                    date_val = dates_row.iloc[idx]
-                    if isinstance(date_val, (int, float)):
-                        pnl_date_map[str(col_name)] = pd.to_datetime(date_val, unit='D', origin='1899-12-30')
-                    else:
-                        pnl_date_map[str(col_name)] = pd.to_datetime(date_val, errors='coerce')
-
-            data_frames[sheet_name] = df
-            date_mappings[sheet_name] = pnl_date_map
-        except Exception as e:
-            st.error(f"Error loading sheet '{sheet_name}': {e}. Check sheet names and format.")
-            return None, None
-    return data_frames, date_mappings
+def extract_pnl_rank(col_name):
+    """
+    Extracts the numeric part of a pnl_vector column name using regex.
+    Handles various naming conventions like 'pnl_vector261' or 'pnl_vector1[T-2]'.
+    """
+    if not isinstance(col_name, str):
+        return None
+    match = re.search(r'\d+', col_name)
+    return int(match.group(0)) if match else None
 
 @st.cache_data
-def calculate_var_tails(_df, _pnl_date_map, sheet_type, var_type_filter):
-    """Calculates VaR tails. Works on copies to prevent mutation issues with cache."""
-    if _df is None: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    df = _df.copy()
-    pnl_date_map = _pnl_date_map.copy()
+def load_and_process_data(uploaded_file):
+    """
+    Loads data from the four specified sheets of the uploaded Excel file.
+    It handles the two-row header structure, standardizes asset class names,
+    cleans the data, and transforms it into a long format.
 
-    id_vars = ['Var Type', 'Node', 'Asset class', 'currency', 'sensitivity_type', 'load_code']
-    pnl_cols = [c for c in df.columns if str(c).startswith('pnl_vector')]
+    Returns:
+        A dictionary of processed pandas DataFrames and a boolean for success.
+    """
+    if uploaded_file is None:
+        return None, False
 
-    valid_pnl_cols = []
-    for col in pnl_cols:
-        col_str = str(col)
-        is_t2 = '[T-2]' in col_str
-        if var_type_filter == "DVaR":
-            if sheet_type == "current" and not is_t2:
-                try:
-                    num = int(col_str.replace('pnl_vector', ''))
-                    if PNL_VECTOR_START <= num <= PNL_VECTOR_END: valid_pnl_cols.append(col)
-                except ValueError: continue
-            elif sheet_type == "previous" and is_t2: valid_pnl_cols.append(col)
-        elif var_type_filter == "SVaR":
-            if sheet_type == "current" and not is_t2: valid_pnl_cols.append(col)
-            elif sheet_type == "previous" and is_t2: valid_pnl_cols.append(col)
-    
-    if not valid_pnl_cols: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    try:
+        # Define the sheets to be processed and their associated metadata
+        sheet_map = {
+            "DVaR_COB": {"var_type": "DVaR", "sheet_type": "current"},
+            "DVaR_Prev_COB": {"var_type": "DVaR", "sheet_type": "previous"},
+            "SVaR_COB": {"var_type": "SVaR", "sheet_type": "current"},
+            "SVaR_Prev_COB": {"var_type": "SVaR", "sheet_type": "previous"}
+        }
+        all_processed_dfs = {}
 
-    df_melted = df.melt(id_vars=[v for v in id_vars if v in df.columns], value_vars=valid_pnl_cols, var_name='Pnl_Vector_Name', value_name='Value')
-    df_melted['Pnl_Vector_Rank'] = df_melted['Pnl_Vector_Name'].str.extract(r'(\d+)').astype(float).astype('Int64')
-    df_melted['Date'] = pd.to_datetime(df_melted['Pnl_Vector_Name'].map(pnl_date_map), errors='coerce')
-    df_melted.dropna(subset=['Date'], inplace=True)
-    df_var_type = df_melted[df_melted['Var Type'] == var_type_filter].copy()
+        for sheet_name, metadata in sheet_map.items():
+            df_data = pd.read_excel(uploaded_file, sheet_name=sheet_name, header=1)
+            df_dates = pd.read_excel(uploaded_file, sheet_name=sheet_name, header=None, nrows=1)
+            
+            pnl_headers = df_data.columns[6:].tolist()
+            date_values = df_dates.iloc[0, 6:].tolist()
+            date_mapping = {header: date for header, date in zip(pnl_headers, date_values)}
 
-    asset_dfs = {}
-    node_map = {'fx': FX_DVAR_NODE, 'rates': RATES_DVAR_NODE, 'em macro': EM_MACRO_DVAR_NODE}
-    for ac_key, node in node_map.items():
-        asset_df = df_var_type[(df_var_type['Asset class'] == ac_key) & (df_var_type['Node'] == node)]
-        if not asset_df.empty:
-            # Generate the column name using the proper display name from the map
-            display_name = ASSET_CLASS_MAP[ac_key].replace(' ', '_')
-            asset_dfs[ac_key] = asset_df.groupby(['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank'])['Value'].sum().reset_index(name=f'{display_name}_{var_type_filter}_Value')
-            asset_dfs[ac_key]['Sheet_Type'] = sheet_type
-        else:
-            asset_dfs[ac_key] = pd.DataFrame()
+            desc_cols = df_data.columns[:6].tolist()
+            df_long = pd.melt(df_data, id_vars=desc_cols, value_vars=pnl_headers, 
+                              var_name='Pnl_Vector_Name', value_name='Value')
 
-    macro_df = pd.DataFrame()
-    if all(not df.empty for df in asset_dfs.values()):
-        # Start with a copy of one dataframe to avoid modifying it directly
-        macro_df = asset_dfs['fx'].copy()
+            df_long['Date'] = pd.to_datetime(df_long['Pnl_Vector_Name'].map(date_mapping))
+            df_long['Pnl_Vector_Rank'] = df_long['Pnl_Vector_Name'].apply(extract_pnl_rank)
+            df_long['Var_Type'] = metadata['var_type']
+            df_long['Sheet_Type'] = metadata['sheet_type']
+            
+            df_long = df_long.rename(columns={'Asset class': 'asset_class'})
+            
+            # Standardize asset class names to required format (e.g., 'fx' -> 'FX')
+            asset_name_map = {'fx': 'FX', 'rates': 'Rates', 'em macro': 'EM Macro'}
+            df_long['asset_class'] = df_long['asset_class'].str.lower().map(asset_name_map)
+            df_long.dropna(subset=['asset_class'], inplace=True) # Drop non-relevant asset classes
+            
+            df_long['Node'] = pd.to_numeric(df_long['Node'], errors='coerce')
+            df_long['Value'] = pd.to_numeric(df_long['Value'], errors='coerce').fillna(0)
+            
+            all_processed_dfs[f"{metadata['var_type']}_{metadata['sheet_type']}"] = df_long
+
+        return all_processed_dfs, True
+    except Exception as e:
+        st.error(f"Error loading or processing the Excel file: {e}")
+        st.info("Please ensure the workbook contains the sheets: 'DVaR_COB', 'DVaR_Prev_COB', 'SVaR_COB', 'SVaR_Prev_COB' with the correct two-row header structure.")
+        return None, False
+
+@st.cache_data
+def calculate_var_metrics(_processed_data):
+    """
+    Aggregates processed data to calculate VaR for each asset class based on its
+    specific node, then calculates the total 'Macro' VaR.
+    """
+    agg_results = {}
+    node_mapping = {'FX': 10, 'Rates': 22194, 'EM Macro': 137354}
+
+    for key, df in _processed_data.items():
+        asset_class_dfs = []
         
-        # Merge other dataframes
-        for ac_key in ['rates', 'em macro']:
-            macro_df = pd.merge(macro_df, asset_dfs[ac_key], on=['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank', 'Sheet_Type'], how='outer')
+        for asset, node_id in node_mapping.items():
+            filtered_df = df[(df['asset_class'] == asset) & (df['Node'] == node_id)]
+            if not filtered_df.empty:
+                aggregated = filtered_df.groupby(['Date', 'Pnl_Vector_Rank', 'Pnl_Vector_Name'])['Value'].sum().reset_index()
+                aggregated = aggregated.rename(columns={'Value': f"{asset.replace(' ', '_')}_Value"})
+                asset_class_dfs.append(aggregated)
 
-        # Generate the list of columns to sum for Macro VaR
-        value_cols_to_sum = [f'{ASSET_CLASS_MAP[ac_key].replace(" ", "_")}_{var_type_filter}_Value' for ac_key in node_map]
-        macro_df[f'Macro_{var_type_filter}_Value'] = macro_df[value_cols_to_sum].sum(axis=1)
-        macro_df = macro_df.sort_values('Date').reset_index(drop=True)
+        if not asset_class_dfs:
+            agg_results[key] = pd.DataFrame() # Return empty if no data
+            continue
 
-    return asset_dfs.get('fx'), asset_dfs.get('rates'), asset_dfs.get('em macro'), macro_df, df_var_type
+        merged_df = reduce(lambda left, right: pd.merge(left, right, on=['Date', 'Pnl_Vector_Rank', 'Pnl_Vector_Name'], how='outer'), asset_class_dfs)
+        merged_df = merged_df.fillna(0)
+        
+        value_cols = []
+        for asset in node_mapping.keys():
+            col_name = f"{asset.replace(' ', '_')}_Value"
+            if col_name not in merged_df.columns:
+                merged_df[col_name] = 0
+            value_cols.append(col_name)
 
+        merged_df['Macro_Value'] = merged_df[value_cols].sum(axis=1)
+        agg_results[key] = merged_df
+        
+    return agg_results
 
-# --- Visualization Functions (with fixes) ---
+@st.cache_data
+def create_final_tables(_agg_results):
+    """
+    Merges current and previous day aggregated data to calculate the change in VaR.
+    """
+    # DVaR Final Table
+    dvar_current = _agg_results.get('DVaR_current', pd.DataFrame())
+    dvar_previous = _agg_results.get('DVaR_previous', pd.DataFrame())
+    if dvar_current.empty: return pd.DataFrame(), pd.DataFrame()
 
-def plot_dvar_trends(df, title, y_column, legend_title="Type"):
-    if df.empty: return
-    chart = alt.Chart(df).mark_line(point=True).encode(
-        x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')),
-        y=alt.Y(y_column, title='DVaR Value'),
-        color=alt.Color('Sheet_Type:N', title=legend_title),
-        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), alt.Tooltip(y_column, format=',.2f'), 'Sheet_Type']
-    ).properties(title=title).interactive()
-    st.altair_chart(chart, use_container_width=True)
+    prev_cols = ['Date', 'Pnl_Vector_Rank'] + [col for col in dvar_previous.columns if '_Value' in col]
+    dvar_previous_subset = dvar_previous[prev_cols] if not dvar_previous.empty else pd.DataFrame(columns=prev_cols)
 
-def plot_dvar_volatility(df, title, y_column, window_size):
-    if df.empty: return
-    df['Rolling_Std_DVaR'] = df.groupby('Sheet_Type')[y_column].transform(lambda x: x.rolling(window=window_size).std())
-    chart = alt.Chart(df.dropna()).mark_line().encode(
-        x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')),
-        y=alt.Y('Rolling_Std_DVaR', title='Rolling Std Dev'),
-        color='Sheet_Type:N',
-        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), alt.Tooltip('Rolling_Std_DVaR', format=',.2f')]
-    ).properties(title=title).interactive()
-    st.altair_chart(chart, use_container_width=True)
+    final_dvar = pd.merge(dvar_current, dvar_previous_subset, on=['Date', 'Pnl_Vector_Rank'], how='left', suffixes=('_Current', '_Previous'))
+    final_dvar = final_dvar.fillna(0)
 
-def plot_contribution(df, title):
-    if df.empty: return
-    value_vars = [c for c in df.columns if '_DVaR_Value' in c and 'Macro' not in c]
-    df_long = df.melt(id_vars=['Date', 'Macro_DVaR_Value'], value_vars=value_vars, var_name='Asset_Class', value_name='Contribution_Value')
-    # Use the proper display name
-    df_long['Asset_Class'] = df_long['Asset_Class'].str.replace('_DVaR_Value', '').str.replace('_', ' ')
-    chart = alt.Chart(df_long).mark_area().encode(
-        x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')),
-        y=alt.Y('Contribution_Value:Q', title='Contribution to DVaR', stack='zero'),
-        color=alt.Color('Asset_Class:N', title='Asset Class'),
-        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Asset_Class:N', alt.Tooltip('Contribution_Value:Q', format=',.2f')]
-    ).properties(title=title).interactive()
-    st.altair_chart(chart, use_container_width=True)
-
-def display_correlations(df):
-    if df.empty: return
-    value_cols = [c for c in df.columns if '_DVaR_Value' in c and 'Macro' not in c]
-    if not value_cols: return
+    for cat in ['Macro', 'FX', 'Rates', 'EM_Macro']:
+        final_dvar[f'{cat}_Change'] = final_dvar.get(f'{cat}_Value_Current', 0) - final_dvar.get(f'{cat}_Value_Previous', 0)
     
-    # Rename columns for display in the correlation matrix
-    correlation_df = df[value_cols].copy()
-    correlation_df.columns = [col.replace('_DVaR_Value', '').replace('_', ' ') for col in correlation_df.columns]
-    
-    st.dataframe(correlation_df.corr().style.background_gradient(cmap='viridis').format("{:.2f}"))
+    # SVaR Final Table
+    svar_current = _agg_results.get('SVaR_current', pd.DataFrame())
+    svar_previous = _agg_results.get('SVaR_previous', pd.DataFrame())
+    final_svar = pd.DataFrame()
+    if not svar_current.empty:
+        svar_prev_subset = svar_previous[['Date', 'Pnl_Vector_Rank', 'Macro_Value']] if not svar_previous.empty else pd.DataFrame()
+        final_svar = pd.merge(svar_current, svar_prev_subset, on=['Date', 'Pnl_Vector_Rank'], how='left', suffixes=('_Current', '_Previous'))
+        final_svar['Macro_Change'] = final_svar.get('Macro_Value_Current', 0) - final_svar.get('Macro_Value_Previous', 0).fillna(0)
 
-def plot_sensitivity_attribution(df_raw, selected_asset_class_key):
-    node_map = {'fx': FX_DVAR_NODE, 'rates': RATES_DVAR_NODE, 'em macro': EM_MACRO_DVAR_NODE}
-    node_val = node_map.get(selected_asset_class_key)
-    display_name = ASSET_CLASS_MAP[selected_asset_class_key]
-    
-    df_asset = df_raw[(df_raw['Asset class'] == selected_asset_class_key) & (df_raw['Node'] == node_val)]
-    if df_asset.empty:
-        st.info(f"No data for '{display_name}' with Node {node_val}.")
-        return
-    
-    sens_contrib = df_asset.groupby(['Date', 'sensitivity_type'])['Value'].sum().reset_index()
-    top_n = st.slider(f"Top N Sensitivities for {display_name}", 5, 20, 10, key=f"sens_{selected_asset_class_key}")
-    top_sensitivities = sens_contrib.groupby('sensitivity_type')['Value'].mean().abs().nlargest(top_n).index
-    sens_contrib['Display_Sensitivity'] = sens_contrib['sensitivity_type'].where(sens_contrib['sensitivity_type'].isin(top_sensitivities), 'Other')
-    df_display = sens_contrib.groupby(['Date', 'Display_Sensitivity'])['Value'].sum().reset_index()
+    return final_dvar, final_svar
 
-    chart = alt.Chart(df_display).mark_area().encode(
-        x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')),
-        y=alt.Y('Value:Q', title='Contribution to DVaR', stack='zero'),
-        color=alt.Color('Display_Sensitivity:N', title='Sensitivity Type'),
-        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Display_Sensitivity:N', alt.Tooltip('Value:Q', format=',.2f')]
-    ).properties(title=f"DVaR Contribution by Sensitivity for {display_name}").interactive()
-    st.altair_chart(chart, use_container_width=True)
+# --- 3. Main Application UI ---
+with st.sidebar:
+    st.header("⚙️ Controls")
+    uploaded_file = st.file_uploader("Upload Your `Tail_analysis_auto.xlsx` Workbook", type=["xlsx"])
+    debug_mode = st.checkbox("Enable Debug Mode", help="Display intermediate data frames for troubleshooting.")
 
-def plot_svar_dvar_comparison(dvar_df, svar_df, title):
-    if dvar_df.empty or svar_df.empty:
-        st.info(f"Data not available for {title}.")
-        return
-    
-    merged_df = pd.merge(dvar_df[['Date', 'Macro_DVaR_Value']], svar_df[['Date', 'Macro_SVaR_Value']], on='Date', how='inner')
-    df_melted = merged_df.melt(id_vars=['Date'], value_vars=['Macro_DVaR_Value', 'Macro_SVaR_Value'], var_name='VaR_Type', value_name='Value')
+st.title("📉 Market Risk DVaR & SVaR Tail Analysis")
+st.markdown("This application performs a comprehensive analysis of Diversified and Stressed Value at Risk tails. Upload your workbook to begin.")
+st.divider()
 
-    chart = alt.Chart(df_melted).mark_line(point=True).encode(
-        x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')),
-        y=alt.Y('Value:Q', title='VaR Value'),
-        color='VaR_Type:N',
-        strokeDash='VaR_Type:N',
-        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'VaR_Type:N', alt.Tooltip('Value:Q', format=',.2f')]
-    ).properties(title=title).interactive()
-    st.altair_chart(chart, use_container_width=True)
-
-# --- Main App Logic ---
-
-if not uploaded_file:
-    st.info("Please upload your Excel file using the sidebar to begin analysis.")
+if uploaded_file is None:
+    st.info("Awaiting for the Excel workbook to be uploaded.")
 else:
-    data_sheets, date_mappings = load_data(io.BytesIO(uploaded_file.getvalue()), DEBUG_MODE)
-    if not data_sheets: st.stop()
-
-    with st.spinner("Calculating VaR tails... This may take a moment."):
-        fx_dvar_curr, rates_dvar_curr, em_macro_dvar_curr, macro_dvar_curr, raw_dvar_curr = calculate_var_tails(
-            data_sheets.get(CURRENT_DAY_SHEET_NAME), date_mappings.get(CURRENT_DAY_SHEET_NAME), "current", "DVaR")
-        fx_dvar_prev, rates_dvar_prev, em_macro_dvar_prev, macro_dvar_prev, _ = calculate_var_tails(
-            data_sheets.get(PREVIOUS_DAY_SHEET_NAME), date_mappings.get(PREVIOUS_DAY_SHEET_NAME), "previous", "DVaR")
-        _, _, _, macro_svar_curr, _ = calculate_var_tails(
-            data_sheets.get(SVAR_COB_SHEET_NAME), date_mappings.get(SVAR_COB_SHEET_NAME), "current", "SVaR")
-        _, _, _, macro_svar_prev, _ = calculate_var_tails(
-            data_sheets.get(SVAR_PREV_COB_SHEET_NAME), date_mappings.get(SVAR_PREV_COB_SHEET_NAME), "previous", "SVaR")
+    processed_data, success = load_and_process_data(uploaded_file)
     
-    if macro_dvar_curr.empty or macro_dvar_prev.empty:
-        st.error("Could not calculate DVaR. Check file format, sheet names, node values, and enable debug mode.")
-        st.stop()
-    
-    st.success("Calculations complete! You can now explore the analysis tabs.")
+    if success:
+        st.success("✅ File loaded and processed successfully!")
+        agg_results = calculate_var_metrics(processed_data)
+        final_dvar_table, final_svar_table = create_final_tables(agg_results)
 
-    # --- KPI Dashboard ---
-    st.subheader("Key Risk Metrics (Current COB Latest Day)")
-    latest_dvar = macro_dvar_curr['Macro_DVaR_Value'].iloc[-1]
-    latest_dvar_prev = macro_dvar_prev['Macro_DVaR_Value'].iloc[-1]
-    latest_svar = macro_svar_curr['Macro_SVaR_Value'].iloc[-1] if not macro_svar_curr.empty else 0
-    svar_dvar_ratio = latest_svar / latest_dvar if latest_dvar != 0 else 0
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Latest Macro DVaR", f"${latest_dvar:,.2f}", f"${(latest_dvar - latest_dvar_prev):,.2f} vs Prev.")
-    col2.metric("Latest Macro SVaR", f"${latest_svar:,.2f}")
-    col3.metric("SVaR / DVaR Ratio", f"{svar_dvar_ratio:.2f}", help="Stress uplift factor")
-    st.divider()
+        if final_dvar_table.empty:
+            st.warning("No DVaR data could be calculated based on the provided file and node mappings. Please check the file contents.")
+        else:
+            if debug_mode:
+                st.subheader("🐞 Debug Mode: Intermediate Data States")
+                with st.expander("Show/Hide Raw Processed Data & Aggregations"):
+                    for name, df in processed_data.items():
+                        st.write(f"**DataFrame: `{name}`**"); st.dataframe(df.head())
+                    for name, df in agg_results.items():
+                        st.write(f"**Aggregated: `{name}`**"); st.dataframe(df.head())
+            
+            # --- 4. Top/Bottom Tails Analysis Table (AG-Grid) ---
+            st.header("📊 Top & Bottom Macro DVaR Tails (Current COB)")
+            gb = GridOptionsBuilder.from_dataframe(final_dvar_table)
+            cell_style_jscode = JsCode("""
+            function(params) {
+                if (params.value < -0.001) { return {'color': '#c62828', 'backgroundColor': '#ffcdd2'}; }
+                else if (params.value > 0.001) { return {'color': '#2e7d32', 'backgroundColor': '#c8e6c9'}; }
+                return {'color': 'black', 'backgroundColor': 'white'};
+            }""")
 
-    # --- Global Date Filter ---
-    st.sidebar.header("Global Date Filter")
-    min_date = macro_dvar_curr['Date'].min().date()
-    max_date = macro_dvar_curr['Date'].max().date()
-    date_range = st.sidebar.date_input("Select a date range", (min_date, max_date), min_date, max_date)
-    
-    start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
-    def filter_by_date(df):
-        return df[df['Date'].between(start_date, end_date)] if not df.empty else df
+            gb.configure_column("Date", type=["dateColumn", "nonEditableColumn"], valueFormatter="new Date(value).toLocaleDateString('en-GB')", width=120)
+            gb.configure_column("Pnl_Vector_Name", header_name="PNL Vector", width=160)
 
-    macro_dvar_curr_f, macro_dvar_prev_f = filter_by_date(macro_dvar_curr), filter_by_date(macro_dvar_prev)
-    fx_dvar_curr_f, fx_dvar_prev_f = filter_by_date(fx_dvar_curr), filter_by_date(fx_dvar_prev)
-    rates_dvar_curr_f, rates_dvar_prev_f = filter_by_date(rates_dvar_curr), filter_by_date(rates_dvar_prev)
-    em_macro_dvar_curr_f, em_macro_dvar_prev_f = filter_by_date(em_macro_dvar_curr), filter_by_date(em_macro_dvar_prev)
-    macro_svar_curr_f, macro_svar_prev_f = filter_by_date(macro_svar_curr), filter_by_date(macro_svar_prev)
-    raw_dvar_curr_f = filter_by_date(raw_dvar_curr)
+            for col_name in final_dvar_table.columns:
+                if final_dvar_table[col_name].dtype in ['float64', 'int64']:
+                    header = col_name.replace('_Value', '').replace('_', ' ')
+                    gb.configure_column(col_name, header_name=header, type=["numericColumn"], 
+                                        valueFormatter="params.value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})", 
+                                        width=140)
+                    if 'Change' in col_name: gb.configure_column(col_name, cellStyle=cell_style_jscode)
+            
+            gridOptions = gb.build()
+            
+            display_cols = [c for c in ['Date', 'Pnl_Vector_Name', 'Macro_Value_Current', 'Macro_Value_Previous', 'Macro_Change',
+                'FX_Value_Current', 'FX_Value_Previous', 'FX_Change', 'Rates_Value_Current', 'Rates_Value_Previous', 'Rates_Change',
+                'EM_Macro_Value_Current', 'EM_Macro_Value_Previous', 'EM_Macro_Change'] if c in final_dvar_table.columns]
 
-    # --- Analysis Tabs ---
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "DVaR Trends", "Volatility", "Contribution", "Correlations",
-        "Sensitivity Attribution", "SVaR Comparison"
-    ])
+            st.subheader("Top 20 Positive Tails")
+            AgGrid(final_dvar_table.nlargest(20, 'Macro_Value_Current')[display_cols], gridOptions=gridOptions, theme='streamlit', height=400, allow_unsafe_jscode=True, fit_columns_on_grid_load=True)
+            st.subheader("Top 20 Negative Tails")
+            AgGrid(final_dvar_table.nsmallest(20, 'Macro_Value_Current')[display_cols], gridOptions=gridOptions, theme='streamlit', height=400, allow_unsafe_jscode=True, fit_columns_on_grid_load=True)
+            st.divider()
 
-    with tab1:
-        st.header("📈 DVaR Time Series Trends")
-        all_macro = pd.concat([macro_dvar_curr_f, macro_dvar_prev_f])
-        plot_dvar_trends(all_macro, "Macro DVaR Trend (Current vs. Previous Day)", 'Macro_DVaR_Value')
-        st.subheader("Individual Asset Class DVaR Trends")
-        c1, c2, c3 = st.columns(3)
-        with c1: plot_dvar_trends(pd.concat([fx_dvar_curr_f, fx_dvar_prev_f]), f"{ASSET_CLASS_MAP['fx']} DVaR", f"{ASSET_CLASS_MAP['fx']}_DVaR_Value")
-        with c2: plot_dvar_trends(pd.concat([rates_dvar_curr_f, rates_dvar_prev_f]), f"{ASSET_CLASS_MAP['rates']} DVaR", f"{ASSET_CLASS_MAP['rates']}_DVaR_Value")
-        with c3: plot_dvar_trends(pd.concat([em_macro_dvar_curr_f, em_macro_dvar_prev_f]), f"{ASSET_CLASS_MAP['em macro']} DVaR", f"{ASSET_CLASS_MAP['em macro'].replace(' ', '_')}_DVaR_Value")
+            # --- 5. Tabbed Interface ---
+            tab_list = ["DVaR Trends", "Volatility", "Contribution", "Correlations", "Sensitivity Attribution", "SVaR Comparison"]
+            tabs = st.tabs(tab_list)
 
-    with tab2:
-        st.header("📉 DVaR Volatility Analysis")
-        window = st.slider("Select Rolling Window (days)", 5, 60, 20)
-        plot_dvar_volatility(pd.concat([macro_dvar_curr_f, macro_dvar_prev_f]), "Macro DVaR Rolling Volatility", 'Macro_DVaR_Value', window)
+            with tabs[0]: # DVaR Trends
+                st.header("DVaR Evolution Over Time")
+                melt_cols = [c for c in final_dvar_table.columns if 'Value_Current' in c or 'Value_Previous' in c]
+                dvar_long = pd.melt(final_dvar_table, id_vars=['Date'], value_vars=melt_cols, var_name='Metric', value_name='DVaR_Value')
+                dvar_long[['Asset_Class', 'Sheet_Type']] = dvar_long['Metric'].str.split('_Value_', expand=True)
+                dvar_long['Date_str'] = dvar_long['Date'].dt.strftime('%d-%m-%Y')
 
-    with tab3:
-        st.header("🏛️ Asset Class Contribution to Macro DVaR")
-        plot_contribution(macro_dvar_curr_f, "Asset Class Contribution to Macro DVaR (Current Day)")
+                for asset in ['Macro', 'FX', 'Rates', 'EM_Macro']:
+                    st.subheader(f"{asset.replace('_', ' ')} DVaR Trend")
+                    chart_data = dvar_long[dvar_long['Asset_Class'] == asset]
+                    if not chart_data.empty:
+                        line_chart = alt.Chart(chart_data).mark_line(point=alt.OverlayMarkDef(size=20)).encode(
+                            x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%b-%Y')),
+                            y=alt.Y('DVaR_Value:Q', title=f"{asset.replace('_', ' ')} DVaR Value"),
+                            color=alt.Color('Sheet_Type:N', title='COB Type', legend=alt.Legend(orient="top")),
+                            tooltip=[alt.Tooltip('Date_str:N', title='Date'), alt.Tooltip('DVaR_Value:Q', title='Value', format=',.2f')]
+                        ).interactive()
+                        st.altair_chart(line_chart, use_container_width=True)
 
-    with tab4:
-        st.header("🤝 Asset Class DVaR Correlations")
-        display_correlations(macro_dvar_curr_f)
+            with tabs[1]: # Volatility
+                st.header("Rolling Standard Deviation of DVaR")
+                window = st.slider('Select Rolling Window Size (days):', min_value=5, max_value=60, value=30, key="vol_slider")
+                vol_df = final_dvar_table.set_index('Date').sort_index()
+                for asset in ['Macro', 'FX', 'Rates', 'EM_Macro']:
+                    vol_df[f'{asset}_Vol_Current'] = vol_df.get(f'{asset}_Value_Current', 0).rolling(window=f'{window}D').std()
+                    vol_df[f'{asset}_Vol_Previous'] = vol_df.get(f'{asset}_Value_Previous', 0).rolling(window=f'{window}D').std()
+                
+                vol_long = pd.melt(vol_df.reset_index(), id_vars=['Date'], value_vars=[c for c in vol_df.columns if '_Vol_' in c], var_name='Metric', value_name='Volatility').dropna()
+                if not vol_long.empty:
+                    vol_long[['Asset_Class', 'Sheet_Type']] = vol_long['Metric'].str.split('_Vol_', expand=True)
+                    vol_long['Asset_Class'] = vol_long['Asset_Class'].str.replace('_', ' ')
+                    vol_chart = alt.Chart(vol_long).mark_line().encode(
+                        x=alt.X('Date:T', axis=alt.Axis(format='%d-%b-%Y')),
+                        y=alt.Y('Volatility:Q', title='Rolling Standard Deviation'),
+                        color='Sheet_Type:N',
+                        facet=alt.Facet('Asset_Class:N', title=None, columns=2),
+                    ).interactive().properties(title=f'{window}-Day Rolling Volatility')
+                    st.altair_chart(vol_chart, use_container_width=True)
+            
+            with tabs[2]: # Contribution
+                st.header("Asset Class Contribution to Macro DVaR (Current COB)")
+                contrib_cols = ['Date', 'FX_Value_Current', 'Rates_Value_Current', 'EM_Macro_Value_Current']
+                if all(c in final_dvar_table.columns for c in contrib_cols):
+                    contrib_long = pd.melt(final_dvar_table, id_vars=['Date'], value_vars=contrib_cols[1:], var_name='Asset_Class', value_name='Contribution_Value')
+                    contrib_long['Asset_Class'] = contrib_long['Asset_Class'].str.replace('_Value_Current', '').str.replace('_', ' ')
+                    area_chart = alt.Chart(contrib_long).mark_area().encode(
+                        x=alt.X('Date:T', axis=alt.Axis(format='%d-%b-%Y')),
+                        y=alt.Y('Contribution_Value:Q', stack='normalize', title='Percentage Contribution', axis=alt.Axis(format='%')),
+                        color=alt.Color('Asset_Class:N', title='Asset Class'),
+                    ).interactive()
+                    st.altair_chart(area_chart, use_container_width=True)
 
-    with tab5:
-        st.header("🔬 DVaR Sensitivity Attribution")
-        # Use the map to create display options, but pass the key to the function
-        options_map = {ASSET_CLASS_MAP[k]: k for k in ASSET_CLASS_MAP if k in raw_dvar_curr_f['Asset class'].unique()}
-        if options_map:
-            selected_display_name = st.selectbox("Select Asset Class", list(options_map.keys()), key='sens_ac_select')
-            selected_key = options_map[selected_display_name]
-            plot_sensitivity_attribution(raw_dvar_curr_f, selected_key)
+            with tabs[3]: # Correlations
+                st.header("Correlation Matrix of Asset Class DVaR (Current COB)")
+                corr_cols = ['FX_Value_Current', 'Rates_Value_Current', 'EM_Macro_Value_Current']
+                if all(c in final_dvar_table.columns for c in corr_cols):
+                    corr_df = final_dvar_table[corr_cols].rename(columns=lambda c: c.replace('_Value_Current', '').replace('_', ' '))
+                    st.dataframe(corr_df.corr().style.format("{:.2f}").background_gradient(cmap='coolwarm', vmin=-1, vmax=1))
 
-    with tab6:
-        st.header("⚖️ SVaR vs. DVaR Comparison")
-        comp_type = st.radio("Select Data Type", ('Current Day COB', 'Previous Day COB'))
-        dvar_df = macro_dvar_curr_f if comp_type == 'Current Day COB' else macro_dvar_prev_f
-        svar_df = macro_svar_curr_f if comp_type == 'Current Day COB' else macro_svar_prev_f
-        plot_svar_dvar_comparison(dvar_df, svar_df, f"Macro SVaR vs. DVaR ({comp_type})")
+            with tabs[4]: # Sensitivity Attribution
+                st.header("DVaR Contribution by Sensitivity Type (Current COB)")
+                node_mapping_sens = {'FX': 10, 'Rates': 22194, 'EM Macro': 137354}
+                asset_options = [ac for ac in ['FX', 'Rates', 'EM Macro'] if ac in processed_data['DVaR_current']['asset_class'].unique()]
+                
+                if asset_options:
+                    asset_choice = st.selectbox("Select Asset Class:", options=asset_options, key="sens_asset")
+                    top_n = st.slider("Show Top N Sensitivities:", min_value=2, max_value=20, value=7, key="sens_top_n")
+                    
+                    node_id_for_asset = node_mapping_sens[asset_choice]
+                    sensitivity_data = processed_data['DVaR_current'][(processed_data['DVaR_current']['asset_class'] == asset_choice) & (processed_data['DVaR_current']['Node'] == node_id_for_asset)].copy()
+                    
+                    if not sensitivity_data.empty:
+                        top_sensitivities = sensitivity_data.groupby('sensitivity_type')['Value'].apply(lambda x: x.abs().sum()).nlargest(top_n).index
+                        sensitivity_data['sensitivity_group'] = np.where(sensitivity_data['sensitivity_type'].isin(top_sensitivities), sensitivity_data['sensitivity_type'], 'Other')
+                        
+                        attribution_df = sensitivity_data.groupby(['Date', 'sensitivity_group'])['Value'].sum().reset_index()
+                        sensitivity_chart = alt.Chart(attribution_df).mark_area().encode(
+                            x=alt.X('Date:T', axis=alt.Axis(format='%d-%b-%Y')),
+                            y=alt.Y('Value:Q', title='DVaR Value', stack='zero'),
+                            color=alt.Color('sensitivity_group:N', title='Sensitivity Type'),
+                        ).interactive()
+                        st.altair_chart(sensitivity_chart, use_container_width=True)
+                    else:
+                        st.warning(f"No sensitivity data found for {asset_choice} with Node ID {node_id_for_asset}.")
+
+            with tabs[5]: # SVaR Comparison
+                st.header("SVaR vs. DVaR Comparison")
+                if not final_svar_table.empty:
+                    comp_type = st.radio("Select COB Data for Comparison:", ('Current Day COB', 'Previous Day COB'), horizontal=True, key="svar_comp")
+                    col_suffix = '_Current' if comp_type == 'Current Day COB' else '_Previous'
+                    
+                    dvar_vals = final_dvar_table[['Date', 'Pnl_Vector_Rank', f'Macro_Value{col_suffix}']].rename(columns={f'Macro_Value{col_suffix}': 'DVaR'})
+                    svar_vals = final_svar_table[['Date', 'Pnl_Vector_Rank', f'Macro_Value{col_suffix}']].rename(columns={f'Macro_Value{col_suffix}': 'SVaR'})
+
+                    comparison_df = pd.merge(dvar_vals, svar_vals, on=['Date', 'Pnl_Vector_Rank'], how='inner')
+                    if not comparison_df.empty:
+                        comparison_long = pd.melt(comparison_df, id_vars=['Date'], value_vars=['DVaR', 'SVaR'], var_name='VaR_Type', value_name='Value')
+                        comp_chart = alt.Chart(comparison_long).mark_line().encode(x='Date:T', y='Value:Q', color='VaR_Type:N').interactive()
+                        st.altair_chart(comp_chart, use_container_width=True)
+                        
+                        st.subheader("SVaR / DVaR Ratio Statistics")
+                        comparison_df['Ratio'] = (comparison_df['SVaR'] / comparison_df['DVaR']).replace([np.inf, -np.inf], np.nan)
+                        st.dataframe(comparison_df['Ratio'].describe().to_frame().style.format("{:.2f}"))
+
