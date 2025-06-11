@@ -84,6 +84,11 @@ def load_data(file_buffer, debug_mode):
             # Read the first two rows to get dates and column names
             raw_df_header_dates = pd.read_excel(file_buffer, sheet_name=sheet_name, header=None, nrows=2)
             
+            # --- CRITICAL ERROR CHECK: Ensure enough rows for headers ---
+            if len(raw_df_header_dates) < 2:
+                raise ValueError(f"Sheet '{sheet_name}' does not have at least 2 header rows. "
+                                 "Expected first row for dates, second for column names.")
+
             if debug_mode:
                 st.sidebar.write(f"DEBUG: Raw first two rows of '{sheet_name}':")
                 st.sidebar.dataframe(raw_df_header_dates)
