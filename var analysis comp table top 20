@@ -18,9 +18,13 @@ FX_DVAR_NODE = 10
 RATES_DVAR_NODE = 22194 # Corrected Node for Rates
 EM_MACRO_DVAR_NODE = 137354 # Corrected Node for EM Macro
 
-# PnL Vector range (assuming 260 days from 261 to 520)
-PNL_VECTOR_START = 261
-PNL_VECTOR_END = 520 # pnl_vector520 is inclusive, covers 260 days
+# PnL Vector range for DVaR (pnl_vector261 to pnl_vector520)
+DVAR_PNL_VECTOR_START = 261
+DVAR_PNL_VECTOR_END = 520 
+
+# PnL Vector range for SVaR (pnl_vector1 to pnl_vector260)
+SVAR_PNL_VECTOR_START = 1
+SVAR_PNL_VECTOR_END = 260
 
 # Define Barclays-specific color palette (example professional blue/grey tones)
 # These colors are used for Altair charts.
@@ -84,24 +88,32 @@ def load_data(file_buffer, debug_mode):
             # Read the first two rows to get dates and column names
             raw_df_header_dates = pd.read_excel(file_buffer, sheet_name=sheet_name, header=None, nrows=2)
             
-            # --- CRITICAL ERROR CHECK: Ensure enough rows for headers ---
-            if len(raw_df_header_dates) < 2:
-                raise ValueError(f"Sheet '{sheet_name}' does not have at least 2 header rows. "
-                                 "Expected first row for dates, second for column names.")
-
             if debug_mode:
-                st.sidebar.write(f"DEBUG: Raw first two rows of '{sheet_name}':")
+                st.sidebar.write(f"DEBUG: raw_df_header_dates (shape: {raw_df_header_dates.shape}, empty: {raw_df_header_dates.empty}):")
                 st.sidebar.dataframe(raw_df_header_dates)
 
-            # The first row contains dates, the second row contains actual column names
-            dates_row = raw_df_header_dates.iloc[0]
-            column_names_row = raw_df_header_dates.iloc[1]
+            # --- CRITICAL ERROR CHECK: Ensure enough rows for headers before accessing iloc ---
+            if raw_df_header_dates.empty:
+                raise ValueError(f"Sheet '{sheet_name}' appears to be empty or could not be read.")
+            if len(raw_df_header_dates) < 2:
+                raise ValueError(f"Sheet '{sheet_name}' has fewer than 2 header rows. "
+                                 "Expected first row for dates, second for column names.")
 
-            if debug_mode:
-                st.sidebar.write(f"DEBUG: Dates Row from '{sheet_name}':")
-                st.sidebar.write(dates_row)
-                st.sidebar.write(f"DEBUG: Column Names Row from '{sheet_name}':")
-                st.sidebar.write(column_names_row)
+            try:
+                dates_row = raw_df_header_dates.iloc[0]
+                if debug_mode: st.sidebar.write(f"DEBUG: Dates Row from '{sheet_name}' (head):")
+                if debug_mode: st.sidebar.write(dates_row.head())
+            except IndexError:
+                raise IndexError(f"Failed to access the first header row (dates) in sheet '{sheet_name}'. "
+                                 "Ensure it has at least one row.")
+            
+            try:
+                column_names_row = raw_df_header_dates.iloc[1]
+                if debug_mode: st.sidebar.write(f"DEBUG: Column Names Row from '{sheet_name}' (head):")
+                if debug_mode: st.sidebar.write(column_names_row.head())
+            except IndexError:
+                raise IndexError(f"Failed to access the second header row (column names) in sheet '{sheet_name}'. "
+                                 "Ensure it has at least two rows.")
 
 
             # Read the actual data, skipping the first two rows
@@ -183,6 +195,18 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
         st.sidebar.write("DEBUG: Input PnL Date Map:")
         st.sidebar.write(pnl_date_map)
 
+    # Determine PnL vector range based on VAR type
+    current_pnl_vector_start = PNL_VECTOR_START # Default to DVaR range
+    current_pnl_vector_end = PNL_VECTOR_END
+
+    if var_type_filter == "SVaR":
+        current_pnl_vector_start = SVAR_PNL_VECTOR_START
+        current_pnl_vector_end = SVAR_PNL_VECTOR_END
+    
+    if debug_mode:
+        st.sidebar.write(f"DEBUG: PnL Vector Range for {var_type_filter}: {current_pnl_vector_start} to {current_pnl_vector_end}")
+
+
     # Define common identifying variables
     id_vars = ['Var Type', 'Node', 'Asset class', 'currency', 'sensitivity_type', 'load_code']
     
@@ -192,29 +216,26 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
     valid_pnl_cols = []
     for col in pnl_vector_cols:
         col_str = str(col)
-        # DVaR Current COB (pnl_vector261 to pnl_vector520, no [T-2])
-        if sheet_type == "current" and var_type_filter == "DVaR":
-            if col_str.startswith('pnl_vector') and not '[T-2]' in col_str:
-                try:
-                    num_part = col_str.replace('pnl_vector', '')
-                    if num_part.isdigit(): # Ensure it's purely a number
-                        num = int(num_part)
-                        if PNL_VECTOR_START <= num <= PNL_VECTOR_END:
-                            valid_pnl_cols.append(col)
-                except ValueError:
-                    continue # Skip if not a valid number after stripping prefix
-        # DVaR Previous COB (pnl_vectorXXX[T-2])
-        elif sheet_type == "previous" and var_type_filter == "DVaR":
-            if col_str.startswith('pnl_vector') and '[T-2]' in col_str:
-                valid_pnl_cols.append(col) # All columns with [T-2] suffix
-        # SVaR Current COB (pnl_vector1, pnl_vector2, etc., no [T-2])
-        elif sheet_type == "current" and var_type_filter == "SVaR":
-            if col_str.startswith('pnl_vector') and not '[T-2]' in col_str:
-                valid_pnl_cols.append(col) # All pnl_vector columns (e.g., 1, 2, 3...)
-        # SVaR Previous COB (pnl_vector1[T-2], etc.)
-        elif sheet_type == "previous" and var_type_filter == "SVaR":
-            if col_str.startswith('pnl_vector') and '[T-2]' in col_str:
-                valid_pnl_cols.append(col) # All pnl_vector[T-2] columns
+        
+        # Check if it's a previous COB vector (e.g., pnl_vectorX[T-2])
+        is_previous_cob_vector = '[T-2]' in col_str
+
+        # Extract numeric part to check against ranges
+        numeric_part_str = ''.join(filter(str.isdigit, col_str.split('[T-2]')[0])) # Get digits before [T-2] if present
+        
+        if not numeric_part_str.isdigit(): # Skip if no valid number part found
+            continue
+        
+        vector_number = int(numeric_part_str)
+
+        if sheet_type == "current":
+            # For current COB, only include if no [T-2] suffix
+            if not is_previous_cob_vector and current_pnl_vector_start <= vector_number <= current_pnl_vector_end:
+                valid_pnl_cols.append(col)
+        elif sheet_type == "previous":
+            # For previous COB, only include if it has [T-2] suffix
+            if is_previous_cob_vector and current_pnl_vector_start <= vector_number <= current_pnl_vector_end:
+                valid_pnl_cols.append(col)
     
     if debug_mode:
         st.sidebar.write(f"DEBUG: Detected PnL Vector Columns: {pnl_vector_cols}")
@@ -227,7 +248,7 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
     # Melt only if valid pnl columns exist
     if not valid_pnl_cols:
         st.warning(f"No valid PnL vector columns found for {sheet_type} ({var_type_filter}) data. Skipping VaR calculation.")
-        # Return empty DataFrames instead of None for easier subsequent handling
+        # Return empty DataFrames for all results if no valid columns
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
     df_melted = df.melt(id_vars=id_vars_present,
@@ -390,7 +411,7 @@ def plot_contribution(df, title):
         np.where(df_long['Contribution_Value'] == 0, 0, np.nan) # If Macro_DVaR_Value is 0, and Contribution_Value is also 0, then 0. Else NaN.
     )
     
-    df_long = df_long.dropna(subset=['Contribution_Percentage'])
+    df_long = df_long.dropna(subset=['Percentage_Percentage'])
 
     if df_long.empty: # Added guard after dropna
         st.info(f"No valid contribution data after filtering for {title}.")
@@ -663,7 +684,8 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
         (em_macro_dvar_curr, 'EM_Macro_DVaR_Value', 'EM_Macro_DVaR_Value_Current')
     ]
     for curr_df, original_val_col, new_val_col in current_asset_lookup_configs:
-        if not curr_df.empty and original_val_col in curr_df.columns:
+        # Only merge if the column is not already there (i.e., if it's not 'Macro_DVaR_Value_Current' which is already the base)
+        if new_val_col not in final_display_df.columns and not curr_df.empty and original_val_col in curr_df.columns:
             temp_curr_lookup_df = curr_df[common_merge_keys + [original_val_col]].copy()
             temp_curr_lookup_df.rename(columns={original_val_col: new_val_col}, inplace=True)
             final_display_df = pd.merge(final_display_df, temp_curr_lookup_df, on=common_merge_keys, how='left')
