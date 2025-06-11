@@ -586,101 +586,107 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
     # Common merge keys
     common_merge_keys = ['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank']
 
-    # --- Step 1: Prepare and merge current and previous data for EACH asset class ---
-    # This ensures that each asset class has its own combined (current + previous) DataFrame
-    # with standardized column names (e.g., Macro_DVaR_Value_Current, Macro_DVaR_Value_Previous)
+    # --- Step 1: Identify Top/Bottom Tails from Current COB Macro DVaR ---
+    if macro_dvar_curr.empty:
+        st.info("No current Macro DVaR data to identify top/bottom tails.")
+        return pd.DataFrame(), pd.DataFrame() # Return empty if no data
 
-    all_combined_asset_dfs = [] # List to hold combined DFs for each asset class
+    top_20_positive = macro_dvar_curr.nlargest(min(20, len(macro_dvar_curr)), 'Macro_DVaR_Value', keep='all').copy()
+    top_20_negative = macro_dvar_curr.nsmallest(min(20, len(macro_dvar_curr)), 'Macro_DVaR_Value', keep='all').copy()
 
-    asset_configs = [
-        (macro_dvar_curr, macro_dvar_prev, 'Macro'),
-        (fx_dvar_curr, fx_dvar_prev, 'FX'),
-        (rates_dvar_curr, rates_dvar_prev, 'Rates'),
-        (em_macro_dvar_curr, em_macro_dvar_prev, 'EM_Macro')
-    ]
+    # Concatenate positive and negative tails to process them together for lookup
+    all_current_tails = pd.concat([top_20_positive, top_20_negative]).drop_duplicates(subset=common_merge_keys).reset_index(drop=True)
+    
+    if debug_mode:
+        st.sidebar.write("DEBUG: All Current Tails (Top/Bottom) for Lookup (head):")
+        st.sidebar.dataframe(all_current_tails.head())
+        st.sidebar.write("DEBUG: All Current Tails Columns:", all_current_tails.columns.tolist())
 
-    for curr_df, prev_df, prefix in asset_configs:
-        # Define the value column name for current and previous DFs
-        curr_val_col_name = f'{prefix}_DVaR_Value'
-        prev_val_col_name = f'{prefix}_DVaR_Value' # Refers to the original column name in prev_df
 
-        # Create copies to avoid SettingWithCopyWarning and ensure column names are consistent
-        df_curr_standard = pd.DataFrame(columns=common_merge_keys + [f'{prefix}_DVaR_Value_Current'])
-        if not curr_df.empty and curr_val_col_name in curr_df.columns:
-            df_curr_standard = curr_df[common_merge_keys + [curr_val_col_name]].copy()
-            df_curr_standard.rename(columns={curr_val_col_name: f'{prefix}_DVaR_Value_Current'}, inplace=True)
+    # --- Step 2: Prepare lookup DataFrames for ALL previous COB asset class DVaR values ---
+    # These will be used to join against the identified current tails
+    
+    # Initialize previous lookup DF with common keys and Macro Previous Value
+    prev_macro_lookup = pd.DataFrame(columns=common_merge_keys + ['Macro_DVaR_Value_Previous'])
+    if not macro_dvar_prev.empty and 'Macro_DVaR_Value' in macro_dvar_prev.columns:
+        prev_macro_lookup = macro_dvar_prev[common_merge_keys + ['Macro_DVaR_Value']].copy()
+        prev_macro_lookup.rename(columns={'Macro_DVaR_Value': 'Macro_DVaR_Value_Previous'}, inplace=True)
+
+    # Prepare lookup for FX previous
+    prev_fx_lookup = pd.DataFrame(columns=common_merge_keys + ['FX_DVaR_Value_Previous'])
+    if not fx_dvar_prev.empty and 'FX_DVaR_Value' in fx_dvar_prev.columns:
+        prev_fx_lookup = fx_dvar_prev[common_merge_keys + ['FX_DVaR_Value']].copy()
+        prev_fx_lookup.rename(columns={'FX_DVaR_Value': 'FX_DVaR_Value_Previous'}, inplace=True)
         
-        df_prev_standard = pd.DataFrame(columns=common_merge_keys + [f'{prefix}_DVaR_Value_Previous'])
-        if not prev_df.empty and prev_val_col_name in prev_df.columns:
-            df_prev_standard = prev_df[common_merge_keys + [prev_val_col_name]].copy()
-            df_prev_standard.rename(columns={prev_val_col_name: f'{prefix}_DVaR_Value_Previous'}, inplace=True)
+    # Prepare lookup for Rates previous
+    prev_rates_lookup = pd.DataFrame(columns=common_merge_keys + ['Rates_DVaR_Value_Previous'])
+    if not rates_dvar_prev.empty and 'Rates_DVaR_Value' in rates_dvar_prev.columns:
+        prev_rates_lookup = rates_dvar_prev[common_merge_keys + ['Rates_DVaR_Value']].copy()
+        prev_rates_lookup.rename(columns={'Rates_DVaR_Value': 'Rates_DVaR_Value_Previous'}, inplace=True)
         
-        # Outer merge current and previous for this specific asset class
-        # This ensures all unique Date/Pnl_Vector_Rank combinations are present
-        merged_for_asset = pd.merge(df_curr_standard, df_prev_standard, on=common_merge_keys, how='outer')
-        all_combined_asset_dfs.append(merged_for_asset)
+    # Prepare lookup for EM Macro previous
+    prev_em_macro_lookup = pd.DataFrame(columns=common_merge_keys + ['EM_Macro_DVaR_Value_Previous'])
+    if not em_macro_dvar_prev.empty and 'EM_Macro_DVaR_Value' in em_macro_dvar_prev.columns:
+        prev_em_macro_lookup = em_macro_dvar_prev[common_merge_keys + ['EM_Macro_DVaR_Value']].copy()
+        prev_em_macro_lookup.rename(columns={'EM_Macro_DVaR_Value': 'EM_Macro_DVaR_Value_Previous'}, inplace=True)
+        
+    if debug_mode:
+        st.sidebar.write("DEBUG: Sample of Prev Macro Lookup (head):")
+        st.sidebar.dataframe(prev_macro_lookup.head())
+        st.sidebar.write("DEBUG: Sample of Prev FX Lookup (head):")
+        st.sidebar.dataframe(prev_fx_lookup.head())
 
-        if debug_mode:
-            st.sidebar.write(f"DEBUG: Combined DF for {prefix} (Current vs Previous):")
-            st.sidebar.dataframe(merged_for_asset.head())
-            st.sidebar.write(f"DEBUG: Combined DF for {prefix} Columns: {merged_for_asset.columns.tolist()}")
 
+    # --- Step 3: Merge current tails with previous lookups ---
+    # Start with all_current_tails (which has Macro_DVaR_Value already)
+    final_display_df = all_current_tails.rename(columns={'Macro_DVaR_Value': 'Macro_DVaR_Value_Current'}).copy() # Rename current Macro value
+    
+    # Left merge previous Macro data
+    final_display_df = pd.merge(final_display_df, prev_macro_lookup, on=common_merge_keys, how='left')
 
-    # --- Step 2: Perform the final merge of all individual asset class combined DFs ---
-    if not all_combined_asset_dfs:
-        st.info("No DVaR data available for current or previous COB after initial asset-level processing. Cannot generate Top/Bottom Tails table.")
-        return
-
-    # Start with the first combined asset DF, then progressively outer merge others
-    master_combined_df = all_combined_asset_dfs[0]
-    for i in range(1, len(all_combined_asset_dfs)):
-        master_combined_df = pd.merge(master_combined_df, all_combined_asset_dfs[i], on=common_merge_keys, how='outer')
+    # Left merge previous individual asset class data
+    final_display_df = pd.merge(final_display_df, prev_fx_lookup, on=common_merge_keys, how='left')
+    final_display_df = pd.merge(final_display_df, prev_rates_lookup, on=common_merge_keys, how='left')
+    final_display_df = pd.merge(final_display_df, prev_em_macro_lookup, on=common_merge_keys, how='left')
 
     if debug_mode:
-        st.sidebar.write("DEBUG: Master Combined DF after all asset merges (head):")
-        st.sidebar.dataframe(master_combined_df.head())
-        st.sidebar.write(f"DEBUG: Master Combined DF columns: {master_combined_df.columns.tolist()}")
+        st.sidebar.write("DEBUG: Final Display DF after merging current tails with all previous lookups (head):")
+        st.sidebar.dataframe(final_display_df.head())
+        st.sidebar.write("DEBUG: Final Display DF columns after merging:", final_display_df.columns.tolist())
 
 
-    # --- Step 3: Fill NaNs and Calculate Changes ---
-    # Fill NaN values with 0 for all DVaR value columns (both Current and Previous)
-    # This handles cases where data might be missing for a specific date in one COB but present in another
-    dvar_value_columns_to_fill = [col for col in master_combined_df.columns if '_DVaR_Value_Current' in col or '_DVaR_Value_Previous' in col]
-    master_combined_df[dvar_value_columns_to_fill] = master_combined_df[dvar_value_columns_to_fill].fillna(0)
+    # --- Step 4: Fill NaNs and Calculate Changes ---
+    # Identify all 'Value_Current' and 'Value_Previous' columns to fill NaNs
+    value_cols_for_fillna = [col for col in final_display_df.columns if '_DVaR_Value_Current' in col or '_DVaR_Value_Previous' in col]
+    final_display_df[value_cols_for_fillna] = final_display_df[value_cols_for_fillna].fillna(0)
 
     # Calculate Change columns
-    for prefix in ['Macro', 'FX', 'Rates', 'EM_Macro']:
+    asset_prefixes = ['Macro', 'FX', 'Rates', 'EM_Macro']
+    for prefix in asset_prefixes:
         current_col = f'{prefix}_DVaR_Value_Current'
         previous_col = f'{prefix}_DVaR_Value_Previous'
         change_col = f'{prefix}_DVaR_Change'
         
-        # Ensure the columns exist before attempting calculation
-        if current_col in master_combined_df.columns and previous_col in master_combined_df.columns:
-            master_combined_df[change_col] = master_combined_df[current_col] - master_combined_df[previous_col]
+        # Ensure columns exist before calculating change; they should after fillna(0)
+        if current_col in final_display_df.columns and previous_col in final_display_df.columns:
+            final_display_df[change_col] = final_display_df[current_col] - final_display_df[previous_col]
         else:
-            master_combined_df[change_col] = 0 # Default change to 0
+            final_display_df[change_col] = 0 # Fallback, should not happen if previous steps are robust
 
-
-    # Final cleanup and sorting
-    # Drop rows where Macro_DVaR_Value_Current is NaN (this should now be 0 due to fillna, but safety check)
-    master_combined_df.dropna(subset=['Macro_DVaR_Value_Current'], inplace=True)
-    
-    master_combined_df = master_combined_df.sort_values(by=['Date', 'Pnl_Vector_Rank']).reset_index(drop=True)
+    # Sort final DataFrame for consistent display (optional, but good practice)
+    final_display_df = final_display_df.sort_values(by=['Date', 'Pnl_Vector_Rank']).reset_index(drop=True)
 
     if debug_mode:
-        st.sidebar.write("DEBUG: Final Master Combined DF after fillna and change calculation (head):")
-        st.sidebar.dataframe(master_combined_df.head())
-        st.sidebar.write(f"DEBUG: Final Master Combined DF columns: {master_combined_df.columns.tolist()}")
-        st.sidebar.write(f"DEBUG: Sample of Macro_DVaR_Value_Current values (after all processing): {master_combined_df['Macro_DVaR_Value_Current'].head()}")
+        st.sidebar.write("DEBUG: Final Display DF ready for AgGrid (head):")
+        st.sidebar.dataframe(final_display_df.head())
+        st.sidebar.write("DEBUG: Final Display DF columns (final set):", final_display_df.columns.tolist())
 
+    # --- Step 5: Prepare data for AgGrid display ---
+    # Re-filter into top_20_positive and top_20_negative from the fully prepared final_display_df
+    # This uses the same sorting as before, but on the complete, merged data
+    top_20_positive_aggrid = final_display_df.nlargest(min(20, len(final_display_df)), 'Macro_DVaR_Value_Current', keep='all')
+    top_20_negative_aggrid = final_display_df.nsmallest(min(20, len(final_display_df)), 'Macro_DVaR_Value_Current', keep='all')
 
-    # Identify Top 20 Positive and Negative Macro Tails
-    if master_combined_df.empty:
-        st.info("No sufficient DVaR data to identify top/bottom tails after all processing steps.")
-        return
-
-    top_20_positive = master_combined_df.nlargest(min(20, len(master_combined_df)), 'Macro_DVaR_Value_Current', keep='all')
-    top_20_negative = master_combined_df.nsmallest(min(20, len(master_combined_df)), 'Macro_DVaR_Value_Current', keep='all')
 
     # Define AgGrid column definitions
     columnDefs = [
@@ -716,11 +722,10 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
     gridOptions = gb.build()
 
     st.subheader("Top 20 Positive Macro DVaR Tails (Current COB)")
-    if not top_20_positive.empty:
-        top_20_positive_display = top_20_positive.copy()
+    if not top_20_positive_aggrid.empty:
         # Convert Date column to string for AgGrid (YYYY-MM-DD for custom_format_string to work reliably)
-        top_20_positive_display['Date'] = top_20_positive_display['Date'].dt.strftime('%Y-%m-%d') 
-        AgGrid(top_20_positive_display, gridOptions=gridOptions, 
+        top_20_positive_aggrid['Date'] = top_20_positive_aggrid['Date'].dt.strftime('%Y-%m-%d') 
+        AgGrid(top_20_positive_aggrid, gridOptions=gridOptions, 
                data_return_mode='AS_INPUT', update_mode='MODEL_CHANGED', 
                fit_columns_on_grid_load=True, allow_unsafe_jscode=True, 
                enable_enterprise_modules=True, height=350, width='100%', reload_data=True, key='ag_pos_tails')
@@ -728,11 +733,11 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
         st.info("No positive Macro DVaR tails found.")
 
     st.subheader("Top 20 Negative Macro DVaR Tails (Current COB)")
-    if not top_20_negative.empty:
-        top_20_negative_display = top_20_negative.copy()
+    if not top_20_negative_aggrid.empty:
+        top_20_negative_aggrid_display = top_20_negative_aggrid.copy()
         # Convert Date column to string for AgGrid (YYYY-MM-DD for custom_format_string to work reliably)
-        top_20_negative_display['Date'] = top_20_negative_display['Date'].dt.strftime('%Y-%m-%d') 
-        AgGrid(top_20_negative_display, gridOptions=gridOptions, 
+        top_20_negative_aggrid_display['Date'] = top_20_negative_aggrid_display['Date'].dt.strftime('%Y-%m-%d') 
+        AgGrid(top_20_negative_aggrid_display, gridOptions=gridOptions, 
                data_return_mode='AS_INPUT', update_mode='MODEL_CHANGED', 
                fit_columns_on_grid_load=True, allow_unsafe_jscode=True, 
                enable_enterprise_modules=True, height=350, width='100%', reload_data=True, key='ag_neg_tails')
@@ -799,6 +804,7 @@ if uploaded_file is not None:
         col_dvar, col_svar = st.columns(2)
 
         # Lowest DVaR
+        # Find the absolute minimum value for lowest tail, which could be a large negative number
         lowest_dvar_row = macro_dvar_curr.nsmallest(1, 'Macro_DVaR_Value').iloc[0] if not macro_dvar_curr.empty else None
         if lowest_dvar_row is not None:
             with col_dvar:
@@ -812,6 +818,7 @@ if uploaded_file is not None:
                 st.info("No DVaR data to display lowest metric.")
         
         # Lowest SVaR
+        # Find the absolute minimum value for lowest tail, which could be a large negative number
         lowest_svar_row = macro_svar_curr.nsmallest(1, 'Macro_SVaR_Value').iloc[0] if not macro_svar_curr.empty else None
         if lowest_svar_row is not None:
             with col_svar:
@@ -983,7 +990,7 @@ if uploaded_file is not None:
     # Backtesting Tab (Placeholder - requires Actual PnL)
     # st.tabs(...) # If you want to add this, you'd add another tab here
     # with tabX: 
-    #     st.header("🚦 DVaR Backtesting (Requires Actual PnL)")
+    #     st.header("� DVaR Backtesting (Requires Actual PnL)")
     #     st.warning("This section requires actual realized daily PnL data for backtesting.")
     #     st.write(
     #         """
@@ -999,3 +1006,4 @@ else:
     # Initial message when no file is uploaded yet
     st.info("Please upload your Excel file ('Tail_analysis_auto.xlsx') using the sidebar to start your DVaR analysis.")
 
+�
