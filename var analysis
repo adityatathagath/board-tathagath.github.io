@@ -40,6 +40,7 @@ def load_data(file_buffer):
     """
     Loads data from the specified sheets in the Excel workbook.
     Handles date extraction from the first row and sets proper headers.
+    Ensures 'Node' column is numeric.
     """
     data_frames = {}
     date_mappings = {}
@@ -71,6 +72,16 @@ def load_data(file_buffer):
             
             # Drop columns that are entirely NaN after header adjustments (e.g., empty columns in Excel)
             df = df.dropna(axis=1, how='all')
+
+            # Ensure 'Node' column is numeric for consistent filtering
+            if 'Node' in df.columns:
+                # Convert to numeric, coerce errors to NaN, then fill NaN with a sentinel and convert to int
+                df['Node'] = pd.to_numeric(df['Node'], errors='coerce')
+                # Fill NaN with -1 or another indicator if appropriate, then convert to Int64 (nullable integer)
+                # Using Int64 preserves NaNs if some node values are truly missing/unparseable and shouldn't default.
+                # If you prefer defaulting to a specific int (e.g., -1 or 0), use .fillna(-1).astype(int)
+                df['Node'] = df['Node'].astype('Int64') # Using nullable integer type
+
 
             # Create mapping for pnl_vector columns to their dates
             pnl_date_map = {}
@@ -130,6 +141,7 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
     # Melt only if valid pnl columns exist
     if not valid_pnl_cols:
         st.warning(f"No valid PnL vector columns found for {sheet_type} ({var_type_filter}) data. Skipping VaR calculation.")
+        # Return empty DataFrames instead of None for easier subsequent handling
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
     df_melted = df.melt(id_vars=id_vars_present,
@@ -159,9 +171,11 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
     }
 
     for ac in asset_classes:
+        # Ensure comparison with nullable integer type for Node
+        node_val_for_filter = node_mapping.get(ac, FX_DVAR_NODE)
         filtered_df = df_filtered_var_type[
             (df_filtered_var_type['Asset class'] == ac) &
-            (df_filtered_var_type['Node'] == node_mapping.get(ac, FX_DVAR_NODE)) # Default to FX_DVAR_NODE if not in map
+            (df_filtered_var_type['Node'] == node_val_for_filter)
         ]
         if not filtered_df.empty:
             asset_var_dfs[ac] = filtered_df.groupby(['Date', 'Pnl_Vector_Name'])['Value'].sum().reset_index(name=f'{ac.replace(" ", "_")}_{var_type_filter}_Value')
@@ -350,16 +364,23 @@ def plot_sensitivity_attribution(df_raw_var_type, pnl_date_map, selected_asset_c
         st.info("Raw VaR data not available for sensitivity attribution.")
         return
 
-    # This function is now specifically called for DVaR attribution from the DVaR sheet.
-    # So the 'Var Type' filter is already handled by `calculate_var_tails` producing `raw_dvar_curr`.
+    # Dynamically get the node value for the selected asset class
+    node_config_key = f"{selected_asset_class.replace(' ', '_').upper()}_DVAR_NODE"
+    node_value_for_filter = globals().get(node_config_key)
     
+    if node_value_for_filter is None:
+        st.error(f"Configuration error: Node value for '{selected_asset_class}' (expected key: {node_config_key}) is not defined in the script's configuration section. Please check the `FX_DVAR_NODE`, `RATES_DVAR_NODE`, `EM_MACRO_DVAR_NODE` definitions.")
+        return
+
+    # Filter data for the selected asset class and node
     df_filtered = df_raw_var_type[
         (df_raw_var_type['Asset class'] == selected_asset_class) &
-        (df_raw_var_type['Node'] == globals()[f"{selected_asset_class.replace(' ', '_').upper()}_DVAR_NODE"])
+        (df_raw_var_type['Node'] == node_value_for_filter)
     ].copy()
     
     if df_filtered.empty:
-        st.info(f"No DVaR data found for '{selected_asset_class}' with Node {globals()[f"{selected_asset_class.replace(' ', '_').upper()}_DVAR_NODE"]}.")
+        st.info(f"No DVaR data found for '{selected_asset_class}' with Node {node_value_for_filter}. "
+                "Please ensure this combination exists in your data and the node configuration is correct.")
         return
 
     # Group by Date, Pnl_Vector_Name, and Sensitivity Type to sum values
