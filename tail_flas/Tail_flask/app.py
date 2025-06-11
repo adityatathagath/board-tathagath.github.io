@@ -1,17 +1,21 @@
 # app.py
-from flask import Flask, render_template, request, jsonify, flash
+from flask import Flask, render_template, request, jsonify, flash, send_from_directory
 import pandas as pd
 import numpy as np
 import io
+import os # For path joining
 from bokeh.embed import json_item
-from bokeh.plotting import figure, show
+from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource, NumeralTickFormatter, DatetimeTickFormatter
 from bokeh.palettes import Category10, Category20 # For Bokeh plot colors
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key_here' # Replace with a strong secret key
+app.secret_key = 'your_strong_secret_key_here' # IMPORTANT: Replace with a strong secret key
 
 # --- Configuration (UPDATE THESE BASED ON YOUR DATA) ---
+EXCEL_FILE_PATH = os.path.join(app.root_path, 'data', 'Tail_analysis_auto.xlsx') # Path to your Excel file
+# Create a 'data' directory in your Flask app's root and place the Excel file there.
+
 CURRENT_DAY_SHEET_NAME = "DVaR_COB"
 PREVIOUS_DAY_SHEET_NAME = "DVaR_Prev_COB"
 SVAR_COB_SHEET_NAME = "SVaR_COB"
@@ -27,15 +31,26 @@ DVAR_PNL_VECTOR_END = 520
 SVAR_PNL_VECTOR_START = 1
 SVAR_PNL_VECTOR_END = 260
 
+# Define Barclays-specific color palette (example professional blue/grey tones)
+BARCLAYS_COLOR_PALETTE = [
+    '#0076B6',  # Primary Blue (Barclays blue)
+    '#2188D7',  # Lighter Blue
+    '#004B7F',  # Darker Blue
+    '#6A6C6E',  # Medium Grey
+    '#A0A3A6',  # Light Grey
+    '#FF4B4B',  # Red for negative changes
+    '#28a745',  # Green for positive changes
+]
+
 # --- Data Storage (for simplicity, storing in memory for now) ---
 # In a real app, you might use a database or more persistent storage
 processed_data_store = {} # Stores results of calculate_var_tails
 
 # --- Helper Functions (Adapted from Streamlit app) ---
 
-def load_data_backend(file_buffer):
+def load_data_backend(file_path):
     """
-    Loads data from the specified sheets in the Excel workbook.
+    Loads data from the specified sheets in the Excel workbook from a given file path.
     Handles date extraction from the first row and sets proper headers.
     Ensures 'Node' column is numeric.
     Returns (data_frames, date_mappings)
@@ -49,50 +64,57 @@ def load_data_backend(file_buffer):
         SVAR_COB_SHEET_NAME,
         SVAR_PREV_COB_SHEET_NAME
     ]
+    
+    # Ensure file exists before opening
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Excel file not found at: {file_path}")
 
-    for sheet_name in sheets_to_load:
-        try:
-            file_buffer.seek(0) # Reset buffer for each sheet read
-            raw_df_header_dates = pd.read_excel(file_buffer, sheet_name=sheet_name, header=None, nrows=2)
-            
-            if raw_df_header_dates.empty:
-                raise ValueError(f"Sheet '{sheet_name}' appears to be empty or could not be read.")
-            if len(raw_df_header_dates) < 2:
-                raise ValueError(f"Sheet '{sheet_name}' has fewer than 2 header rows. "
-                                 "Expected first row for dates, second for column names.")
+    # Use a single file handle for all sheets to avoid re-opening
+    with pd.ExcelFile(file_path) as xls:
+        for sheet_name in sheets_to_load:
+            try:
+                # Read the first two rows to get dates and column names
+                raw_df_header_dates = pd.read_excel(xls, sheet_name=sheet_name, header=None, nrows=2)
+                
+                if raw_df_header_dates.empty:
+                    raise ValueError(f"Sheet '{sheet_name}' appears to be empty or could not be read.")
+                if len(raw_df_header_dates) < 2:
+                    raise ValueError(f"Sheet '{sheet_name}' has fewer than 2 header rows. "
+                                     "Expected first row for dates, second for column names.")
 
-            dates_row = raw_df_header_dates.iloc[0]
-            column_names_row = raw_df_header_dates.iloc[1]
+                dates_row = raw_df_header_dates.iloc[0]
+                column_names_row = raw_df_header_dates.iloc[1]
 
-            file_buffer.seek(0) # Reset buffer again before reading full data
-            df = pd.read_excel(file_buffer, sheet_name=sheet_name, header=None, skiprows=2)
-            df.columns = column_names_row
-            df = df.dropna(axis=1, how='all')
+                # Read the actual data, skipping the first two rows
+                df = pd.read_excel(xls, sheet_name=sheet_name, header=None, skiprows=2)
+                df.columns = column_names_row # Assign the second row as column headers
+                
+                df = df.dropna(axis=1, how='all')
 
-            if 'Node' in df.columns:
-                df['Node'] = pd.to_numeric(df['Node'], errors='coerce')
-                df['Node'] = df['Node'].astype('Int64')
+                if 'Node' in df.columns:
+                    df['Node'] = pd.to_numeric(df['Node'], errors='coerce')
+                    df['Node'] = df['Node'].astype('Int64')
 
-            pnl_date_map = {}
-            for col_idx, col_name in enumerate(column_names_row):
-                if pd.isna(col_name):
-                    continue
-                if str(col_name).startswith('pnl_vector') or ('[T-2]' in str(col_name) and 'pnl_vector' in str(col_name)): 
-                    if col_idx < len(dates_row):
-                        date_val = dates_row.iloc[col_idx]
-                        if isinstance(date_val, (int, float)):
-                            try:
-                                pnl_date_map[str(col_name)] = pd.to_datetime(date_val, unit='D', origin='1899-12-30')
-                            except:
-                                pnl_date_map[str(col_name)] = pd.NaT
-                        else:
-                            pnl_date_map[str(col_name)] = pd.to_datetime(date_val, errors='coerce')
-            
-            data_frames[sheet_name] = df
-            date_mappings[sheet_name] = pnl_date_map
+                pnl_date_map = {}
+                for col_idx, col_name in enumerate(column_names_row):
+                    if pd.isna(col_name):
+                        continue
+                    if str(col_name).startswith('pnl_vector') or ('[T-2]' in str(col_name) and 'pnl_vector' in str(col_name)): 
+                        if col_idx < len(dates_row):
+                            date_val = dates_row.iloc[col_idx]
+                            if isinstance(date_val, (int, float)):
+                                try:
+                                    pnl_date_map[str(col_name)] = pd.to_datetime(date_val, unit='D', origin='1899-12-30')
+                                except:
+                                    pnl_date_map[str(col_name)] = pd.NaT
+                            else:
+                                pnl_date_map[str(col_name)] = pd.to_datetime(date_val, errors='coerce')
+                
+                data_frames[sheet_name] = df
+                date_mappings[sheet_name] = pnl_date_map
 
-        except Exception as e:
-            raise Exception(f"Error loading data from sheet '{sheet_name}': {e}")
+            except Exception as e:
+                raise Exception(f"Error loading data from sheet '{sheet_name}': {e}")
     
     return data_frames, date_mappings
 
@@ -162,7 +184,7 @@ def calculate_var_tails_backend(df, pnl_date_map, sheet_type="current", var_type
 
     df_filtered_var_type = df_melted[df_melted['Var Type'] == var_type_filter].copy()
 
-    asset_classes = ['FX', 'Rates', 'EM Macro']
+    asset_classes = ['FX', 'Rates', 'EM Macro'] # Corrected casing
     asset_var_dfs = {}
     
     node_mapping = {
@@ -211,14 +233,10 @@ def calculate_var_tails_backend(df, pnl_date_map, sheet_type="current", var_type
 def create_dvar_trends_bokeh_plot(df, title, y_column, legend_title="Type"):
     """Generates a Bokeh line chart for DVaR trends."""
     if df.empty:
-        return None # Return None if no data to plot
+        return None
 
-    # Ensure Date column is datetime
     df['Date'] = pd.to_datetime(df['Date'])
     
-    # Create ColumnDataSource from DataFrame
-    source = ColumnDataSource(df)
-
     p = figure(
         height=350, 
         sizing_mode="stretch_width", 
@@ -229,9 +247,6 @@ def create_dvar_trends_bokeh_plot(df, title, y_column, legend_title="Type"):
         active_scroll="wheel_zoom"
     )
 
-    # Add lines for each Sheet_Type
-    # Use Bokeh's Category10 or Category20 for color palette, or define custom ones
-    # For now, using Category10 for up to 10 distinct colors for Sheet_Type
     sheet_types = df['Sheet_Type'].unique()
     colors = Category10[len(sheet_types)] if len(sheet_types) <= 10 else Category20[len(sheet_types)]
 
@@ -257,10 +272,10 @@ def create_dvar_trends_bokeh_plot(df, title, y_column, legend_title="Type"):
 
     p.xaxis.formatter = DatetimeTickFormatter(days="%d-%m-%Y", months="%d-%m-%Y", years="%d-%m-%Y")
     p.xaxis.axis_label = "Date"
-    p.yaxis.formatter = NumeralTickFormatter(format="0,0.00") # Format with 2 decimal places and thousands separator
+    p.yaxis.formatter = NumeralTickFormatter(format="0,0.00")
     p.yaxis.axis_label = "DVaR Value"
     p.legend.location = "top_left"
-    p.legend.click_policy = "hide" # Allow hiding lines by clicking legend
+    p.legend.click_policy = "hide"
 
     p.hover.tooltips = [
         ("Date", "@Date{%d-%m-%Y}"),
@@ -278,96 +293,84 @@ def create_dvar_trends_bokeh_plot(df, title, y_column, legend_title="Type"):
 def index():
     return render_template('index.html')
 
-@app.route('/process_excel', methods=['POST'])
-def process_excel():
-    if 'excel_file' not in request.files:
-        flash('No file part')
-        return jsonify({'error': 'No file part'}), 400
-    
-    file = request.files['excel_file']
-    if file.filename == '':
-        flash('No selected file')
-        return jsonify({'error': 'No selected file'}), 400
-    
-    if file:
-        file_buffer = io.BytesIO(file.read())
-        try:
-            data_sheets, date_mappings = load_data_backend(file_buffer)
+@app.route('/process_data', methods=['POST']) # Renamed route from /process_excel
+def process_data():
+    try:
+        # Directly load from pre-defined path
+        data_sheets, date_mappings = load_data_backend(EXCEL_FILE_PATH)
 
-            current_day_df = data_sheets.get(CURRENT_DAY_SHEET_NAME)
-            previous_day_df = data_sheets.get(PREVIOUS_DAY_SHEET_NAME)
-            svar_cob_df = data_sheets.get(SVAR_COB_SHEET_NAME)
-            svar_prev_cob_df = data_sheets.get(SVAR_PREV_COB_SHEET_NAME)
+        current_day_df = data_sheets.get(CURRENT_DAY_SHEET_NAME)
+        previous_day_df = data_sheets.get(PREVIOUS_DAY_SHEET_NAME)
+        svar_cob_df = data_sheets.get(SVAR_COB_SHEET_NAME)
+        svar_prev_cob_df = data_sheets.get(SVAR_PREV_COB_SHEET_NAME)
 
-            current_day_date_map = date_mappings.get(CURRENT_DAY_SHEET_NAME)
-            previous_day_date_map = date_mappings.get(PREVIOUS_DAY_SHEET_NAME)
-            svar_cob_date_map = date_mappings.get(SVAR_COB_SHEET_NAME)
-            svar_prev_cob_date_map = date_mappings.get(SVAR_PREV_COB_SHEET_NAME)
+        current_day_date_map = date_mappings.get(CURRENT_DAY_SHEET_NAME)
+        previous_day_date_map = date_mappings.get(PREVIOUS_DAY_SHEET_NAME)
+        svar_cob_date_map = date_mappings.get(SVAR_COB_SHEET_NAME)
+        svar_prev_cob_date_map = date_mappings.get(SVAR_PREV_COB_SHEET_NAME)
 
-            # Check if all dataframes and mappings are loaded successfully
-            if not all([df is not None for df in [current_day_df, previous_day_df, svar_cob_df, svar_prev_cob_df]]):
-                raise Exception("One or more required sheets could not be loaded or are empty.")
-            if not all([m is not None for m in [current_day_date_map, previous_day_date_map, svar_cob_date_map, svar_prev_cob_date_map]]):
-                raise Exception("Date mappings could not be extracted for one or more sheets.")
+        if not all([df is not None for df in [current_day_df, previous_day_df, svar_cob_df, svar_prev_cob_df]]):
+            raise Exception("One or more required sheets could not be loaded or are empty.")
+        if not all([m is not None for m in [current_day_date_map, previous_day_date_map, svar_cob_date_map, svar_prev_cob_date_map]]):
+            raise Exception("Date mappings could not be extracted for one or more sheets.")
 
-            # Calculate DVaR for Current COB
-            fx_dvar_curr, rates_dvar_curr, em_macro_dvar_curr, macro_dvar_curr, raw_dvar_curr = \
-                calculate_var_tails_backend(current_day_df, current_day_date_map, "current", "DVaR", 
-                                            DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
-                                            SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
-            
-            # Calculate DVaR for Previous COB
-            fx_dvar_prev, rates_dvar_prev, em_macro_dvar_prev, macro_dvar_prev, raw_dvar_prev = \
-                calculate_var_tails_backend(previous_day_df, previous_day_date_map, "previous", "DVaR", 
-                                            DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
-                                            SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
-            
-            # Calculate SVaR for Current COB
-            fx_svar_curr, rates_svar_curr, em_macro_svar_curr, macro_svar_curr, raw_svar_curr = \
-                calculate_var_tails_backend(svar_cob_df, svar_cob_date_map, "current", "SVaR", 
-                                            DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
-                                            SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
+        # Calculate DVaR for Current COB
+        fx_dvar_curr, rates_dvar_curr, em_macro_dvar_curr, macro_dvar_curr, raw_dvar_curr = \
+            calculate_var_tails_backend(current_day_df, current_day_date_map, "current", "DVaR", 
+                                        DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
+                                        SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
+        
+        # Calculate DVaR for Previous COB
+        fx_dvar_prev, rates_dvar_prev, em_macro_dvar_prev, macro_dvar_prev, raw_dvar_prev = \
+            calculate_var_tails_backend(previous_day_df, previous_day_date_map, "previous", "DVaR", 
+                                        DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
+                                        SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
+        
+        # Calculate SVaR for Current COB
+        fx_svar_curr, rates_svar_curr, em_macro_svar_curr, macro_svar_curr, raw_svar_curr = \
+            calculate_var_tails_backend(svar_cob_df, svar_cob_date_map, "current", "SVaR", 
+                                        DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
+                                        SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
 
-            # Calculate SVaR for Previous COB
-            fx_svar_prev, rates_svar_prev, em_macro_svar_prev, macro_svar_prev, raw_svar_prev = \
-                calculate_var_tails_backend(svar_prev_cob_df, svar_prev_cob_date_map, "previous", "SVaR", 
-                                            DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
-                                            SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
+        # Calculate SVaR for Previous COB
+        fx_svar_prev, rates_svar_prev, em_macro_svar_prev, macro_svar_prev, raw_svar_prev = \
+            calculate_var_tails_backend(svar_prev_cob_df, svar_prev_cob_date_map, "previous", "SVaR", 
+                                        DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
+                                        SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
 
-            # Store processed data in a global dictionary (in-memory for this example)
-            processed_data_store['macro_dvar_curr'] = macro_dvar_curr
-            processed_data_store['macro_dvar_prev'] = macro_dvar_prev
-            processed_data_store['fx_dvar_curr'] = fx_dvar_curr
-            processed_data_store['fx_dvar_prev'] = fx_dvar_prev
-            processed_data_store['rates_dvar_curr'] = rates_dvar_curr
-            processed_data_store['rates_dvar_prev'] = rates_dvar_prev
-            processed_data_store['em_macro_dvar_curr'] = em_macro_dvar_curr
-            processed_data_store['em_macro_dvar_prev'] = em_macro_dvar_prev
-            processed_data_store['macro_svar_curr'] = macro_svar_curr
-            processed_data_store['macro_svar_prev'] = macro_svar_prev
+        # Store processed data in a global dictionary (in-memory for this example)
+        processed_data_store['macro_dvar_curr'] = macro_dvar_curr
+        processed_data_store['macro_dvar_prev'] = macro_dvar_prev
+        processed_data_store['fx_dvar_curr'] = fx_dvar_curr
+        processed_data_store['fx_dvar_prev'] = fx_dvar_prev
+        processed_data_store['rates_dvar_curr'] = rates_dvar_curr
+        processed_data_store['rates_dvar_prev'] = rates_dvar_prev
+        processed_data_store['em_macro_dvar_curr'] = em_macro_dvar_curr
+        processed_data_store['em_macro_dvar_prev'] = em_macro_dvar_prev
+        processed_data_store['macro_svar_curr'] = macro_svar_curr
+        processed_data_store['macro_svar_prev'] = macro_svar_prev
 
+        # Prepare data for "Lowest Metrics" cards
+        lowest_dvar_row = macro_dvar_curr.nsmallest(1, 'Macro_DVaR_Value').iloc[0] if not macro_dvar_curr.empty else None
+        lowest_svar_row = macro_svar_curr.nsmallest(1, 'Macro_SVaR_Value').iloc[0] if not macro_svar_curr.empty else None
 
-            # Prepare data for "Lowest Metrics" cards
-            lowest_dvar_row = macro_dvar_curr.nsmallest(1, 'Macro_DVaR_Value').iloc[0] if not macro_dvar_curr.empty else None
-            lowest_svar_row = macro_svar_curr.nsmallest(1, 'Macro_SVaR_Value').iloc[0] if not macro_svar_curr.empty else None
+        key_metrics = {
+            'lowest_dvar': {
+                'value': f"{lowest_dvar_row['Macro_DVaR_Value']:,.2f}",
+                'date': lowest_dvar_row['Date'].strftime('%d-%m-%Y'),
+                'pnl_vector': lowest_dvar_row['Pnl_Vector_Name']
+            } if lowest_dvar_row is not None and 'Macro_DVaR_Value' in lowest_dvar_row else None,
+            'lowest_svar': {
+                'value': f"{lowest_svar_row['Macro_SVaR_Value']:,.2f}",
+                'date': lowest_svar_row['Date'].strftime('%d-%m-%Y'),
+                'pnl_vector': lowest_svar_row['Pnl_Vector_Name']
+            } if lowest_svar_row is not None and 'Macro_SVaR_Value' in lowest_svar_row else None,
+        }
 
-            key_metrics = {
-                'lowest_dvar': {
-                    'value': f"{lowest_dvar_row['Macro_DVaR_Value']:,.2f}",
-                    'date': lowest_dvar_row['Date'].strftime('%d-%m-%Y'),
-                    'pnl_vector': lowest_dvar_row['Pnl_Vector_Name']
-                } if lowest_dvar_row is not None else None,
-                'lowest_svar': {
-                    'value': f"{lowest_svar_row['Macro_SVaR_Value']:,.2f}",
-                    'date': lowest_svar_row['Date'].strftime('%d-%m-%Y'),
-                    'pnl_vector': lowest_svar_row['Pnl_Vector_Name']
-                } if lowest_svar_row is not None else None,
-            }
+        return jsonify({'success': True, 'message': 'Data processed successfully', 'key_metrics': key_metrics}), 200
 
-            return jsonify({'success': True, 'message': 'Data processed successfully', 'key_metrics': key_metrics}), 200
-
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/get_top_bottom_tails', methods=['GET'])
 def get_top_bottom_tails():
@@ -381,7 +384,7 @@ def get_top_bottom_tails():
     em_macro_dvar_prev = processed_data_store.get('em_macro_dvar_prev', pd.DataFrame())
 
     if macro_dvar_curr.empty:
-        return jsonify({'error': 'No DVaR data available. Please upload and process the file first.'}), 400
+        return jsonify({'error': 'No DVaR data available. Please process the file first.'}), 400
 
     common_merge_keys = ['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank']
 
@@ -458,7 +461,6 @@ def get_dvar_trends_plot():
     if all_macro_dvar.empty:
          return jsonify({'error': 'No combined DVaR data for trends plot.'}), 400
 
-    # Ensure Date column is datetime for Bokeh
     all_macro_dvar['Date'] = pd.to_datetime(all_macro_dvar['Date'])
 
     plot = create_dvar_trends_bokeh_plot(all_macro_dvar, "Macro DVaR Trend (Current vs. Previous Day)", 'Macro_DVaR_Value')
@@ -468,7 +470,33 @@ def get_dvar_trends_plot():
     else:
         return jsonify({'error': 'Failed to create Bokeh plot.'}), 500
 
+# Route to serve static files from the 'static' folder
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    return send_from_directory('static', filename)
+
+# Route to serve JavaScript files from the 'static/js' folder specifically
+@app.route('/static/js/<path:filename>')
+def serve_js(filename):
+    return send_from_directory(os.path.join(app.root_path, 'static', 'js'), filename)
+
+# Route to serve CSS files from the 'static/css' folder specifically
+@app.route('/static/css/<path:filename>')
+def serve_css(filename):
+    return send_from_directory(os.path.join(app.root_path, 'static', 'css'), filename)
+
 
 if __name__ == '__main__':
+    # Create the 'data' directory if it doesn't exist
+    data_dir = os.path.join(app.root_path, 'data')
+    os.makedirs(data_dir, exist_ok=True)
+    
+    # Check if the Excel file exists, provide guidance if not
+    if not os.path.exists(EXCEL_FILE_PATH):
+        print(f"ERROR: Excel file not found at {EXCEL_FILE_PATH}")
+        print("Please create a 'data' folder in the same directory as app.py and place 'Tail_analysis_auto.xlsx' inside it.")
+        print("Exiting...")
+        exit() # Exit if file is not found
+        
     app.run(debug=True)
 
