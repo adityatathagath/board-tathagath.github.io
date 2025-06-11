@@ -33,14 +33,19 @@ st.write(
     """
 )
 
+# --- Debug Toggle ---
+DEBUG_MODE = st.checkbox("Show Debug Info (for troubleshooting data loading and processing)", value=False)
+
+
 # --- Helper Functions ---
 
 @st.cache_data # Cache the data loading to avoid re-running on every interaction
-def load_data(file_buffer):
+def load_data(file_buffer, debug_mode):
     """
     Loads data from the specified sheets in the Excel workbook.
     Handles date extraction from the first row and sets proper headers.
     Ensures 'Node' column is numeric.
+    Includes debug output.
     """
     data_frames = {}
     date_mappings = {}
@@ -54,6 +59,8 @@ def load_data(file_buffer):
     ]
 
     for sheet_name in sheets_to_load:
+        if debug_mode:
+            st.subheader(f"DEBUG: Loading Sheet: {sheet_name}")
         try:
             # IMPORTANT: Reset file_buffer position for each sheet read
             file_buffer.seek(0) 
@@ -61,9 +68,20 @@ def load_data(file_buffer):
             # Read the first two rows to get dates and column names
             raw_df_header_dates = pd.read_excel(file_buffer, sheet_name=sheet_name, header=None, nrows=2)
             
+            if debug_mode:
+                st.write(f"DEBUG: Raw first two rows of '{sheet_name}':")
+                st.dataframe(raw_df_header_dates)
+
             # The first row contains dates, the second row contains actual column names
             dates_row = raw_df_header_dates.iloc[0]
             column_names_row = raw_df_header_dates.iloc[1]
+
+            if debug_mode:
+                st.write(f"DEBUG: Dates Row from '{sheet_name}':")
+                st.write(dates_row)
+                st.write(f"DEBUG: Column Names Row from '{sheet_name}':")
+                st.write(column_names_row)
+
 
             # Read the actual data, skipping the first two rows
             file_buffer.seek(0) # Reset buffer again before reading full data
@@ -73,12 +91,22 @@ def load_data(file_buffer):
             # Drop columns that are entirely NaN after header adjustments (e.g., empty columns in Excel)
             df = df.dropna(axis=1, how='all')
 
+            if debug_mode:
+                st.write(f"DEBUG: DataFrame '{sheet_name}' after initial load and column assignment (head):")
+                st.dataframe(df.head())
+                st.write(f"DEBUG: DataFrame '{sheet_name}' columns:")
+                st.write(df.columns.tolist())
+
+
             # Ensure 'Node' column is numeric for consistent filtering
             if 'Node' in df.columns:
-                # Convert to numeric, coerce errors to NaN, then fill NaN with a sentinel and convert to int
                 df['Node'] = pd.to_numeric(df['Node'], errors='coerce')
-                # Using Int64 preserves NaNs if some node values are truly missing/unparseable and shouldn't default.
                 df['Node'] = df['Node'].astype('Int64') # Using nullable integer type
+                if debug_mode:
+                    st.write(f"DEBUG: 'Node' column dtypes for '{sheet_name}': {df['Node'].dtype}")
+            else:
+                if debug_mode:
+                    st.warning(f"DEBUG: 'Node' column not found in sheet '{sheet_name}'. This might cause issues.")
 
 
             # Create mapping for pnl_vector columns to their dates
@@ -95,6 +123,7 @@ def load_data(file_buffer):
                         if isinstance(date_val, (int, float)):
                             try:
                                 # Convert Excel float date to datetime
+                                # Origin is 1899-12-30 for Excel dates (number of days since 1899-12-30)
                                 pnl_date_map[str(col_name)] = pd.to_datetime(date_val, unit='D', origin='1899-12-30')
                             except:
                                 pnl_date_map[str(col_name)] = pd.NaT # Not a Time, if conversion fails
@@ -103,6 +132,10 @@ def load_data(file_buffer):
                     else:
                         pnl_date_map[str(col_name)] = pd.NaT # No date found for this column
             
+            if debug_mode:
+                st.write(f"DEBUG: PnL Date Map for '{sheet_name}':")
+                st.write(pnl_date_map)
+
             data_frames[sheet_name] = df
             date_mappings[sheet_name] = pnl_date_map
 
@@ -114,17 +147,26 @@ def load_data(file_buffer):
     return data_frames, date_mappings
 
 
-def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter="DVaR"):
+def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter="DVaR", debug_mode=False):
     """
     Calculates VaR tails (DVaR or SVaR) for FX, Rates, EM Macro, and Macro.
     Adds a 'Sheet_Type' column for differentiation.
+    Includes debug output.
     """
-    
+    if debug_mode:
+        st.subheader(f"DEBUG: Calculating VaR Tails for {sheet_type} ({var_type_filter})")
+        st.write("DEBUG: Input DataFrame Head:")
+        st.dataframe(df.head())
+        st.write("DEBUG: Input DataFrame Columns:")
+        st.write(df.columns.tolist())
+        st.write("DEBUG: Input PnL Date Map:")
+        st.write(pnl_date_map)
+
     # Define common identifying variables
     id_vars = ['Var Type', 'Node', 'Asset class', 'currency', 'sensitivity_type', 'load_code']
     
-    # Identify all PnL vector columns
-    pnl_vector_cols = [col for col in df.columns if str(col).startswith('pnl_vector') or '[T-2]' in str(col)]
+    # Identify all PnL vector columns that are actual columns in the dataframe
+    pnl_vector_cols = [col for col in df.columns if str(col).startswith('pnl_vector') or ('[T-2]' in str(col) and 'pnl_vector' in str(col))]
 
     valid_pnl_cols = []
     for col in pnl_vector_cols:
@@ -152,6 +194,11 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
         elif sheet_type == "previous" and var_type_filter == "SVaR":
             if col_str.startswith('pnl_vector') and '[T-2]' in col_str:
                 valid_pnl_cols.append(col) # All pnl_vector[T-2] columns
+    
+    if debug_mode:
+        st.write(f"DEBUG: Detected PnL Vector Columns: {pnl_vector_cols}")
+        st.write(f"DEBUG: Valid PnL Columns for current config ({sheet_type}, {var_type_filter}): {valid_pnl_cols}")
+
 
     # Ensure all id_vars are present in the dataframe columns before melting
     id_vars_present = [col for col in id_vars if col in df.columns]
@@ -167,16 +214,31 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
                          var_name='Pnl_Vector_Name',
                          value_name='Value')
     
+    if debug_mode:
+        st.write("DEBUG: DataFrame after melting (head):")
+        st.dataframe(df_melted.head())
+        st.write("DEBUG: DataFrame after melting (shape):", df_melted.shape)
+    
     # Add a 'Date' column using the pnl_date_map
     df_melted['Date'] = df_melted['Pnl_Vector_Name'].map(pnl_date_map)
     df_melted['Date'] = pd.to_datetime(df_melted['Date'], errors='coerce') # Coerce errors for NaT dates
     
     # Filter out rows where Date is NaT (if date mapping failed for some columns)
     df_melted = df_melted.dropna(subset=['Date'])
+    
+    if debug_mode:
+        st.write("DEBUG: DataFrame after Date mapping and dropping NaT Dates (head):")
+        st.dataframe(df_melted.head())
+        st.write("DEBUG: DataFrame after Date mapping and dropping NaT Dates (shape):", df_melted.shape)
 
 
     # Filter for the specific Var Type (DVaR or SVaR) as the sheets are now distinct
     df_filtered_var_type = df_melted[df_melted['Var Type'] == var_type_filter].copy()
+    
+    if debug_mode:
+        st.write(f"DEBUG: DataFrame after filtering for 'Var Type' == '{var_type_filter}' (head):")
+        st.dataframe(df_filtered_var_type.head())
+        st.write(f"DEBUG: DataFrame after filtering for 'Var Type' == '{var_type_filter}' (shape):", df_filtered_var_type.shape)
 
     # --- Calculate VaR for each asset class ---
     asset_classes = ['fx', 'rates', 'em macro']
@@ -195,6 +257,11 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
             (df_filtered_var_type['Asset class'] == ac) &
             (df_filtered_var_type['Node'] == node_val_for_filter)
         ]
+        if debug_mode:
+            st.write(f"DEBUG: Filtered data for Asset Class '{ac}' and Node '{node_val_for_filter}' (head):")
+            st.dataframe(filtered_df.head())
+            st.write(f"DEBUG: Filtered data for Asset Class '{ac}' and Node '{node_val_for_filter}' (shape):", filtered_df.shape)
+
         if not filtered_df.empty:
             asset_var_dfs[ac] = filtered_df.groupby(['Date', 'Pnl_Vector_Name'])['Value'].sum().reset_index(name=f'{ac.replace(" ", "_")}_{var_type_filter}_Value')
             asset_var_dfs[ac]['Sheet_Type'] = sheet_type # Add sheet type for merging
@@ -470,7 +537,7 @@ def plot_sensitivity_attribution(df_raw_var_type, pnl_date_map, selected_asset_c
 uploaded_file = st.file_uploader("Choose your Excel file (Tail_analysis_auto.xlsx)", type="xlsx")
 
 if uploaded_file is not None:
-    data_sheets, date_mappings = load_data(uploaded_file)
+    data_sheets, date_mappings = load_data(uploaded_file, DEBUG_MODE) # Pass DEBUG_MODE
 
     if data_sheets is None or date_mappings is None:
         st.stop() # Stop if loading failed
@@ -501,19 +568,19 @@ if uploaded_file is not None:
     with st.spinner("Calculating VaR tails... This may take a moment."):
         # Calculate DVaR for Current COB
         fx_dvar_curr, rates_dvar_curr, em_macro_dvar_curr, macro_dvar_curr, raw_dvar_curr = \
-            calculate_var_tails(current_day_df, current_day_date_map, "current", "DVaR")
+            calculate_var_tails(current_day_df, current_day_date_map, "current", "DVaR", DEBUG_MODE) # Pass DEBUG_MODE
         
         # Calculate DVaR for Previous COB
         fx_dvar_prev, rates_dvar_prev, em_macro_dvar_prev, macro_dvar_prev, raw_dvar_prev = \
-            calculate_var_tails(previous_day_df, previous_day_date_map, "previous", "DVaR")
+            calculate_var_tails(previous_day_df, previous_day_date_map, "previous", "DVaR", DEBUG_MODE) # Pass DEBUG_MODE
         
         # Calculate SVaR for Current COB
         fx_svar_curr, rates_svar_curr, em_macro_svar_curr, macro_svar_curr, raw_svar_curr = \
-            calculate_var_tails(svar_cob_df, svar_cob_date_map, "current", "SVaR")
+            calculate_var_tails(svar_cob_df, svar_cob_date_map, "current", "SVaR", DEBUG_MODE) # Pass DEBUG_MODE
 
         # Calculate SVaR for Previous COB
         fx_svar_prev, rates_svar_prev, em_macro_svar_prev, macro_svar_prev, raw_svar_prev = \
-            calculate_var_tails(svar_prev_cob_df, svar_prev_cob_date_map, "previous", "SVaR")
+            calculate_var_tails(svar_prev_cob_df, svar_prev_cob_date_map, "previous", "SVaR", DEBUG_MODE) # Pass DEBUG_MODE
 
 
     # Concatenate DVaR data for "Current vs. Previous Day" trend plots
@@ -527,7 +594,7 @@ if uploaded_file is not None:
         st.write("### Data Head (Macro DVaR Combined)")
         st.dataframe(all_macro_dvar.head())
     else:
-        st.warning("No DVaR data could be calculated. Please check your Excel file's format and content.")
+        st.warning("No DVaR data could be calculated. Please check your Excel file's format and content and enable debug mode for more details.")
         st.stop() # Stop execution if no DVaR data to display
 
 
