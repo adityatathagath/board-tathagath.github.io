@@ -254,7 +254,7 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
         # Ensure comparison with nullable integer type for Node
         node_val_for_filter = node_mapping.get(ac, FX_DVAR_NODE)
         filtered_df = df_filtered_var_type[
-            (df_filtered_var_type['Asset class'] == ac) &
+            (df_filtered_var_type['Asset class'] == ac) & # Keep Asset class filter
             (df_filtered_var_type['Node'] == node_val_for_filter)
         ]
         if debug_mode:
@@ -290,16 +290,16 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
            macro_var_df, \
            df_filtered_var_type # This is the raw data filtered by Var Type for sensitivity analysis
 
-# --- Visualization Functions (No changes needed, they use generic column names) ---
+# --- Visualization Functions ---
 
 def plot_dvar_trends(df, title, y_column, legend_title="Type"):
     """Generates a line chart for DVaR trends."""
     if df.empty: return # Added guard
     chart = alt.Chart(df).mark_line(point=True).encode(
-        x=alt.X('Date:T', title='Date'),
+        x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')), # Date format change
         y=alt.Y(y_column, title='DVaR Value'),
         color=alt.Color('Sheet_Type:N', title=legend_title),
-        tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), y_column, 'Sheet_Type']
+        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), y_column, 'Sheet_Type'] # Date format change
     ).properties(
         title=title
     ).interactive() # Enable zooming and panning
@@ -312,10 +312,10 @@ def plot_dvar_volatility(df, title):
         return
 
     chart = alt.Chart(df).mark_line(point=True).encode(
-        x=alt.X('Date:T', title='Date'),
+        x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')), # Date format change
         y=alt.Y('Rolling_Std_DVaR', title='Rolling Std Dev of DVaR'),
         color=alt.Color('Sheet_Type:N', title='Data Type'),
-        tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), 'Rolling_Std_DVaR', 'Sheet_Type']
+        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Rolling_Std_DVaR', 'Sheet_Type'] # Date format change
     ).properties(
         title=title
     ).interactive()
@@ -340,10 +340,10 @@ def plot_contribution(df, title):
         return
 
     chart = alt.Chart(df_long).mark_area().encode(
-        x=alt.X('Date:T', title='Date'),
+        x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')), # Date format change
         y=alt.Y('Contribution_Percentage', title='Percentage Contribution (%)', stack='normalize'),
         color=alt.Color('Asset_Class:N', title='Asset Class'),
-        tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), 'Asset_Class:N', alt.Tooltip('Contribution_Percentage', format='.2f') + '%']
+        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Asset_Class:N', alt.Tooltip('Contribution_Percentage', format='.2f') + '%'] # Date format change
     ).properties(
         title=title
     ).interactive()
@@ -384,9 +384,9 @@ def plot_exceedances(df, title, threshold):
     df_plot['Exceeds_Threshold'] = df_plot['Macro_DVaR_Value'] > threshold
 
     chart = alt.Chart(df_plot).mark_line().encode(
-        x=alt.X('Date:T', title='Date'),
+        x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')), # Date format change
         y=alt.Y('Macro_DVaR_Value', title='Macro DVaR Value'),
-        tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), 'Macro_DVaR_Value']
+        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Macro_DVaR_Value'] # Date format change
     ).properties(
         title=title
     )
@@ -394,7 +394,7 @@ def plot_exceedances(df, title, threshold):
     exceedance_points = alt.Chart(df_plot[df_plot['Exceeds_Threshold']]).mark_point(color='red', size=100).encode(
         x=alt.X('Date:T'),
         y=alt.Y('Macro_DVaR_Value'),
-        tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), 'Macro_DVaR_Value', alt.value('Exceeded Threshold')]
+        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Macro_DVaR_Value', alt.value('Exceeded Threshold')] # Date format change
     )
 
     threshold_line = alt.Chart(pd.DataFrame({'threshold': [threshold]})).mark_rule(color='red', strokeDash=[5,5]).encode(
@@ -429,11 +429,11 @@ def plot_svar_dvar_comparison(dvar_df, svar_df, title):
                                    value_name='Value')
 
     chart = alt.Chart(df_melted).mark_line(point=True).encode(
-        x=alt.X('Date:T', title='Date'),
+        x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')), # Date format change
         y=alt.Y('Value', title='VaR Value'),
         color=alt.Color('VaR_Type:N', title='VaR Type'),
         strokeDash='VaR_Type:N', # Different line styles for clarity
-        tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), 'VaR_Type', 'Value', 'Sheet_Type']
+        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'VaR_Type', 'Value', 'Sheet_Type'] # Date format change
     ).properties(
         title=title
     ).interactive()
@@ -522,11 +522,11 @@ def plot_sensitivity_attribution(df_raw_var_type, pnl_date_map, selected_asset_c
     sensitivity_contributions_display['Date'] = pd.to_datetime(sensitivity_contributions_display['Date'])
 
     chart = alt.Chart(sensitivity_contributions_display).mark_area().encode(
-        x=alt.X('Date:T', title='Date'),
+        x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')), # Date format change
         y=alt.Y('Percentage_Contribution', title='Percentage Contribution (%)', stack='normalize'),
         color=alt.Color('Display_Sensitivity:N', title='Sensitivity Type', legend=alt.Legend(columns=2)),
         order=alt.Order('Percentage_Contribution', sort='descending'),
-        tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), 'Display_Sensitivity:N', alt.Tooltip('Percentage_Contribution', format='.2f') + '%', 'Value']
+        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Display_Sensitivity:N', alt.Tooltip('Percentage_Contribution', format='.2f') + '%', 'Value'] # Date format change
     ).properties(
         title=f"DVaR Contribution by Sensitivity Type for {selected_asset_class}"
     ).interactive()
