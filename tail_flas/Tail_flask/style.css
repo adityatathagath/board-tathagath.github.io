@@ -92,14 +92,15 @@ main {
 }
 
 /* Custom cell styles for change columns */
+/* These colors correspond to BARCLAYS_COLOR_PALETTE[6] and [7] for consistency */
 .ag-cell.negative-change {
     background-color: #ffe6e6; /* Light red */
-    color: #dc3545; /* Red text */
+    color: black; /* Text color */
 }
 
 .ag-cell.positive-change {
     background-color: #e6ffe6; /* Light green */
-    color: #28a745; /* Green text */
+    color: black; /* Text color */
 }
 
 /* Navbar tab styling */
@@ -120,4 +121,3 @@ main {
 .nav-tabs .nav-item .nav-link:hover {
     border-color: #0076B6 #0076B6 #fff; /* Hover effect */
 }
-
