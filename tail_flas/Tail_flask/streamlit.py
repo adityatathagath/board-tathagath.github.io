@@ -2,10 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt # Still importing for general Altair.Axis.format string use, though not plotting directly
-from bokeh.plotting import figure, show # show is not used in streamlit, but keeping for import context
+from bokeh.plotting import figure, show 
 from bokeh.models import ColumnDataSource, NumeralTickFormatter, DatetimeTickFormatter, HoverTool
-from bokeh.embed import json_item # Not directly used for st.bokeh_chart, but useful for debugging Bokeh plots
-from bokeh.palettes import Category10, Category20 # For Bokeh plot colors
+from bokeh.palettes import Category10, Category20 
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
 
 # --- Configuration (UPDATE THESE BASED ON YOUR DATA) ---
@@ -31,8 +30,8 @@ BARCLAYS_COLOR_PALETTE = [
     '#004B7F',  # Darker Blue
     '#6A6C6E',  # Medium Grey
     '#A0A3A6',  # Light Grey
-    '#FF4B4B',  # Red for negative changes (index 5)
-    '#28a745',  # Green for positive changes (index 6)
+    '#FF4B4B',  # Red for negative changes (index 5) - used in JS
+    '#28a745',  # Green for positive changes (index 6) - used in JS
 ]
 
 # --- Streamlit Application Setup ---
@@ -341,11 +340,6 @@ def create_bokeh_stacked_area_chart(df, title, colors=BARCLAYS_COLOR_PALETTE):
 
     df_long['Date_str'] = df_long['Date'].dt.strftime('%d-%m-%Y')
     
-    # Get unique asset classes for stacking and coloring
-    asset_classes = df_long['Asset_Class'].unique().tolist()
-    # Ensure color palette is sufficient for all asset classes
-    bokeh_colors = Category10[len(asset_classes)] if len(asset_classes) <= 10 else Category20[len(asset_classes)]
-    
     # Map internal asset class names to display names if desired
     display_asset_names = {
         'FX_DVaR_Value': 'FX',
@@ -354,36 +348,14 @@ def create_bokeh_stacked_area_chart(df, title, colors=BARCLAYS_COLOR_PALETTE):
     }
     df_long['Display_Asset_Class'] = df_long['Asset_Class'].map(display_asset_names).fillna(df_long['Asset_Class'])
 
-    # Create ColumnDataSource for stacking
-    source = ColumnDataSource(df_long)
-    
-    p = figure(
-        height=350, 
-        sizing_mode="stretch_width", 
-        title=title,
-        x_axis_type="datetime",
-        tools="pan,wheel_zoom,box_zoom,reset,save,hover",
-        active_drag="pan",
-        active_scroll="wheel_zoom"
-    )
-
-    # Use varea_stack for stacked area chart
-    renderers = p.varea_stack(
-        x='Date', 
-        stack_cols=[col for col in df_long.columns if '_DVaR_Value' in col and col != 'Macro_DVaR_Value'], # Need to rethink stacking here if using melted data
-        source=source, 
-        legend_label=[display_asset_names.get(col, col) for col in df.columns if '_DVaR_Value' in col and col != 'Macro_DVaR_Value'],
-        color=bokeh_colors
-    )
-    
-    # Re-approach stacking for melted DataFrame in Bokeh (requires un-melting for stacking)
-    # This is more complex for Bokeh's varea_stack from an already melted DF.
-    # For a stacked area, it's easier if data is 'wide' with columns for each stack part.
-    # Let's pivot df_long back to wide format for stacking, then melt for tooltips
+    # --- FIX: Pivot data for Bokeh varea_stack ---
     df_wide = df_long.pivot_table(index='Date', columns='Display_Asset_Class', values='Contribution_Percentage', fill_value=0).reset_index()
     
     asset_class_cols_for_stack = df_wide.columns.drop('Date').tolist()
     source_wide = ColumnDataSource(df_wide)
+    
+    # Use Category colors for stacking
+    bokeh_colors = Category10[len(asset_class_cols_for_stack)] if len(asset_class_cols_for_stack) <= 10 else Category20[len(asset_class_cols_for_stack)]
 
     p_stacked = figure(
         height=350, 
@@ -395,10 +367,9 @@ def create_bokeh_stacked_area_chart(df, title, colors=BARCLAYS_COLOR_PALETTE):
         active_scroll="wheel_zoom"
     )
     
-    # Bokeh's varea_stack needs the columns to exist and be distinct
-    renderers = p_stacked.varea_stack(
+    p_stacked.varea_stack(
         x='Date', 
-        stackers=asset_class_cols_for_stack, 
+        stackers=asset_class_cols_for_stack, # Correctly pass list of columns to stack
         source=source_wide, 
         legend_label=asset_class_cols_for_stack, 
         color=bokeh_colors
@@ -411,7 +382,6 @@ def create_bokeh_stacked_area_chart(df, title, colors=BARCLAYS_COLOR_PALETTE):
     p_stacked.legend.location = "top_left"
     p_stacked.legend.click_policy = "hide"
 
-    # Custom tooltips for stacked area chart
     hover_tool = HoverTool(tooltips=[
         ("Date", "@Date{%d-%m-%Y}"),
         ("Asset Class", "$name"), # $name refers to the column name used in stackers
@@ -464,16 +434,20 @@ def display_correlations_bokeh(df):
         tooltips=[("Assets", "@asset1 - @asset2"), ("Correlation", "@correlation{0.00}")]
     )
 
+    # Use a divergent color scale (red for -1, white for 0, green for 1)
+    color_mapper = alt.Scale(domain=[-1, 1], range=[BARCLAYS_COLOR_PALETTE[5], BARCLAYS_COLOR_PALETTE[4], BARCLAYS_COLOR_PALETTE[6]], type="linear").to_json()['range']
+
     p.rect(x="asset1", y="asset2", width=1, height=1,
            source=source,
-           line_color=None, fill_color=alt.Scale(domain=[-1, 1], range=["#FF4B4B", "#FFFFFF", "#28a745"], type="linear").to_json()['range']) # Using a divergent color scale (red to green)
-
+           line_color=None, fill_color={'field': 'correlation', 'transform': {'expr': f'color_mapper.map(correlation)'}}) # Fill color based on correlation value
+    
     p.axis.fixed_bounds = True
     p.grid.grid_line_color = None
     p.axis.axis_line_color = None
     p.axis.major_tick_line_color = None
-    p.axis.major_label_text_font_size = "10pt"
-    p.axis.major_label_orientation = np.pi/4 # Angle labels if needed
+    p.xaxis.major_label_text_font_size = "10pt"
+    p.yaxis.major_label_text_font_size = "10pt"
+    p.xaxis.major_label_orientation = np.pi/4 # Angle labels if needed
 
     st.bokeh_chart(p, use_container_width=True)
 
@@ -519,8 +493,7 @@ def create_bokeh_sensitivity_attribution_chart(df_raw_var_type, selected_asset_c
         st.info(f"No valid sensitivity contribution data after filtering for {selected_asset_class}.")
         return
 
-    # Get top N sensitivities for display, group others
-    top_n = st.slider(f"Show Top N Sensitivities for {selected_asset_class}", 5, 20, 10, key=f"top_n_sens_{selected_asset_class}_bokeh") # Unique key
+    top_n = st.slider(f"Show Top N Sensitivities for {selected_asset_class}", 5, 20, 10, key=f"top_n_sens_{selected_asset_class}_bokeh")
     
     avg_sens_contrib = sensitivity_contributions.groupby('sensitivity_type')['Value'].mean().nlargest(top_n).index
     
@@ -548,7 +521,6 @@ def create_bokeh_sensitivity_attribution_chart(df_raw_var_type, selected_asset_c
     sensitivity_stack_cols = df_wide_sensitivity.columns.drop('Date').tolist()
     source_sensitivity = ColumnDataSource(df_wide_sensitivity)
     
-    # Use Category colors for sensitivities
     bokeh_colors_sens = Category10[len(sensitivity_stack_cols)] if len(sensitivity_stack_cols) <= 10 else Category20[len(sensitivity_stack_cols)]
 
     p = figure(
@@ -563,7 +535,7 @@ def create_bokeh_sensitivity_attribution_chart(df_raw_var_type, selected_asset_c
     
     p.varea_stack(
         x='Date', 
-        stackers=sensitivity_stack_cols, 
+        stackers=sensitivity_stack_cols, # Correctly pass list of columns to stack
         source=source_sensitivity, 
         legend_label=sensitivity_stack_cols, 
         color=bokeh_colors_sens
@@ -618,7 +590,6 @@ def create_bokeh_svar_dvar_comparison(dvar_df, svar_df, title, colors=BARCLAYS_C
         active_scroll="wheel_zoom"
     )
 
-    # Map VaR_Type to colors
     va_types = df_melted['VaR_Type'].unique()
     type_colors = {va_type: colors[i % len(colors)] for i, va_type in enumerate(va_types)}
 
@@ -627,7 +598,7 @@ def create_bokeh_svar_dvar_comparison(dvar_df, svar_df, title, colors=BARCLAYS_C
         y='Value', 
         source=source, 
         legend_field='VaR_Type', 
-        line_color=alt.Color('VaR_Type', scale=alt.Scale(range=list(type_colors.values()))).to_json()['range'], # Pass Bokeh specific colors
+        line_color=alt.Color('VaR_Type', scale=alt.Scale(range=list(type_colors.values()))).to_json()['range'], 
         line_width=2
     )
     p.circle(
@@ -671,87 +642,122 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
         st.info("No current Macro DVaR data to identify top/bottom tails.")
         return # Exit function if no data
 
+    # Get top 20 positive and negative Macro DVaR values from current COB
     top_20_positive_curr = macro_dvar_curr.nlargest(min(20, len(macro_dvar_curr)), 'Macro_DVaR_Value', keep='all').copy()
     top_20_negative_curr = macro_dvar_curr.nsmallest(min(20, len(macro_dvar_curr)), 'Macro_DVaR_Value', keep='all').copy()
 
+    # Combine these identified top/bottom tails into a single DataFrame for processing
+    # This DataFrame will be the base for our final table, ensuring we only analyze these specific tails
     all_current_tails_base = pd.concat([top_20_positive_curr, top_20_negative_curr]).drop_duplicates(subset=common_merge_keys).reset_index(drop=True)
+    
+    # Rename Macro_DVaR_Value to Macro_DVaR_Value_Current immediately
     all_current_tails_base.rename(columns={'Macro_DVaR_Value': 'Macro_DVaR_Value_Current'}, inplace=True)
 
     if debug_mode:
         print("DEBUG: All Current Tails (Top/Bottom Macro) for Lookup (head):")
         print(all_current_tails_base.head())
 
-    # --- Step 2: Prepare lookup DataFrames for ALL previous COB asset class DVaR values ---
-    prev_lookup_configs = [
-        (macro_dvar_prev, 'Macro_DVaR_Value', 'Macro_DVaR_Value_Previous'),
-        (fx_dvar_prev, 'FX_DVaR_Value', 'FX_DVaR_Value_Previous'),
-        (rates_dvar_prev, 'Rates_DVaR_Value', 'Rates_DVaR_Value_Previous'),
-        (em_macro_dvar_prev, 'EM_Macro_DVaR_Value', 'EM_Macro_DVaR_Value_Previous')
-    ]
 
-    final_display_df = all_current_tails_base.copy()
+    # --- Step 2: Prepare a comprehensive DataFrame of all *current* DVaR values for joining ---
+    # This ensures we get all current asset class values for the selected tails
+    current_all_dvar_values = pd.DataFrame()
+    for df, prefix in [(macro_dvar_curr, 'Macro'), (fx_dvar_curr, 'FX'), (rates_dvar_curr, 'Rates'), (em_macro_dvar_curr, 'EM_Macro')]:
+        if not df.empty:
+            # Select common_merge_keys and the specific DVaR_Value column
+            subset_df = df[common_merge_keys + [f'{prefix}_DVaR_Value']].copy()
+            subset_df.rename(columns={f'{prefix}_DVaR_Value': f'{prefix}_DVaR_Value_Current'}, inplace=True)
+            
+            if current_all_dvar_values.empty:
+                current_all_dvar_values = subset_df
+            else:
+                current_all_dvar_values = pd.merge(current_all_dvar_values, subset_df, on=common_merge_keys, how='outer')
+    
+    if debug_mode:
+        print("DEBUG: current_all_dvar_values (head):")
+        print(current_all_dvar_values.head())
 
-    for prev_df, original_val_col, new_val_col in prev_lookup_configs:
-        if not prev_df.empty and original_val_col in prev_df.columns:
-            temp_prev_lookup_df = prev_df[common_merge_keys + [original_val_col]].copy()
-            temp_prev_lookup_df.rename(columns={original_val_col: new_val_col}, inplace=True)
-            final_display_df = pd.merge(final_display_df, temp_prev_lookup_df, on=common_merge_keys, how='left')
-        
-    current_asset_lookup_configs = [
-        (fx_dvar_curr, 'FX_DVaR_Value', 'FX_DVaR_Value_Current'),
-        (rates_dvar_curr, 'Rates_DVaR_Value', 'Rates_DVaR_Value_Current'),
-        (em_macro_dvar_curr, 'EM_Macro_DVaR_Value', 'EM_Macro_DVaR_Value_Current')
-    ]
-    for curr_df, original_val_col, new_val_col in current_asset_lookup_configs:
-        if new_val_col not in final_display_df.columns and not curr_df.empty and original_val_col in curr_df.columns:
-            temp_curr_lookup_df = curr_df[common_merge_keys + [original_val_col]].copy()
-            temp_curr_lookup_df.rename(columns={original_val_col: new_val_col}, inplace=True)
-            final_display_df = pd.merge(final_display_df, temp_curr_lookup_df, on=common_merge_keys, how='left')
+
+    # --- Step 3: Prepare a comprehensive DataFrame of all *previous* DVaR values for joining ---
+    previous_all_dvar_values = pd.DataFrame()
+    for df, prefix in [(macro_dvar_prev, 'Macro'), (fx_dvar_prev, 'FX'), (rates_dvar_prev, 'Rates'), (em_macro_dvar_prev, 'EM_Macro')]:
+        if not df.empty:
+            subset_df = df[common_merge_keys + [f'{prefix}_DVaR_Value']].copy()
+            subset_df.rename(columns={f'{prefix}_DVaR_Value': f'{prefix}_DVaR_Value_Previous'}, inplace=True)
+            
+            if previous_all_dvar_values.empty:
+                previous_all_dvar_values = subset_df
+            else:
+                previous_all_dvar_values = pd.merge(previous_all_dvar_values, subset_df, on=common_merge_keys, how='outer')
 
     if debug_mode:
-        print("DEBUG: Final Display DF after all asset-specific merges (before fillna and change calculation):")
+        print("DEBUG: previous_all_dvar_values (head):")
+        print(previous_all_dvar_values.head())
+
+
+    # --- Step 4: Merge the identified tails with ALL current and ALL previous values ---
+    # Start with the base (identified current tails), then left merge all current asset values
+    final_display_df = pd.merge(all_current_tails_base, current_all_dvar_values, on=common_merge_keys, how='left', suffixes=('_base', None)) # Suffixes to manage potential duplicates if not all_current_tails_base had all asset columns initially.
+
+    # Then left merge all previous asset values
+    final_display_df = pd.merge(final_display_df, previous_all_dvar_values, on=common_merge_keys, how='left')
+
+    if debug_mode:
+        print("DEBUG: Final Display DF after all merges (before fillna and change calculation):")
         print(final_display_df.head())
 
 
-    # --- Step 3: Fill NaNs and Calculate Changes ---
-    value_cols_to_fill = [col for col in final_display_df.columns if '_DVaR_Value_Current' in col or '_DVaR_Value_Previous' in col]
-    final_display_df[value_cols_to_fill] = final_display_df[value_cols_to_fill].fillna(0)
+    # --- Step 5: Fill NaNs and Calculate Changes ---
+    # Ensure all expected value columns are present before fillna (they should be due to outer merges)
+    expected_value_cols = []
+    for p in ['Macro', 'FX', 'Rates', 'EM_Macro']:
+        expected_value_cols.extend([f'{p}_DVaR_Value_Current', f'{p}_DVaR_Value_Previous'])
+    
+    # Add any missing expected columns to final_display_df, filling with NaN initially
+    for col in expected_value_cols:
+        if col not in final_display_df.columns:
+            final_display_df[col] = np.nan
 
+    # Now fill NaNs with 0 for all relevant value columns
+    final_display_df[expected_value_cols] = final_display_df[expected_value_cols].fillna(0)
+
+    # Calculate Change columns
     asset_prefixes = ['Macro', 'FX', 'Rates', 'EM_Macro']
     for prefix in asset_prefixes:
         current_col_name = f'{prefix}_DVaR_Value_Current'
         previous_col_name = f'{prefix}_DVaR_Value_Previous'
         change_col_name = f'{prefix}_DVaR_Change'
         
-        if current_col_name in final_display_df.columns and previous_col_name in final_display_df.columns:
-            final_display_df[change_col_name] = final_display_df[current_col_name] - final_display_df[previous_col_name]
-        else:
-            final_display_df[change_col_name] = 0
+        # Calculate change; columns are guaranteed to exist and be filled with 0 if data was missing
+        final_display_df[change_col_name] = final_display_df[current_col_name] - final_display_df[previous_col_name]
 
-    final_display_df.dropna(subset=['Macro_DVaR_Value_Current'], inplace=True)
-    final_display_df = final_display_df.sort_values(by=['Date', 'Pnl_Vector_Rank']).reset_index(drop=True)
+    # Final sort and drop duplicates in case the initial concat introduced any
+    final_display_df.drop_duplicates(subset=common_merge_keys, inplace=True)
+    final_display_df.sort_values(by=['Date', 'Pnl_Vector_Rank'], inplace=True, ignore_index=True)
 
     if debug_mode:
-        print("DEBUG: Final Display DF ready for AgGrid (head):")
+        print("DEBUG: Final Display DF ready for AgGrid (head and columns):")
         print(final_display_df.head())
+        print(final_display_df.columns.tolist())
 
-    # --- Step 4: Prepare data for AgGrid display ---
-    top_20_positive_aggrid = final_display_df.nlargest(min(20, len(final_display_df)), 'Macro_DVaR_Value_Current', keep='all')
-    top_20_negative_aggrid = final_display_df.nsmallest(min(20, len(final_display_df)), 'Macro_DVaR_Value_Current', keep='all')
+
+    # --- Step 6: Prepare data for AgGrid display (re-select top/bottom from final_display_df) ---
+    # This step is critical to ensure the AgGrid display matches the sorted and merged data.
+    top_20_positive_aggrid = final_display_df.nlargest(min(20, len(final_display_df)), 'Macro_DVaR_Value_Current', keep='all').copy()
+    top_20_negative_aggrid = final_display_df.nsmallest(min(20, len(final_display_df)), 'Macro_DVaR_Value_Current', keep='all').copy()
+
 
     columnDefs = [
         {"field": "Date", "headerName": "Date", "type": ["dateColumnFilter", "customDateTimeFormat"], "custom_format_string": 'dd-MM-yyyy'},
         {"field": "Pnl_Vector_Name", "headerName": "P&L Vector"},
     ]
 
-    # JavaScript code for cell styling (red for negative, green for positive)
     change_cell_style_jscode = JsCode(f"""
     function(params) {{
         if (typeof params.value === 'number') {{
             if (params.value < 0) {{
-                return {{backgroundColor: '{BARCLAYS_COLOR_PALETTE[5]}', color: 'black'}}; // Red background
+                return {{backgroundColor: '{BARCLAYS_COLOR_PALETTE[5]}', color: 'black'}};
             }} else if (params.value > 0) {{
-                return {{backgroundColor: '{BARCLAYS_COLOR_PALETTE[6]}', color: 'black'}}; // Green background
+                return {{backgroundColor: '{BARCLAYS_COLOR_PALETTE[6]}', color: 'black'}};
             }}
         }}
         return null;
@@ -774,7 +780,7 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
     st.subheader("Top 20 Positive Macro DVaR Tails (Current COB)")
     if not top_20_positive_aggrid.empty:
         top_20_positive_aggrid_display = top_20_positive_aggrid.copy()
-        top_20_positive_aggrid_display['Date'] = top_20_positive_aggrid_display['Date'].dt.strftime('%Y-%m-%d') # Format for AgGrid
+        top_20_positive_aggrid_display['Date'] = top_20_positive_aggrid_display['Date'].dt.strftime('%Y-%m-%d') 
         AgGrid(top_20_positive_aggrid_display, gridOptions=gridOptions, 
                data_return_mode='AS_INPUT', update_mode='MODEL_CHANGED', 
                fit_columns_on_grid_load=True, allow_unsafe_jscode=True, 
@@ -785,7 +791,7 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
     st.subheader("Top 20 Negative Macro DVaR Tails (Current COB)")
     if not top_20_negative_aggrid.empty:
         top_20_negative_aggrid_display = top_20_negative_aggrid.copy()
-        top_20_negative_aggrid_display['Date'] = top_20_negative_aggrid_display['Date'].dt.strftime('%Y-%m-%d') # Format for AgGrid
+        top_20_negative_aggrid_display['Date'] = top_20_negative_aggrid_display['Date'].dt.strftime('%Y-%m-%d') 
         AgGrid(top_20_negative_aggrid_display, gridOptions=gridOptions, 
                data_return_mode='AS_INPUT', update_mode='MODEL_CHANGED', 
                fit_columns_on_grid_load=True, allow_unsafe_jscode=True, 
@@ -796,16 +802,14 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
 
 # --- Main Application Logic Flow ---
 if uploaded_file is not None:
-    # Clear any previous success/warning messages related to data load
     st.empty() 
     
     data_sheets, date_mappings = load_data(uploaded_file, DEBUG_MODE)
 
     if data_sheets is None or date_mappings is None:
-        st.error("Data loading failed. Please check your Excel file and sheet names.")
+        # Error message is already displayed by load_data
         st.stop()
 
-    # Retrieve all four dataframes and their date mappings
     current_day_df = data_sheets.get(CURRENT_DAY_SHEET_NAME)
     previous_day_df = data_sheets.get(PREVIOUS_DAY_SHEET_NAME)
     svar_cob_df = data_sheets.get(SVAR_COB_SHEET_NAME)
@@ -817,12 +821,11 @@ if uploaded_file is not None:
     svar_prev_cob_date_map = date_mappings.get(SVAR_PREV_COB_SHEET_NAME)
 
     # Basic checks for loaded dataframes
-    if not all([current_day_df is not None, previous_day_df is not None, 
-                svar_cob_df is not None, svar_prev_cob_df is not None]):
-        st.error("One or more required sheets could not be loaded or are empty. Check debug info for details.")
+    if not all([isinstance(df, pd.DataFrame) and not df.empty for df in [current_day_df, previous_day_df, svar_cob_df, svar_prev_cob_df]]):
+        st.error("One or more required sheets are empty or could not be processed into DataFrames. Check debug info for details.")
         st.stop()
-    if not all([m is not None for m in [current_day_date_map, previous_day_date_map, svar_cob_date_map, svar_prev_cob_date_map]]):
-        st.error("Date mappings could not be extracted for one or more sheets. Check the first row of your Excel sheets.")
+    if not all([isinstance(m, dict) and bool(m) for m in [current_day_date_map, previous_day_date_map, svar_cob_date_map, svar_prev_cob_date_map]]):
+        st.error("Date mappings are empty or could not be extracted for one or more sheets. Check the first row of your Excel sheets.")
         st.stop()
 
     st.success("Excel data loaded and dates extracted successfully!")
@@ -858,7 +861,7 @@ if uploaded_file is not None:
         col_dvar, col_svar = st.columns(2)
 
         lowest_dvar_row = macro_dvar_curr.nsmallest(1, 'Macro_DVaR_Value').iloc[0] if not macro_dvar_curr.empty else None
-        if lowest_dvar_row is not None and 'Macro_DVaR_Value' in lowest_dvar_row: # Added column check
+        if lowest_dvar_row is not None and 'Macro_DVaR_Value' in lowest_dvar_row: 
             with col_dvar:
                 st.metric(
                     label="Lowest Macro DVaR (Current COB)", 
@@ -870,7 +873,7 @@ if uploaded_file is not None:
                 st.info("No DVaR data to display lowest metric.")
         
         lowest_svar_row = macro_svar_curr.nsmallest(1, 'Macro_SVaR_Value').iloc[0] if not macro_svar_curr.empty else None
-        if lowest_svar_row is not None and 'Macro_SVaR_Value' in lowest_svar_row: # Added column check
+        if lowest_svar_row is not None and 'Macro_SVaR_Value' in lowest_svar_row: 
             with col_svar:
                 st.metric(
                     label="Lowest Macro SVaR (Current COB)", 
@@ -895,7 +898,6 @@ if uploaded_file is not None:
         "Sensitivity Attribution", "SVaR Comparison"
     ])
 
-    # Concatenate DVaR data for "Current vs. Previous Day" trend plots for tabs
     all_macro_dvar_for_trends = pd.concat([macro_dvar_curr, macro_dvar_prev], ignore_index=True)
     all_fx_dvar_for_trends = pd.concat([fx_dvar_curr, fx_dvar_prev], ignore_index=True)
     all_rates_dvar_for_trends = pd.concat([rates_dvar_curr, rates_dvar_prev], ignore_index=True)
@@ -928,8 +930,7 @@ if uploaded_file is not None:
 
         window_size = st.slider("Select Rolling Window Size (days)", 5, 60, 20, key='dvar_vol_window')
         
-        if not all_macro_dvar_for_trends.empty: # Use the combined DF for volatility as well
-            # Calculate rolling std for Macro DVaR
+        if not all_macro_dvar_for_trends.empty:
             all_macro_dvar_for_trends['Rolling_Std_DVaR'] = all_macro_dvar_for_trends.groupby('Sheet_Type')['Macro_DVaR_Value'].transform(lambda x: x.rolling(window=window_size, min_periods=1).std())
             create_bokeh_line_chart(all_macro_dvar_for_trends, f"Macro DVaR Rolling Volatility ({window_size}-day window)", 'Rolling_Std_DVaR', 'Sheet_Type')
 
@@ -1032,5 +1033,3 @@ if uploaded_file is not None:
             st.info(f"No SVaR or DVaR data available for {comparison_type} comparison. "
                     "Ensure sheets are correctly named and contain data.")
 
-else:
-    st.info("Please upload your Excel file ('Tail_analysis_auto.xlsx') using the sidebar to start your DVaR analysis.")
