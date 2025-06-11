@@ -1,0 +1,123 @@
+/* static/css/style.css */
+
+body {
+    padding-top: 56px; /* Space for the fixed-top navbar */
+    background-color: #f8f9fa; /* Light grey background */
+    font-family: Arial, sans-serif;
+}
+
+.navbar {
+    background-color: #0076B6 !important; /* Barclays Primary Blue */
+}
+
+.sidebar {
+    height: 100vh;
+    background-color: #f0f2f5; /* Light grey/blue for sidebar */
+    padding-top: 1rem;
+    position: fixed; /* Keep sidebar fixed */
+    top: 56px; /* Align below navbar */
+    left: 0;
+    z-index: 1000;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-right: 1px solid #dee2e6;
+}
+
+.sidebar .nav-link {
+    font-weight: 500;
+    color: #333;
+    padding: .5rem 1rem;
+}
+
+.sidebar .nav-link.active {
+    color: #0076B6;
+    background-color: #e0f2ff; /* Light blue highlight */
+}
+
+.sidebar-section {
+    padding: 1rem;
+    border-bottom: 1px solid #eee;
+}
+
+.sidebar-section:last-child {
+    border-bottom: none;
+}
+
+main {
+    padding-top: 1rem;
+}
+
+.card-custom {
+    border: 1px solid #dee2e6;
+    border-radius: .5rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.card-custom .card-header {
+    background-color: #e0f2ff; /* Light blue header */
+    color: #004B7F; /* Darker blue text */
+    font-weight: bold;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.metric-value {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #0076B6; /* Barclays Blue */
+}
+
+.debug-output {
+    background-color: #e9ecef;
+    border: 1px solid #ced4da;
+    padding: 10px;
+    margin-top: 10px;
+    max-height: 200px;
+    overflow-y: scroll;
+    font-size: 0.8em;
+    font-family: monospace;
+}
+
+/* Ag-Grid specific styling */
+.ag-theme-alpine {
+    --ag-foreground-color: #333;
+    --ag-background-color: #fff;
+    --ag-header-background-color: #f0f2f5; /* Light grey/blue header */
+    --ag-header-foreground-color: #004B7F; /* Darker blue header text */
+    --ag-odd-row-background-color: #f8f9fa; /* Lighter alternating row */
+    --ag-border-color: #dee2e6;
+    --ag-row-hover-background-color: #e0f2ff; /* Light blue on hover */
+    --ag-selected-row-background-color: #cce5ff; /* Slightly darker blue on selection */
+    border: 1px solid var(--ag-border-color);
+    border-radius: .5rem;
+}
+
+/* Custom cell styles for change columns */
+.ag-cell.negative-change {
+    background-color: #ffe6e6; /* Light red */
+    color: #dc3545; /* Red text */
+}
+
+.ag-cell.positive-change {
+    background-color: #e6ffe6; /* Light green */
+    color: #28a745; /* Green text */
+}
+
+/* Navbar tab styling */
+.nav-tabs .nav-item .nav-link {
+    color: #0076B6; /* Barclays blue for inactive tabs */
+    border-color: #dee2e6 #dee2e6 #f8f9fa; /* Border matching page background on bottom */
+    font-weight: bold;
+}
+
+.nav-tabs .nav-item .nav-link.active {
+    color: #004B7F; /* Darker blue for active tab */
+    background-color: #fff;
+    border-color: #0076B6 #0076B6 #fff; /* Active tab underline */
+    border-top-left-radius: .25rem;
+    border-top-right-radius: .25rem;
+}
+
+.nav-tabs .nav-item .nav-link:hover {
+    border-color: #0076B6 #0076B6 #fff; /* Hover effect */
+}
+
