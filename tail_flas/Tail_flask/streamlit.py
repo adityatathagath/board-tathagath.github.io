@@ -198,13 +198,24 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
         # Ensure pnl_vector_name is a string before attempting string operations
         pnl_vector_name_str = str(pnl_vector_name) 
         
+        if debug_mode:
+            print(f"DEBUG: extract_pnl_rank - Processing: '{pnl_vector_name_str}'")
+
         if '[T-2]' in pnl_vector_name_str:
             name_without_suffix = pnl_vector_name_str.split('[T-2]')[0]
         else:
             name_without_suffix = pnl_vector_name_str
         
         numeric_part = ''.join(filter(str.isdigit, name_without_suffix))
-        return int(numeric_part) if numeric_part else np.nan
+        
+        if debug_mode:
+            print(f"DEBUG: extract_pnl_rank - Numeric part: '{numeric_part}'")
+
+        try:
+            return int(numeric_part) if numeric_part else np.nan
+        except ValueError:
+            print(f"ERROR: Could not convert '{numeric_part}' to int for Pnl_Vector_Name '{pnl_vector_name_str}'")
+            return np.nan
     
     df_melted['Pnl_Vector_Rank'] = df_melted['Pnl_Vector_Name'].apply(extract_pnl_rank)
     df_melted['Pnl_Vector_Rank'] = df_melted['Pnl_Vector_Rank'].astype('Int64')
@@ -441,7 +452,7 @@ def display_correlations_bokeh(df):
         tooltips=[("Assets", "@asset1 - @asset2"), ("Correlation", "@correlation{0.00}")]
     )
 
-    # Use a divergent color scale (red for -1, white for 0, green for 1)
+    # Using a divergent color scale (red for -1, white for 0, green for 1)
     color_mapper = alt.Scale(domain=[-1, 1], range=[BARCLAYS_COLOR_PALETTE[5], BARCLAYS_COLOR_PALETTE[4], BARCLAYS_COLOR_PALETTE[6]], type="linear").to_json()['range']
 
     p.rect(x="asset1", y="asset2", width=1, height=1,
@@ -661,94 +672,96 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
     all_current_tails_base.rename(columns={'Macro_DVaR_Value': 'Macro_DVaR_Value_Current'}, inplace=True)
 
     if debug_mode:
-        print("DEBUG: All Current Tails (Top/Bottom Macro) for Lookup (head):")
+        print("DEBUG: Top/Bottom Tails - All Current Tails (Base for Merge):")
         print(all_current_tails_base.head())
 
 
-    # --- Step 2: Prepare a comprehensive DataFrame of all *current* DVaR values for joining ---
-    # This ensures we get all current asset class values for the selected tails
-    current_all_dvar_values = pd.DataFrame()
-    for df, prefix in [(macro_dvar_curr, 'Macro'), (fx_dvar_curr, 'FX'), (rates_dvar_curr, 'Rates'), (em_macro_dvar_curr, 'EM_Macro')]:
-        if not df.empty:
-            # Select common_merge_keys and the specific DVaR_Value column
-            subset_df = df[common_merge_keys + [f'{prefix}_DVaR_Value']].copy()
-            subset_df.rename(columns={f'{prefix}_DVaR_Value': f'{prefix}_DVaR_Value_Current'}, inplace=True)
-            
-            if current_all_dvar_values.empty:
-                current_all_dvar_values = subset_df
-            else:
-                current_all_dvar_values = pd.merge(current_all_dvar_values, subset_df, on=common_merge_keys, how='outer')
+    # --- Step 2: Prepare lookup DataFrames for all asset classes (Current and Previous) ---
+    # These DataFrames will contain only 'Date' and the summed DVaR value for that date,
+    # for easy lookup. We discard Pnl_Vector_Name/Rank for this lookup phase as per user request.
+
+    # Current Daily Totals
+    curr_macro_daily_total = macro_dvar_curr.groupby('Date')['Macro_DVaR_Value'].sum().reset_index().rename(columns={'Macro_DVaR_Value': 'Macro_DVaR_Value_Current_Daily'})
+    curr_fx_daily_total = fx_dvar_curr.groupby('Date')['FX_DVaR_Value'].sum().reset_index().rename(columns={'FX_DVaR_Value': 'FX_DVaR_Value_Current_Daily'})
+    curr_rates_daily_total = rates_dvar_curr.groupby('Date')['Rates_DVaR_Value'].sum().reset_index().rename(columns={'Rates_DVaR_Value': 'Rates_DVaR_Value_Current_Daily'})
+    curr_em_macro_daily_total = em_macro_dvar_curr.groupby('Date')['EM_Macro_DVaR_Value'].sum().reset_index().rename(columns={'EM_Macro_DVaR_Value': 'EM_Macro_DVaR_Value_Current_Daily'})
+
+    # Previous Daily Totals
+    prev_macro_daily_total = macro_dvar_prev.groupby('Date')['Macro_DVaR_Value'].sum().reset_index().rename(columns={'Macro_DVaR_Value': 'Macro_DVaR_Value_Previous_Daily'})
+    prev_fx_daily_total = fx_dvar_prev.groupby('Date')['FX_DVaR_Value'].sum().reset_index().rename(columns={'FX_DVaR_Value': 'FX_DVaR_Value_Previous_Daily'})
+    prev_rates_daily_total = rates_dvar_prev.groupby('Date')['Rates_DVaR_Value'].sum().reset_index().rename(columns={'Rates_DVaR_Value': 'Rates_DVaR_Value_Previous_Daily'})
+    prev_em_macro_daily_total = em_macro_dvar_prev.groupby('Date')['EM_Macro_DVaR_Value'].sum().reset_index().rename(columns={'EM_Macro_DVaR_Value': 'EM_Macro_DVaR_Value_Previous_Daily'})
+
+    if debug_mode:
+        print("DEBUG: Top/Bottom Tails - Aggregated Daily Totals (Previous Macro Head):")
+        print(prev_macro_daily_total.head())
+        print("DEBUG: Top/Bottom Tails - Aggregated Daily Totals (Previous FX Head):")
+        print(prev_fx_daily_total.head())
+
+
+    # --- Step 3: Merge the identified tails with the Daily Total DataFrames (on Date only) ---
+    # Start with the base (all_current_tails_base which has Pnl_Vector_Name and Pnl_Vector_Rank)
+    # Merge with daily totals for CURRENT period first, then previous
     
-    if debug_mode:
-        print("DEBUG: current_all_dvar_values (head):")
-        print(current_all_dvar_values.head())
+    final_display_df = all_current_tails_base.copy()
 
+    # Merge CURRENT daily totals for other asset classes (Macro Current is already in base)
+    final_display_df = pd.merge(final_display_df, curr_fx_daily_total, on='Date', how='left')
+    final_display_df = pd.merge(final_display_df, curr_rates_daily_total, on='Date', how='left')
+    final_display_df = pd.merge(final_display_df, curr_em_macro_daily_total, on='Date', how='left')
 
-    # --- Step 3: Prepare a comprehensive DataFrame of all *previous* DVaR values for joining ---
-    previous_all_dvar_values = pd.DataFrame()
-    for df, prefix in [(macro_dvar_prev, 'Macro'), (fx_dvar_prev, 'FX'), (rates_dvar_prev, 'Rates'), (em_macro_dvar_prev, 'EM_Macro')]:
-        if not df.empty:
-            subset_df = df[common_merge_keys + [f'{prefix}_DVaR_Value']].copy()
-            subset_df.rename(columns={f'{prefix}_DVaR_Value': f'{prefix}_DVaR_Value_Previous'}, inplace=True)
-            
-            if previous_all_dvar_values.empty:
-                previous_all_dvar_values = subset_df
-            else:
-                previous_all_dvar_values = pd.merge(previous_all_dvar_values, subset_df, on=common_merge_keys, how='outer')
+    # Merge PREVIOUS daily totals for all asset classes
+    final_display_df = pd.merge(final_display_df, prev_macro_daily_total, on='Date', how='left')
+    final_display_df = pd.merge(final_display_df, prev_fx_daily_total, on='Date', how='left')
+    final_display_df = pd.merge(final_display_df, prev_rates_daily_total, on='Date', how='left')
+    final_display_df = pd.merge(final_display_df, prev_em_macro_daily_total, on='Date', how='left')
 
     if debug_mode:
-        print("DEBUG: previous_all_dvar_values (head):")
-        print(previous_all_dvar_values.head())
-
-
-    # --- Step 4: Merge the identified tails with ALL current and ALL previous values ---
-    # Start with the base (identified current tails), then left merge all current asset values
-    final_display_df = pd.merge(all_current_tails_base, current_all_dvar_values, on=common_merge_keys, how='left', suffixes=('_base', None)) # Suffixes to manage potential duplicates if not all_current_tails_base had all asset columns initially.
-
-    # Then left merge all previous asset values
-    final_display_df = pd.merge(final_display_df, previous_all_dvar_values, on=common_merge_keys, how='left')
-
-    if debug_mode:
-        print("DEBUG: Final Display DF after all merges (before fillna and change calculation):")
+        print("DEBUG: Top/Bottom Tails - Final Display DF after all merges (before fillna and change calculation):")
         print(final_display_df.head())
+        print("DEBUG: Top/Bottom Tails - Columns after merges:", final_display_df.columns.tolist())
 
 
-    # --- Step 5: Fill NaNs and Calculate Changes ---
-    # Ensure all expected value columns are present before fillna (they should be due to outer merges)
-    expected_value_cols = []
-    for p in ['Macro', 'FX', 'Rates', 'EM_Macro']:
-        expected_value_cols.extend([f'{p}_DVaR_Value_Current', f'{p}_DVaR_Value_Previous'])
+    # --- Step 4: Fill NaNs and Calculate Changes ---
+    # Identify all relevant value columns to fill NaNs with 0
+    # Note the new column names for current daily totals
+    value_cols_to_fill = [
+        'Macro_DVaR_Value_Current', 
+        'Macro_DVaR_Value_Previous_Daily', # Previous Macro
+        'FX_DVaR_Value_Current_Daily', 
+        'FX_DVaR_Value_Previous_Daily',
+        'Rates_DVaR_Value_Current_Daily', 
+        'Rates_DVaR_Value_Previous_Daily',
+        'EM_Macro_DVaR_Value_Current_Daily', 
+        'EM_Macro_DVaR_Value_Previous_Daily'
+    ]
     
-    # Add any missing expected columns to final_display_df, filling with NaN initially
-    for col in expected_value_cols:
+    # Ensure columns exist before attempting to fillna or operate on them
+    for col in value_cols_to_fill:
         if col not in final_display_df.columns:
-            final_display_df[col] = np.nan
+            final_display_df[col] = np.nan # Add as NaN if missing
 
-    # Now fill NaNs with 0 for all relevant value columns
-    final_display_df[expected_value_cols] = final_display_df[expected_value_cols].fillna(0)
+    final_display_df[value_cols_to_fill] = final_display_df[value_cols_to_fill].fillna(0)
 
-    # Calculate Change columns
-    asset_prefixes = ['Macro', 'FX', 'Rates', 'EM_Macro']
-    for prefix in asset_prefixes:
-        current_col_name = f'{prefix}_DVaR_Value_Current'
-        previous_col_name = f'{prefix}_DVaR_Value_Previous'
-        change_col_name = f'{prefix}_DVaR_Change'
-        
-        # Calculate change; columns are guaranteed to exist and be filled with 0 if data was missing
-        final_display_df[change_col_name] = final_display_df[current_col_name] - final_display_df[previous_col_name]
+    # Calculate Change columns, using the correct column names for daily totals
+    final_display_df['Macro_DVaR_Change'] = final_display_df['Macro_DVaR_Value_Current'] - final_display_df['Macro_DVaR_Value_Previous_Daily']
+    final_display_df['FX_DVaR_Value_Current'] = final_display_df['FX_DVaR_Value_Current_Daily'] # Correcting display column to reflect daily sum
+    final_display_df['FX_DVaR_Change'] = final_display_df['FX_DVaR_Value_Current_Daily'] - final_display_df['FX_DVaR_Value_Previous_Daily']
+    final_display_df['Rates_DVaR_Value_Current'] = final_display_df['Rates_DVaR_Value_Current_Daily']
+    final_display_df['Rates_DVaR_Change'] = final_display_df['Rates_DVaR_Value_Current_Daily'] - final_display_df['Rates_DVaR_Value_Previous_Daily']
+    final_display_df['EM_Macro_DVaR_Value_Current'] = final_display_df['EM_Macro_DVaR_Value_Current_Daily']
+    final_display_df['EM_Macro_DVaR_Change'] = final_display_df['EM_Macro_DVaR_Value_Current_Daily'] - final_display_df['EM_Macro_DVaR_Value_Previous_Daily']
 
     # Final sort and drop duplicates in case the initial concat introduced any
     final_display_df.drop_duplicates(subset=common_merge_keys, inplace=True)
     final_display_df.sort_values(by=['Date', 'Pnl_Vector_Rank'], inplace=True, ignore_index=True)
 
     if debug_mode:
-        print("DEBUG: Final Display DF ready for AgGrid (head and columns):")
+        print("DEBUG: Top/Bottom Tails - Final Display DF ready for AgGrid (final columns):")
         print(final_display_df.head())
         print(final_display_df.columns.tolist())
 
-
-    # --- Step 6: Prepare data for AgGrid display (re-select top/bottom from final_display_df) ---
-    # This step is critical to ensure the AgGrid display matches the sorted and merged data.
+    # --- Step 5: Prepare data for AgGrid display (re-select top/bottom from final_display_df) ---
     top_20_positive_aggrid = final_display_df.nlargest(min(20, len(final_display_df)), 'Macro_DVaR_Value_Current', keep='all').copy()
     top_20_negative_aggrid = final_display_df.nsmallest(min(20, len(final_display_df)), 'Macro_DVaR_Value_Current', keep='all').copy()
 
@@ -773,11 +786,18 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
     
     number_formatter_jscode = JsCode("function(params) { if (typeof params.value === 'number') { return params.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}); } return params.value; }")
 
-    asset_prefixes = ['Macro', 'FX', 'Rates', 'EM_Macro']
-    for prefix in asset_prefixes:
-        columnDefs.append({"field": f"{prefix}_DVaR_Value_Current", "headerName": f"{prefix} Current", "type": ["numericColumn", "numberColumnFilter"], "valueFormatter": number_formatter_jscode})
-        columnDefs.append({"field": f"{prefix}_DVaR_Value_Previous", "headerName": f"{prefix} Previous", "type": ["numericColumn", "numberColumnFilter"], "valueFormatter": number_formatter_jscode})
-        columnDefs.append({"field": f"{prefix}_DVaR_Change", "headerName": f"{prefix} Change", "type": ["numericColumn", "numberColumnFilter"], "cellStyle": change_cell_style_jscode, "valueFormatter": number_formatter_jscode})
+    # Correcting field names for AgGrid columns based on new merging strategy
+    aggrid_asset_cols = [
+        ('Macro', 'Macro_DVaR_Value_Current', 'Macro_DVaR_Value_Previous_Daily', 'Macro_DVaR_Change'),
+        ('FX', 'FX_DVaR_Value_Current_Daily', 'FX_DVaR_Value_Previous_Daily', 'FX_DVaR_Change'),
+        ('Rates', 'Rates_DVaR_Value_Current_Daily', 'Rates_DVaR_Value_Previous_Daily', 'Rates_DVaR_Change'),
+        ('EM_Macro', 'EM_Macro_DVaR_Value_Current_Daily', 'EM_Macro_DVaR_Value_Previous_Daily', 'EM_Macro_DVaR_Change')
+    ]
+
+    for prefix, curr_col, prev_col, change_col in aggrid_asset_cols:
+        columnDefs.append({"field": curr_col, "headerName": f"{prefix} Current", "type": ["numericColumn", "numberColumnFilter"], "valueFormatter": number_formatter_jscode})
+        columnDefs.append({"field": prev_col, "headerName": f"{prefix} Previous", "type": ["numericColumn", "numberColumnFilter"], "valueFormatter": number_formatter_jscode})
+        columnDefs.append({"field": change_col, "headerName": f"{prefix} Change", "type": ["numericColumn", "numberColumnFilter"], "cellStyle": change_cell_style_jscode, "valueFormatter": number_formatter_jscode})
 
     gb = GridOptionsBuilder.from_dataframe(pd.DataFrame(columns=[col['field'] for col in columnDefs])) 
     gb.configure_columns(columnDefs)
@@ -1039,4 +1059,3 @@ if uploaded_file is not None:
         else:
             st.info(f"No SVaR or DVaR data available for {comparison_type} comparison. "
                     "Ensure sheets are correctly named and contain data.")
-
