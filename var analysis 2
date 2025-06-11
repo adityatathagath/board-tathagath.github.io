@@ -394,7 +394,7 @@ def plot_exceedances(df, title, threshold):
     exceedance_points = alt.Chart(df_plot[df_plot['Exceeds_Threshold']]).mark_point(color='red', size=100).encode(
         x=alt.X('Date:T'),
         y=alt.Y('Macro_DVaR_Value'),
-        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Macro_DVaR_Value', alt.value('Exceeded Threshold')] # Date format change
+        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Macro_DVaR_Value', alt.Tooltip('Status', value='Exceeded Threshold')] # CORRECTED LINE
     )
 
     threshold_line = alt.Chart(pd.DataFrame({'threshold': [threshold]})).mark_rule(color='red', strokeDash=[5,5]).encode(
@@ -793,4 +793,3 @@ if uploaded_file is not None:
 
 else:
     st.info("Please upload your Excel file ('Tail_analysis_auto.xlsx') to start your DVaR analysis.")
-
