@@ -1,0 +1,173 @@
+# shared_utils.py
+
+import pandas as pd
+import numpy as np
+import streamlit as st
+from datetime import datetime, timedelta
+import os
+import re
+
+# ======================================================================================
+# DUMMY DATA GENERATION
+# This function is updated to create a highly realistic Excel file matching the
+# complex structure described by the user, including different vector names and [T-2] suffixes.
+# ======================================================================================
+def create_dummy_excel_file():
+    """Generates a realistic dummy Excel file with the complex 4-sheet structure."""
+    FILE_NAME = "Tail_analysis_auto.xlsx"
+    if os.path.exists(FILE_NAME):
+        return "Dummy Excel file already exists."
+
+    nodes = [9001, 9002, 9003]
+    asset_classes = ['fx', 'rates', 'em macro', 'credit', 'equity']
+    sensitivities = {
+        'fx': ['FX Delta', 'FX Vega'], 'rates': ['IR Delta SABR', 'IR Curve'],
+        'em macro': ['EMFX Delta', 'EMIR Delta'], 'credit': ['Credit Spread'],
+        'equity': ['EQ Delta', 'EQ Vega']
+    }
+    
+    def generate_base_data(var_type):
+        data = []
+        for node in nodes:
+            for ac in asset_classes:
+                for sens in sensitivities[ac]:
+                    data.append({
+                        'Var Type': var_type, 'Node': node, 'Asset class': ac,
+                        'currency': 'USD', 'sensitivity_type': sens,
+                        'load_code': f'LC{node % 10}'
+                    })
+        return pd.DataFrame(data)
+
+    def generate_pnl_data(num_vectors, num_rows):
+        pnl_matrix = np.random.randn(num_rows, num_vectors) * 5
+        for _ in range(5): # Add a few large shocks for interesting tail events
+            row, col = np.random.randint(0, num_rows), np.random.randint(0, num_vectors)
+            pnl_matrix[row, col] += (np.random.rand() - 0.5) * 100
+        return 100 + np.cumsum(pnl_matrix, axis=1)
+
+    # DVaR Data
+    dvar_base_df = generate_base_data('DVaR')
+    num_vectors_dvar = 520 - 261 + 1
+    pnl_data_dvar_cob = generate_pnl_data(num_vectors_dvar, len(dvar_base_df))
+    dvar_cob_df = dvar_base_df.copy()
+    pnl_cols_dvar_cob = [f'pnl_vector{i}' for i in range(261, 521)]
+    dvar_cob_df[pnl_cols_dvar_cob] = pnl_data_dvar_cob
+    
+    dvar_prev_df = dvar_base_df.copy()
+    pnl_cols_dvar_prev = [f'pnl_vector{i}[T-2]' for i in range(261, 521)]
+    dvar_prev_df[pnl_cols_dvar_prev] = pnl_data_dvar_cob
+
+    # SVaR Data
+    svar_base_df = generate_base_data('SVaR')
+    pnl_data_svar_cob = generate_pnl_data(1, len(svar_base_df))
+    svar_cob_df = svar_base_df.copy()
+    svar_cob_df['pnl_vector1'] = pnl_data_svar_cob
+    
+    svar_prev_df = svar_base_df.copy()
+    svar_prev_df['pnl_vector1[T-2]'] = pnl_data_svar_cob
+
+    # Date Headers
+    cob_dates_dvar = [(datetime.now() - timedelta(days=520-i)).strftime('%d-%m-%Y') for i in range(261, 521)]
+    cob_date_header_dvar = pd.DataFrame([cob_dates_dvar], columns=pnl_cols_dvar_cob)
+    prev_date_header_dvar = pd.DataFrame([cob_dates_dvar], columns=pnl_cols_dvar_prev)
+    cob_date_svar = [(datetime.now() - timedelta(days=1)).strftime('%d-%m-%Y')]
+    cob_date_header_svar = pd.DataFrame([cob_date_svar], columns=['pnl_vector1'])
+    prev_date_header_svar = pd.DataFrame([cob_date_svar], columns=['pnl_vector1[T-2]'])
+
+    with pd.ExcelWriter(FILE_NAME, engine='openpyxl') as writer:
+        cob_date_header_dvar.to_excel(writer, sheet_name="DVaR_COB", startrow=0, header=False, index=False)
+        dvar_cob_df.to_excel(writer, sheet_name="DVaR_COB", startrow=1, index=False)
+        prev_date_header_dvar.to_excel(writer, sheet_name="DVaR_Prev_COB", startrow=0, header=False, index=False)
+        dvar_prev_df.to_excel(writer, sheet_name="DVaR_Prev_COB", startrow=1, index=False)
+        cob_date_header_svar.to_excel(writer, sheet_name="SVaR_COB", startrow=0, header=False, index=False)
+        svar_cob_df.to_excel(writer, sheet_name="SVaR_COB", startrow=1, index=False)
+        prev_date_header_svar.to_excel(writer, sheet_name="SVaR_Prev_COB", startrow=0, header=False, index=False)
+        svar_prev_df.to_excel(writer, sheet_name="SVaR_Prev_COB", startrow=1, index=False)
+        
+    return f"Dummy '{FILE_NAME}' created successfully."
+
+
+# ======================================================================================
+# CORE DATA PROCESSING PIPELINE
+# ======================================================================================
+@st.cache_data
+def load_and_process_data(uploaded_file):
+    """
+    Main function to orchestrate the entire data loading and transformation pipeline.
+    It now extracts PnL Rank and handles the complex data structures.
+    """
+    def parse_sheet(file, sheet_name):
+        try:
+            date_row = pd.read_excel(file, sheet_name=sheet_name, nrows=1, header=None)
+            df = pd.read_excel(file, sheet_name=sheet_name, header=1)
+        except Exception as e:
+            st.error(f"Error reading sheet '{sheet_name}': {e}. Please check the file format.")
+            return pd.DataFrame()
+
+        pnl_col_pattern = re.compile(r'pnl_vector(\d+)(\[T-2\])?')
+        pnl_cols = [col for col in df.columns if pnl_col_pattern.match(str(col))]
+        
+        if not pnl_cols:
+            return pd.DataFrame()
+
+        id_cols = [col for col in df.columns if col not in pnl_cols]
+        date_mapping = {}
+        rank_mapping = {}
+        for col_name in pnl_cols:
+            try:
+                col_idx = df.columns.get_loc(col_name)
+                # Map Date
+                date_val = date_row.iloc[0, col_idx]
+                date_mapping[col_name] = pd.to_datetime(date_val, format='%d-%m-%Y', errors='coerce')
+                # Map Rank
+                match = pnl_col_pattern.search(str(col_name))
+                if match:
+                    rank_mapping[col_name] = int(match.group(1))
+
+            except (KeyError, IndexError):
+                continue
+        
+        long_df = df.melt(id_vars=id_cols, value_vars=pnl_cols, var_name='pnl_vector_id', value_name='PnL_Value')
+        long_df['Date'] = long_df['pnl_vector_id'].map(date_mapping)
+        long_df['PnL_Rank'] = long_df['pnl_vector_id'].map(rank_mapping)
+        
+        return long_df.drop(columns='pnl_vector_id').dropna(subset=['Date'])
+
+    # --- Run parsing, combine, and clean ---
+    sheet_names = ["DVaR_COB", "DVaR_Prev_COB", "SVaR_COB", "SVaR_Prev_COB"]
+    all_dataframes = [parse_sheet(uploaded_file, name) for name in sheet_names]
+    
+    if all(df.empty for df in all_dataframes):
+        st.error("No data could be successfully parsed from any sheets. Please check the Excel file format.")
+        return pd.DataFrame()
+
+    id_cols = ['Var Type', 'Node', 'Asset class', 'sensitivity_type', 'Date']
+    master_df = pd.concat(all_dataframes).drop_duplicates(subset=id_cols, keep='first')
+    
+    for col in master_df.select_dtypes(include=['object']).columns:
+        master_df[col] = master_df[col].str.strip()
+
+    master_df = master_df.sort_values(by=id_cols).reset_index(drop=True)
+    
+    # --- Calculate 'macro' aggregate ---
+    dvar_components = master_df[(master_df['Var Type'] == 'DVaR') & (master_df['Asset class'].isin(['fx', 'rates', 'em macro']))]
+    if not dvar_components.empty:
+        group_cols = ['Node', 'Date', 'PnL_Rank']
+        if 'currency' in dvar_components.columns: group_cols.append('currency')
+        if 'load_code' in dvar_components.columns: group_cols.append('load_code')
+            
+        macro_agg = dvar_components.groupby(group_cols)['PnL_Value'].sum().reset_index()
+        macro_agg['Asset class'] = 'macro'
+        macro_agg['sensitivity_type'] = 'macro_agg'
+        macro_agg['Var Type'] = 'DVaR'
+        combined_df = pd.concat([master_df, macro_agg], ignore_index=True)
+    else:
+        combined_df = master_df
+    
+    # --- Calculate Daily PnL Change ---
+    sort_cols = ['Node', 'Asset class', 'sensitivity_type', 'Var Type']
+    combined_df = combined_df.sort_values(by=sort_cols + ['Date'])
+    combined_df['Prev_Day_PnL'] = combined_df.groupby(sort_cols)['PnL_Value'].shift(1)
+    combined_df['PnL_Change'] = combined_df['PnL_Value'] - combined_df['Prev_Day_PnL']
+    
+    return combined_df.dropna(subset=['PnL_Change'])
