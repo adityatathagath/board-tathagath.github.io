@@ -1073,4 +1073,3 @@ if uploaded_file is not None:
 else:
     # Initial message when no file is uploaded yet
     st.info("Please upload your Excel file ('Tail_analysis_auto.xlsx') using the sidebar to start your DVaR analysis.")
-
