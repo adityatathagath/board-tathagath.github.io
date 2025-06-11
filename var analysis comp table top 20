@@ -22,6 +22,18 @@ EM_MACRO_DVAR_NODE = 10
 PNL_VECTOR_START = 261
 PNL_VECTOR_END = 520 # pnl_vector520 is inclusive, covers 260 days
 
+# Define Barclays-specific color palette (example professional blue/grey tones)
+# These colors are used for Altair charts.
+BARCLAYS_COLOR_PALETTE = [
+    '#0076B6',  # Primary Blue (Barclays blue)
+    '#2188D7',  # Lighter Blue
+    '#004B7F',  # Darker Blue
+    '#6A6C6E',  # Medium Grey
+    '#A0A3A6',  # Light Grey
+    '#FF4B4B',  # Red for negative (used for change in tables, can be for trends too)
+    '#28a745',  # Green for positive (used for change in tables, can be for trends too)
+]
+
 # --- Streamlit Application Setup ---
 st.set_page_config(layout="wide", page_title="Market Risk DVaR Tail Analysis")
 
@@ -29,13 +41,16 @@ st.title("📊 Comprehensive Market Risk DVaR Tail Analysis")
 
 st.write(
     """
-    Upload your Excel workbook (`Tail_analysis_auto.xlsx`) to perform detailed DVaR and SVaR tail analysis
-    for FX, Rates, and EM Macro. Explore trends, contributions, backtesting, and more across your current and previous day data.
+    Explore trends, contributions, and top/bottom tails of your DVaR and SVaR data.
+    Upload your Excel workbook using the sidebar on the left.
     """
 )
 
-# --- Debug Toggle ---
-DEBUG_MODE = st.checkbox("Show Debug Info (for troubleshooting data loading and processing)", value=False)
+# --- Sidebar for File Uploader and Debug Toggle ---
+with st.sidebar:
+    st.header("Upload Data & Debug Options")
+    uploaded_file = st.file_uploader("Choose your Excel file (Tail_analysis_auto.xlsx)", type="xlsx")
+    DEBUG_MODE = st.checkbox("Show Debug Info (for troubleshooting)", value=False)
 
 
 # --- Helper Functions ---
@@ -61,7 +76,7 @@ def load_data(file_buffer, debug_mode):
 
     for sheet_name in sheets_to_load:
         if debug_mode:
-            st.subheader(f"DEBUG: Loading Sheet: {sheet_name}")
+            st.sidebar.subheader(f"DEBUG: Loading Sheet: {sheet_name}")
         try:
             # IMPORTANT: Reset file_buffer position for each sheet read
             file_buffer.seek(0) 
@@ -70,18 +85,18 @@ def load_data(file_buffer, debug_mode):
             raw_df_header_dates = pd.read_excel(file_buffer, sheet_name=sheet_name, header=None, nrows=2)
             
             if debug_mode:
-                st.write(f"DEBUG: Raw first two rows of '{sheet_name}':")
-                st.dataframe(raw_df_header_dates)
+                st.sidebar.write(f"DEBUG: Raw first two rows of '{sheet_name}':")
+                st.sidebar.dataframe(raw_df_header_dates)
 
             # The first row contains dates, the second row contains actual column names
             dates_row = raw_df_header_dates.iloc[0]
             column_names_row = raw_df_header_dates.iloc[1]
 
             if debug_mode:
-                st.write(f"DEBUG: Dates Row from '{sheet_name}':")
-                st.write(dates_row)
-                st.write(f"DEBUG: Column Names Row from '{sheet_name}':")
-                st.write(column_names_row)
+                st.sidebar.write(f"DEBUG: Dates Row from '{sheet_name}':")
+                st.sidebar.write(dates_row)
+                st.sidebar.write(f"DEBUG: Column Names Row from '{sheet_name}':")
+                st.sidebar.write(column_names_row)
 
 
             # Read the actual data, skipping the first two rows
@@ -93,10 +108,10 @@ def load_data(file_buffer, debug_mode):
             df = df.dropna(axis=1, how='all')
 
             if debug_mode:
-                st.write(f"DEBUG: DataFrame '{sheet_name}' after initial load and column assignment (head):")
-                st.dataframe(df.head())
-                st.write(f"DEBUG: DataFrame '{sheet_name}' columns:")
-                st.write(df.columns.tolist())
+                st.sidebar.write(f"DEBUG: DataFrame '{sheet_name}' after initial load and column assignment (head):")
+                st.sidebar.dataframe(df.head())
+                st.sidebar.write(f"DEBUG: DataFrame '{sheet_name}' columns:")
+                st.sidebar.write(df.columns.tolist())
 
 
             # Ensure 'Node' column is numeric for consistent filtering
@@ -104,10 +119,10 @@ def load_data(file_buffer, debug_mode):
                 df['Node'] = pd.to_numeric(df['Node'], errors='coerce')
                 df['Node'] = df['Node'].astype('Int64') # Using nullable integer type
                 if debug_mode:
-                    st.write(f"DEBUG: 'Node' column dtypes for '{sheet_name}': {df['Node'].dtype}")
+                    st.sidebar.write(f"DEBUG: 'Node' column dtypes for '{sheet_name}': {df['Node'].dtype}")
             else:
                 if debug_mode:
-                    st.warning(f"DEBUG: 'Node' column not found in sheet '{sheet_name}'. This might cause issues.")
+                    st.sidebar.warning(f"DEBUG: 'Node' column not found in sheet '{sheet_name}'. This might cause issues.")
 
 
             # Create mapping for pnl_vector columns to their dates
@@ -134,15 +149,15 @@ def load_data(file_buffer, debug_mode):
                         pnl_date_map[str(col_name)] = pd.NaT # No date found for this column
             
             if debug_mode:
-                st.write(f"DEBUG: PnL Date Map for '{sheet_name}':")
-                st.write(pnl_date_map)
+                st.sidebar.write(f"DEBUG: PnL Date Map for '{sheet_name}':")
+                st.sidebar.write(pnl_date_map)
 
             data_frames[sheet_name] = df
             date_mappings[sheet_name] = pnl_date_map
 
         except Exception as e:
-            st.error(f"Error loading data from sheet '{sheet_name}': {e}. "
-                     "Please ensure the sheet names are correct and the first two rows contain dates/headers as expected.")
+            st.sidebar.error(f"Error loading data from sheet '{sheet_name}': {e}. "
+                             "Please ensure the sheet names are correct and the first two rows contain dates/headers as expected.")
             return None, None
     
     return data_frames, date_mappings
@@ -155,13 +170,13 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
     Includes debug output.
     """
     if debug_mode:
-        st.subheader(f"DEBUG: Calculating VaR Tails for {sheet_type} ({var_type_filter})")
-        st.write("DEBUG: Input DataFrame Head:")
-        st.dataframe(df.head())
-        st.write("DEBUG: Input DataFrame Columns:")
-        st.write(df.columns.tolist())
-        st.write("DEBUG: Input PnL Date Map:")
-        st.write(pnl_date_map)
+        st.sidebar.subheader(f"DEBUG: Calculating VaR Tails for {sheet_type} ({var_type_filter})")
+        st.sidebar.write("DEBUG: Input DataFrame Head:")
+        st.sidebar.dataframe(df.head())
+        st.sidebar.write("DEBUG: Input DataFrame Columns:")
+        st.sidebar.write(df.columns.tolist())
+        st.sidebar.write("DEBUG: Input PnL Date Map:")
+        st.sidebar.write(pnl_date_map)
 
     # Define common identifying variables
     id_vars = ['Var Type', 'Node', 'Asset class', 'currency', 'sensitivity_type', 'load_code']
@@ -197,8 +212,8 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
                 valid_pnl_cols.append(col) # All pnl_vector[T-2] columns
     
     if debug_mode:
-        st.write(f"DEBUG: Detected PnL Vector Columns: {pnl_vector_cols}")
-        st.write(f"DEBUG: Valid PnL Columns for current config ({sheet_type}, {var_type_filter}): {valid_pnl_cols}")
+        st.sidebar.write(f"DEBUG: Detected PnL Vector Columns: {pnl_vector_cols}")
+        st.sidebar.write(f"DEBUG: Valid PnL Columns for current config ({sheet_type}, {var_type_filter}): {valid_pnl_cols}")
 
 
     # Ensure all id_vars are present in the dataframe columns before melting
@@ -227,10 +242,10 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
     df_melted['Pnl_Vector_Rank'] = df_melted['Pnl_Vector_Rank'].astype('Int64') # Nullable integer
 
     if debug_mode:
-        st.write("DEBUG: DataFrame after melting (head):")
-        st.dataframe(df_melted.head())
-        st.write("DEBUG: DataFrame after melting (shape):", df_melted.shape)
-        st.write("DEBUG: Pnl_Vector_Rank values (sample):", df_melted['Pnl_Vector_Rank'].dropna().unique())
+        st.sidebar.write("DEBUG: DataFrame after melting (head):")
+        st.sidebar.dataframe(df_melted.head())
+        st.sidebar.write("DEBUG: DataFrame after melting (shape):", df_melted.shape)
+        st.sidebar.write("DEBUG: Pnl_Vector_Rank values (sample):", df_melted['Pnl_Vector_Rank'].dropna().unique())
     
     # Add a 'Date' column using the pnl_date_map
     df_melted['Date'] = df_melted['Pnl_Vector_Name'].map(pnl_date_map)
@@ -240,18 +255,18 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
     df_melted = df_melted.dropna(subset=['Date'])
     
     if debug_mode:
-        st.write("DEBUG: DataFrame after Date mapping and dropping NaT Dates (head):")
-        st.dataframe(df_melted.head())
-        st.write("DEBUG: DataFrame after Date mapping and dropping NaT Dates (shape):", df_melted.shape)
+        st.sidebar.write("DEBUG: DataFrame after Date mapping and dropping NaT Dates (head):")
+        st.sidebar.dataframe(df_melted.head())
+        st.sidebar.write("DEBUG: DataFrame after Date mapping and dropping NaT Dates (shape):", df_melted.shape)
 
 
     # Filter for the specific Var Type (DVaR or SVaR) as the sheets are now distinct
     df_filtered_var_type = df_melted[df_melted['Var Type'] == var_type_filter].copy()
     
     if debug_mode:
-        st.write(f"DEBUG: DataFrame after filtering for 'Var Type' == '{var_type_filter}' (head):")
-        st.dataframe(df_filtered_var_type.head())
-        st.write(f"DEBUG: DataFrame after filtering for 'Var Type' == '{var_type_filter}' (shape):", df_filtered_var_type.shape)
+        st.sidebar.write(f"DEBUG: DataFrame after filtering for 'Var Type' == '{var_type_filter}' (head):")
+        st.sidebar.dataframe(df_filtered_var_type.head())
+        st.sidebar.write(f"DEBUG: DataFrame after filtering for 'Var Type' == '{var_type_filter}' (shape):", df_filtered_var_type.shape)
 
     # --- Calculate VaR for each asset class ---
     asset_classes = ['fx', 'rates', 'em macro']
@@ -271,9 +286,9 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
             (df_filtered_var_type['Node'] == node_val_for_filter)
         ]
         if debug_mode:
-            st.write(f"DEBUG: Filtered data for Asset Class '{ac}' and Node '{node_val_for_filter}' (head):")
-            st.dataframe(filtered_df.head())
-            st.write(f"DEBUG: Filtered data for Asset Class '{ac}' and Node '{node_val_for_filter}' (shape):", filtered_df.shape)
+            st.sidebar.write(f"DEBUG: Filtered data for Asset Class '{ac}' and Node '{node_val_for_filter}' (head):")
+            st.sidebar.dataframe(filtered_df.head())
+            st.sidebar.write(f"DEBUG: Filtered data for Asset Class '{ac}' and Node '{node_val_for_filter}' (shape):", filtered_df.shape)
 
         if not filtered_df.empty:
             asset_var_dfs[ac] = filtered_df.groupby(['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank'])['Value'].sum().reset_index(name=f'{ac.replace(" ", "_")}_{var_type_filter}_Value')
@@ -298,9 +313,9 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
         macro_var_df['Sheet_Type'] = sheet_type # Ensure this column is consistent
     
     if debug_mode:
-        st.write(f"DEBUG: Final Macro DVaR DF ({sheet_type}, {var_type_filter}) head and shape:")
-        st.dataframe(macro_var_df.head())
-        st.write(macro_var_df.shape)
+        st.sidebar.write(f"DEBUG: Final Macro DVaR DF ({sheet_type}, {var_type_filter}) head and shape:")
+        st.sidebar.dataframe(macro_var_df.head())
+        st.sidebar.write(macro_var_df.shape)
 
     # Return individual asset class VaR DFs, macro VaR DF, and the raw filtered VaR DF for sensitivity analysis
     return asset_var_dfs.get('fx', pd.DataFrame()), \
@@ -317,7 +332,7 @@ def plot_dvar_trends(df, title, y_column, legend_title="Type"):
     chart = alt.Chart(df).mark_line(point=True).encode(
         x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')), # Date format change
         y=alt.Y(y_column, title='DVaR Value'),
-        color=alt.Color('Sheet_Type:N', title=legend_title),
+        color=alt.Color('Sheet_Type:N', title=legend_title, scale=alt.Scale(range=BARCLAYS_COLOR_PALETTE)), # Apply custom palette
         tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), y_column, 'Sheet_Type', 'Pnl_Vector_Rank'] # Date format change, added rank
     ).properties(
         title=title
@@ -333,7 +348,7 @@ def plot_dvar_volatility(df, title):
     chart = alt.Chart(df).mark_line(point=True).encode(
         x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')), # Date format change
         y=alt.Y('Rolling_Std_DVaR', title='Rolling Std Dev of DVaR'),
-        color=alt.Color('Sheet_Type:N', title='Data Type'),
+        color=alt.Color('Sheet_Type:N', title='Data Type', scale=alt.Scale(range=BARCLAYS_COLOR_PALETTE)), # Apply custom palette
         tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Rolling_Std_DVaR', 'Sheet_Type'] # Date format change
     ).properties(
         title=title
@@ -367,7 +382,7 @@ def plot_contribution(df, title):
     chart = alt.Chart(df_long).mark_area().encode(
         x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')), # Date format change
         y=alt.Y('Contribution_Percentage', title='Percentage Contribution (%)', stack='normalize'),
-        color=alt.Color('Asset_Class:N', title='Asset Class'),
+        color=alt.Color('Asset_Class:N', title='Asset Class', scale=alt.Scale(range=BARCLAYS_COLOR_PALETTE)), # Apply custom palette
         tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Asset_Class:N', alt.Tooltip('Contribution_Percentage', format='.2f%')] # CORRECTED LINE
     ).properties(
         title=title
@@ -456,7 +471,7 @@ def plot_svar_dvar_comparison(dvar_df, svar_df, title):
     chart = alt.Chart(df_melted).mark_line(point=True).encode(
         x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')), # Date format change
         y=alt.Y('Value', title='VaR Value'),
-        color=alt.Color('VaR_Type:N', title='VaR Type'),
+        color=alt.Color('VaR_Type:N', title='VaR Type', scale=alt.Scale(range=BARCLAYS_COLOR_PALETTE)), # Apply custom palette
         strokeDash='VaR_Type:N', # Different line styles for clarity
         tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'VaR_Type', 'Value', 'Sheet_Type'] # Date format change
     ).properties(
@@ -553,7 +568,7 @@ def plot_sensitivity_attribution(df_raw_var_type, pnl_date_map, selected_asset_c
     chart = alt.Chart(sensitivity_contributions_display).mark_area().encode(
         x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')), # Date format change
         y=alt.Y('Percentage_Contribution', title='Percentage Contribution (%)', stack='normalize'),
-        color=alt.Color('Display_Sensitivity:N', title='Sensitivity Type', legend=alt.Legend(columns=2)),
+        color=alt.Color('Display_Sensitivity:N', title='Sensitivity Type', legend=alt.Legend(columns=2), scale=alt.Scale(range=BARCLAYS_COLOR_PALETTE)), # Apply custom palette
         order=alt.Order('Percentage_Contribution', sort='descending'),
         tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Display_Sensitivity:N', alt.Tooltip('Percentage_Contribution', format='.2f%'), 'Value'] # Date format change
     ).properties(
@@ -568,70 +583,70 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
     st.header("🏆 Top/Bottom DVaR Tails Analysis")
     st.markdown("Identify the top 20 positive and negative Macro DVaR tails and their corresponding asset class contributions, showing change from previous COB.")
 
-    # List of all dataframes and their intended current/previous prefixes for merging
-    # Ensure correct keys for these dataframes are used. They should have 'Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank', and the specific DVaR_Value
-    data_sources = [
+    # Common merge keys
+    common_merge_keys = ['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank']
+
+    # --- Step 1: Prepare and merge current and previous data for EACH asset class ---
+    # This ensures that each asset class has its own combined (current + previous) DataFrame
+    # with standardized column names (e.g., Macro_DVaR_Value_Current, Macro_DVaR_Value_Previous)
+
+    all_combined_asset_dfs = [] # List to hold combined DFs for each asset class
+
+    asset_configs = [
         (macro_dvar_curr, macro_dvar_prev, 'Macro'),
         (fx_dvar_curr, fx_dvar_prev, 'FX'),
         (rates_dvar_curr, rates_dvar_prev, 'Rates'),
         (em_macro_dvar_curr, em_macro_dvar_prev, 'EM_Macro')
     ]
 
-    # Common merge keys
-    common_merge_keys = ['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank']
+    for curr_df, prev_df, prefix in asset_configs:
+        # Define the value column name for current and previous DFs
+        curr_val_col_name = f'{prefix}_DVaR_Value'
+        prev_val_col_name = f'{prefix}_DVaR_Value' # Refers to the original column name in prev_df
 
-    # Prepare individual combined (current+previous) DFs for each asset class
-    combined_asset_dfs_for_final_merge = []
-
-    for current_df, previous_df, prefix in data_sources:
-        current_val_col = f'{prefix}_DVaR_Value'
-        previous_val_col = f'{prefix}_DVaR_Value' # The actual column name in the _prev DFs before suffixing
-
-        # Ensure DataFrames have the required columns before subsetting
-        curr_df_for_merge = pd.DataFrame()
-        if not current_df.empty and current_val_col in current_df.columns:
-            curr_df_for_merge = current_df[common_merge_keys + [current_val_col]].copy()
-            curr_df_for_merge.rename(columns={current_val_col: f'{prefix}_DVaR_Value_Current'}, inplace=True)
-        elif debug_mode:
-            st.write(f"DEBUG: Skipping current data for {prefix} - DataFrame empty or missing {current_val_col}.")
-
-        prev_df_for_merge = pd.DataFrame()
-        if not previous_df.empty and previous_val_col in previous_df.columns:
-            prev_df_for_merge = previous_df[common_merge_keys + [previous_val_col]].copy()
-            prev_df_for_merge.rename(columns={previous_val_col: f'{prefix}_DVaR_Value_Previous'}, inplace=True)
-        elif debug_mode:
-            st.write(f"DEBUG: Skipping previous data for {prefix} - DataFrame empty or missing {previous_val_col}.")
+        # Create copies to avoid SettingWithCopyWarning and ensure column names are consistent
+        df_curr_standard = pd.DataFrame(columns=common_merge_keys + [f'{prefix}_DVaR_Value_Current'])
+        if not curr_df.empty and curr_val_col_name in curr_df.columns:
+            df_curr_standard = curr_df[common_merge_keys + [curr_val_col_name]].copy()
+            df_curr_standard.rename(columns={curr_val_col_name: f'{prefix}_DVaR_Value_Current'}, inplace=True)
         
-        # Outer merge current and previous for this asset class
-        if not curr_df_for_merge.empty or not prev_df_for_merge.empty:
-            merged_for_asset = pd.merge(curr_df_for_merge, prev_df_for_merge, 
-                                        on=common_merge_keys, how='outer')
-            combined_asset_dfs_for_final_merge.append(merged_for_asset)
-            if debug_mode:
-                st.write(f"DEBUG: Combined DF for {prefix} (head):")
-                st.dataframe(merged_for_asset.head())
-                st.write(f"DEBUG: Combined DF for {prefix} (columns):", merged_for_asset.columns.tolist())
-        elif debug_mode:
-            st.write(f"DEBUG: No data to merge for {prefix} asset class.")
+        df_prev_standard = pd.DataFrame(columns=common_merge_keys + [f'{prefix}_DVaR_Value_Previous'])
+        if not prev_df.empty and prev_val_col_name in prev_df.columns:
+            df_prev_standard = prev_df[common_merge_keys + [prev_val_col_name]].copy()
+            df_prev_standard.rename(columns={prev_val_col_name: f'{prefix}_DVaR_Value_Previous'}, inplace=True)
+        
+        # Outer merge current and previous for this specific asset class
+        # This ensures all unique Date/Pnl_Vector_Rank combinations are present
+        merged_for_asset = pd.merge(df_curr_standard, df_prev_standard, on=common_merge_keys, how='outer')
+        all_combined_asset_dfs.append(merged_for_asset)
 
-    if not combined_asset_dfs_for_final_merge:
-        st.info("No DVaR data available for current or previous COB after initial processing. Cannot generate Top/Bottom Tails table.")
+        if debug_mode:
+            st.sidebar.write(f"DEBUG: Combined DF for {prefix} (Current vs Previous):")
+            st.sidebar.dataframe(merged_for_asset.head())
+            st.sidebar.write(f"DEBUG: Combined DF for {prefix} Columns: {merged_for_asset.columns.tolist()}")
+
+
+    # --- Step 2: Perform the final merge of all individual asset class combined DFs ---
+    if not all_combined_asset_dfs:
+        st.info("No DVaR data available for current or previous COB after initial asset-level processing. Cannot generate Top/Bottom Tails table.")
         return
 
-    # Perform the final merge of all combined asset DFs
-    all_assets_combined = combined_asset_dfs_for_final_merge[0]
-    for i in range(1, len(combined_asset_dfs_for_final_merge)):
-        all_assets_combined = pd.merge(all_assets_combined, combined_asset_dfs_for_final_merge[i], on=common_merge_keys, how='outer')
+    # Start with the first combined asset DF, then progressively outer merge others
+    master_combined_df = all_combined_asset_dfs[0]
+    for i in range(1, len(all_combined_asset_dfs)):
+        master_combined_df = pd.merge(master_combined_df, all_combined_asset_dfs[i], on=common_merge_keys, how='outer')
 
     if debug_mode:
-        st.write("DEBUG: all_assets_combined DataFrame before final fillna and change calculation (head):")
-        st.dataframe(all_assets_combined.head())
-        st.write("DEBUG: all_assets_combined DataFrame columns before final fillna:", all_assets_combined.columns.tolist())
+        st.sidebar.write("DEBUG: Master Combined DF after all asset merges (head):")
+        st.sidebar.dataframe(master_combined_df.head())
+        st.sidebar.write(f"DEBUG: Master Combined DF columns: {master_combined_df.columns.tolist()}")
 
-    # Fill NaN values with 0 for all DVaR value columns
-    # Find all columns that contain 'DVaR_Value' (current or previous)
-    dvar_value_columns_in_final_df = [col for col in all_assets_combined.columns if '_DVaR_Value_Current' in col or '_DVaR_Value_Previous' in col]
-    all_assets_combined[dvar_value_columns_in_final_df] = all_assets_combined[dvar_value_columns_in_final_df].fillna(0)
+
+    # --- Step 3: Fill NaNs and Calculate Changes ---
+    # Fill NaN values with 0 for all DVaR value columns (both Current and Previous)
+    # This handles cases where data might be missing for a specific date in one COB but present in another
+    dvar_value_columns_to_fill = [col for col in master_combined_df.columns if '_DVaR_Value_Current' in col or '_DVaR_Value_Previous' in col]
+    master_combined_df[dvar_value_columns_to_fill] = master_combined_df[dvar_value_columns_to_fill].fillna(0)
 
     # Calculate Change columns
     for prefix in ['Macro', 'FX', 'Rates', 'EM_Macro']:
@@ -639,35 +654,35 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
         previous_col = f'{prefix}_DVaR_Value_Previous'
         change_col = f'{prefix}_DVaR_Change'
         
-        # Ensure both current and previous columns exist after fillna(0) for direct subtraction
-        if current_col in all_assets_combined.columns and previous_col in all_assets_combined.columns:
-            all_assets_combined[change_col] = all_assets_combined[current_col] - all_assets_combined[previous_col]
+        # Ensure the columns exist before attempting calculation
+        if current_col in master_combined_df.columns and previous_col in master_combined_df.columns:
+            master_combined_df[change_col] = master_combined_df[current_col] - master_combined_df[previous_col]
         else:
-            all_assets_combined[change_col] = 0 # Default to 0 if expected columns are genuinely missing
+            master_combined_df[change_col] = 0 # Default change to 0
 
 
-    # Drop rows where Macro_DVaR_Value_Current is still NaN (should be covered by fillna(0) but safety check)
-    all_assets_combined.dropna(subset=['Macro_DVaR_Value_Current'], inplace=True)
+    # Final cleanup and sorting
+    # Drop rows where Macro_DVaR_Value_Current is NaN (this should now be 0 due to fillna, but safety check)
+    master_combined_df.dropna(subset=['Macro_DVaR_Value_Current'], inplace=True)
     
-    # Sort by Date and Pnl_Vector_Rank for consistent ordering
-    all_assets_combined = all_assets_combined.sort_values(by=['Date', 'Pnl_Vector_Rank']).reset_index(drop=True)
+    master_combined_df = master_combined_df.sort_values(by=['Date', 'Pnl_Vector_Rank']).reset_index(drop=True)
 
     if debug_mode:
-        st.write("DEBUG: Final all_assets_combined DataFrame after all merges, fillna, and change calculation (head):")
-        st.dataframe(all_assets_combined.head())
-        st.write("DEBUG: Final all_assets_combined DataFrame columns:", all_assets_combined.columns.tolist())
-        st.write("DEBUG: Sample of Macro_DVaR_Value_Current values (after all processing):", all_assets_combined['Macro_DVaR_Value_Current'].head())
+        st.sidebar.write("DEBUG: Final Master Combined DF after fillna and change calculation (head):")
+        st.sidebar.dataframe(master_combined_df.head())
+        st.sidebar.write(f"DEBUG: Final Master Combined DF columns: {master_combined_df.columns.tolist()}")
+        st.sidebar.write(f"DEBUG: Sample of Macro_DVaR_Value_Current values (after all processing): {master_combined_df['Macro_DVaR_Value_Current'].head()}")
 
 
     # Identify Top 20 Positive and Negative Macro Tails
-    if all_assets_combined.empty:
+    if master_combined_df.empty:
         st.info("No sufficient DVaR data to identify top/bottom tails after all processing steps.")
         return
 
-    top_20_positive = all_assets_combined.nlargest(min(20, len(all_assets_combined)), 'Macro_DVaR_Value_Current', keep='all')
-    top_20_negative = all_assets_combined.nsmallest(min(20, len(all_assets_combined)), 'Macro_DVaR_Value_Current', keep='all')
+    top_20_positive = master_combined_df.nlargest(min(20, len(master_combined_df)), 'Macro_DVaR_Value_Current', keep='all')
+    top_20_negative = master_combined_df.nsmallest(min(20, len(master_combined_df)), 'Macro_DVaR_Value_Current', keep='all')
 
-    # Define AgGrid column definitions and cell styles
+    # Define AgGrid column definitions
     columnDefs = [
         {"field": "Date", "headerName": "Date", "type": ["dateColumnFilter", "customDateTimeFormat"], "custom_format_string": 'dd-MM-yyyy'},
         {"field": "Pnl_Vector_Name", "headerName": "P&L Vector"},
@@ -695,11 +710,10 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
         columnDefs.append({"field": f"{prefix}_DVaR_Change", "headerName": f"{prefix} Change", "type": ["numericColumn", "numberColumnFilter"], "cellStyle": change_cell_style_jscode, "valueFormatter": number_formatter_jscode})
 
     # Build GridOptions
-    gb = GridOptionsBuilder.from_dataframe(pd.DataFrame(columns=[col['field'] for col in columnDefs])) # Dummy DF for builder
+    gb = GridOptionsBuilder.from_dataframe(pd.DataFrame(columns=[col['field'] for col in columnDefs])) 
     gb.configure_columns(columnDefs)
-    gb.configure_grid_options(domLayout='autoHeight') # Adjust grid height automatically
+    gb.configure_grid_options(domLayout='autoHeight') 
     gridOptions = gb.build()
-
 
     st.subheader("Top 20 Positive Macro DVaR Tails (Current COB)")
     if not top_20_positive.empty:
@@ -727,8 +741,7 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
 
 
 # --- Main Application Logic ---
-uploaded_file = st.file_uploader("Choose your Excel file (Tail_analysis_auto.xlsx)", type="xlsx")
-
+# The uploaded_file and DEBUG_MODE are now retrieved from the sidebar
 if uploaded_file is not None:
     data_sheets, date_mappings = load_data(uploaded_file, DEBUG_MODE) # Pass DEBUG_MODE
 
@@ -775,9 +788,45 @@ if uploaded_file is not None:
         fx_svar_prev, rates_svar_prev, em_macro_svar_prev, macro_svar_prev, raw_svar_prev = \
             calculate_var_tails(svar_prev_cob_df, svar_prev_cob_date_map, "previous", "SVaR", DEBUG_MODE) # Pass DEBUG_MODE
 
-    if not macro_dvar_curr.empty: # Check if current DVaR macro data exists
+    # Check if *any* macro_dvar_curr data exists to proceed with display
+    if not macro_dvar_curr.empty: 
         st.success("DVaR and SVaR calculations complete for all sheets!")
-        # Display Top/Bottom Tails table immediately
+        
+        # --- Display Lowest DVaR and SVaR in Cards ---
+        st.markdown("---")
+        st.header("📉 Key Risk Metrics")
+        
+        col_dvar, col_svar = st.columns(2)
+
+        # Lowest DVaR
+        lowest_dvar_row = macro_dvar_curr.nsmallest(1, 'Macro_DVaR_Value').iloc[0] if not macro_dvar_curr.empty else None
+        if lowest_dvar_row is not None:
+            with col_dvar:
+                st.metric(
+                    label="Lowest Macro DVaR (Current COB)", 
+                    value=f"{lowest_dvar_row['Macro_DVaR_Value']:,.2f}",
+                    help=f"Date: {lowest_dvar_row['Date'].strftime('%d-%m-%Y')}, P&L Vector: {lowest_dvar_row['Pnl_Vector_Name']}"
+                )
+        else:
+            with col_dvar:
+                st.info("No DVaR data to display lowest metric.")
+        
+        # Lowest SVaR
+        lowest_svar_row = macro_svar_curr.nsmallest(1, 'Macro_SVaR_Value').iloc[0] if not macro_svar_curr.empty else None
+        if lowest_svar_row is not None:
+            with col_svar:
+                st.metric(
+                    label="Lowest Macro SVaR (Current COB)", 
+                    value=f"{lowest_svar_row['Macro_SVaR_Value']:,.2f}",
+                    help=f"Date: {lowest_svar_row['Date'].strftime('%d-%m-%Y')}, P&L Vector: {lowest_svar_row['Pnl_Vector_Name']}"
+                )
+        else:
+            with col_svar:
+                st.info("No SVaR data to display lowest metric.")
+
+        st.markdown("---") # Separator
+
+        # Display Top/Bottom Tails table
         display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_curr, fx_dvar_prev, rates_dvar_curr, rates_dvar_prev, em_macro_dvar_curr, em_macro_dvar_prev, DEBUG_MODE)
     else:
         st.warning("No DVaR data could be calculated. Please check your Excel file's format and content and enable debug mode for more details.")
@@ -947,4 +996,6 @@ if uploaded_file is not None:
 
 
 else:
-    st.info("Please upload your Excel file ('Tail_analysis_auto.xlsx') to start your DVaR analysis.")
+    # Initial message when no file is uploaded yet
+    st.info("Please upload your Excel file ('Tail_analysis_auto.xlsx') using the sidebar to start your DVaR analysis.")
+
