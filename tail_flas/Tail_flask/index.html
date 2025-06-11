@@ -24,13 +24,9 @@
                 <div class="position-sticky pt-3">
                     <ul class="nav flex-column">
                         <li class="nav-item sidebar-section">
-                            <h5>Upload Data</h5>
-                            <form id="uploadForm" enctype="multipart/form-data">
-                                <div class="form-group">
-                                    <input type="file" class="form-control-file" id="excelFile" name="excel_file" accept=".xlsx" required>
-                                </div>
-                                <button type="submit" class="btn btn-primary btn-block">Process Excel</button>
-                            </form>
+                            <h5>Data Actions</h5>
+                            <!-- Removed file input -->
+                            <button type="button" class="btn btn-primary btn-block" id="processDataBtn">Process Data</button>
                         </li>
                         <li class="nav-item sidebar-section mt-3">
                             <h5>Debug Options</h5>
@@ -47,18 +43,7 @@
             <!-- Main Content -->
             <main class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
                 <div id="flashMessages" class="mt-3">
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
-                            {% for category, message in messages %}
-                                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                                    {{ message }}
-                                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                                        <span aria-hidden="true">&times;</span>
-                                    </button>
-                                </div>
-                            {% endfor %}
-                        {% endif %}
-                    {% endwith %}
+                    <!-- Flash messages will be inserted here by JavaScript -->
                 </div>
 
                 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
@@ -70,7 +55,7 @@
                         <div class="card card-custom">
                             <div class="card-body">
                                 <h5 class="card-title">Lowest Macro DVaR (Current COB)</h5>
-                                <p id="lowestDVarValue" class="card-text metric-value"></p>
+                                <p id="lowestDVarValue" class="card-text metric-value">N/A</p>
                                 <small id="lowestDVarDetails" class="text-muted"></small>
                             </div>
                         </div>
@@ -79,7 +64,7 @@
                         <div class="card card-custom">
                             <div class="card-body">
                                 <h5 class="card-title">Lowest Macro SVaR (Current COB)</h5>
-                                <p id="lowestSVarValue" class="card-text metric-value"></p>
+                                <p id="lowestSVarValue" class="card-text metric-value">N/A</p>
                                 <small id="lowestSVarDetails" class="text-muted"></small>
                             </div>
                         </div>
