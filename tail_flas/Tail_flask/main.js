@@ -10,12 +10,8 @@ $(document).ready(function() {
         }
     });
 
-    // Handle form submission for Excel upload
-    $('#uploadForm').submit(function(event) {
-        event.preventDefault(); // Prevent default form submission
-
-        var formData = new FormData(this);
-
+    // Handle "Process Data" button click
+    $('#processDataBtn').click(function() {
         // Clear previous messages and output
         $('#flashMessages').empty();
         $('#debugOutput').empty();
@@ -28,11 +24,9 @@ $(document).ready(function() {
 
 
         $.ajax({
-            url: '/process_excel',
+            url: '/process_data', // Changed route from /process_excel
             type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
+            // No formData needed as file path is fixed on backend
             beforeSend: function() {
                 // Show loading indicator
                 $('#lowestDVarValue').text('Processing...');
@@ -152,16 +146,17 @@ $(document).ready(function() {
             { field: "EM_Macro_DVaR_Change", headerName: "EM Macro Change", type: 'numericColumn', cellStyle: changeCellStyle, valueFormatter: numberFormatter, sortable: true, filter: 'agNumberColumnFilter' },
         ];
 
-        // Define the colors based on BARCLAYS_COLOR_PALETTE from Python
-        const NEGATIVE_COLOR_BG = '#ffe6e6'; // BARCLAYS_COLOR_PALETTE[6] - light red
-        const POSITIVE_COLOR_BG = '#e6ffe6'; // BARCLAYS_COLOR_PALETTE[7] - light green
-        const BLACK_TEXT = 'black'; // Explicitly set text color to black
-
+        // Define the colors consistent with BARCLAYS_COLOR_PALETTE.
+        // These need to match the CSS classes defined in style.css
+        // Note: For JsCode directly in Python, you'd embed the hex codes.
+        // For direct JS, we use class names and let CSS handle the colors.
         function changeCellStyle(params) {
-            if (params.value < 0) {
-                return { backgroundColor: NEGATIVE_COLOR_BG, color: BLACK_TEXT };
-            } else if (params.value > 0) {
-                return { backgroundColor: POSITIVE_COLOR_BG, color: BLACK_TEXT };
+            if (typeof params.value === 'number') {
+                if (params.value < 0) {
+                    return { className: 'negative-change' };
+                } else if (params.value > 0) {
+                    return { className: 'positive-change' };
+                }
             }
             return null;
         }
@@ -180,17 +175,16 @@ $(document).ready(function() {
             suppressColumnVirtualization: true,
             defaultColDef: {
                 resizable: true,
-                filter: true, // Enable filters by default
-                floatingFilter: true, // Show floating filters
+                filter: true,
+                floatingFilter: true,
             },
-            // For enterprise features like row grouping, etc. (requires license)
-            // enableEnterpriseModules: true,
         };
 
         var gridDiv = document.getElementById(containerId);
         if (gridDiv && gridDiv.__ag_grid_instance) {
-            gridDiv.__ag_grid_instance.destroy(); // Destroy existing grid to re-render cleanly
+            gridDiv.__ag_grid_instance.destroy();
         }
+        // Initialize grid on document ready or after content loaded
         new agGrid.Grid(gridDiv, gridOptions);
     }
 });
