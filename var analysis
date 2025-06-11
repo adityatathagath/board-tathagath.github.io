@@ -1,0 +1,641 @@
+import streamlit as st
+import pandas as pd
+import altair as alt
+import io
+import numpy as np # For statistical calculations like rolling std, correlations
+
+# --- Configuration (UPDATE THESE BASED ON YOUR DATA) ---
+# IMPORTANT: Replace with your actual sheet names from the Excel workbook
+CURRENT_DAY_SHEET_NAME = "Current Day Data" # e.g., "Sheet1", "COB_Data"
+PREVIOUS_DAY_SHEET_NAME = "Previous Day Data" # e.g., "Sheet2", "T-2_Data"
+
+# Node value for DVaR calculations for each asset class
+# CONFIRM THESE VALUES!
+FX_DVAR_NODE = 10
+RATES_DVAR_NODE = 10
+EM_MACRO_DVAR_NODE = 10
+
+# PnL Vector range (assuming 260 days from 261 to 520)
+PNL_VECTOR_START = 261
+PNL_VECTOR_END = 520 # pnl_vector520 is inclusive, covers 260 days
+
+# --- Streamlit Application Setup ---
+st.set_page_config(layout="wide", page_title="Market Risk DVaR Tail Analysis")
+
+st.title("📊 Comprehensive Market Risk DVaR Tail Analysis")
+
+st.write(
+    """
+    Upload your Excel workbook to perform detailed DVaR tail analysis for FX, Rates, and EM Macro.
+    Explore trends, contributions, backtesting, and more across your current and previous day data.
+    """
+)
+
+# --- Helper Functions ---
+
+@st.cache_data # Cache the data loading to avoid re-running on every interaction
+def load_data(file_buffer):
+    """
+    Loads data from the specified sheets in the Excel workbook.
+    Handles date extraction from the first row and sets proper headers.
+    """
+    data = {}
+    date_mappings = {}
+
+    for sheet_name in [CURRENT_DAY_SHEET_NAME, PREVIOUS_DAY_SHEET_NAME]:
+        try:
+            # Read the first two rows to get dates and column names
+            raw_df_header_dates = pd.read_excel(file_buffer, sheet_name=sheet_name, header=None, nrows=2)
+            
+            # The first row contains dates, the second row contains actual column names
+            dates_row = raw_df_header_dates.iloc[0]
+            column_names_row = raw_df_header_dates.iloc[1]
+
+            # Read the actual data, skipping the first two rows
+            df = pd.read_excel(file_buffer, sheet_name=sheet_name, header=None, skiprows=2)
+            df.columns = column_names_row # Assign the second row as column headers
+            
+            # Drop columns that are entirely NaN after header adjustments (e.g., empty columns in Excel)
+            df = df.dropna(axis=1, how='all')
+
+            # Create mapping for pnl_vector columns to their dates
+            pnl_date_map = {}
+            for col_idx, col_name in enumerate(column_names_row):
+                if pd.isna(col_name): # Skip NaN column names
+                    continue
+                if str(col_name).startswith('pnl_vector') or '[T-2]' in str(col_name): # Handle both formats
+                    # Ensure col_idx is within bounds of dates_row
+                    if col_idx < len(dates_row):
+                        date_val = dates_row.iloc[col_idx]
+                        # Convert date_val to datetime, handle potential Excel float dates
+                        if isinstance(date_val, (int, float)):
+                            try:
+                                # Convert Excel float date to datetime
+                                pnl_date_map[str(col_name)] = pd.to_datetime(date_val, unit='D', origin='1899-12-30')
+                            except:
+                                pnl_date_map[str(col_name)] = pd.NaT # Not a Time, if conversion fails
+                        else:
+                            pnl_date_map[str(col_name)] = pd.to_datetime(date_val, errors='coerce') # Coerce errors to NaT
+                    else:
+                        pnl_date_map[str(col_name)] = pd.NaT # No date found for this column
+            
+            # After processing, reset the buffer for the next sheet read
+            file_buffer.seek(0)
+            
+            data[sheet_name] = df
+            date_mappings[sheet_name] = pnl_date_map
+
+        except Exception as e:
+            st.error(f"Error loading data from sheet '{sheet_name}': {e}. "
+                     "Please ensure the sheet names are correct and the first two rows contain dates/headers as expected.")
+            return None, None
+    
+    return data, date_mappings
+
+
+def calculate_dvar_tails(df, pnl_date_map, sheet_type="current"):
+    """
+    Calculates DVaR tails for FX, Rates, EM Macro, and Macro.
+    Adds a 'Sheet_Type' column for differentiation.
+    """
+    
+    # Melt the PnL vector columns into a long format
+    id_vars = ['Var Type', 'Node', 'Asset class', 'currency', 'sensitivity_type', 'load_code']
+    
+    # Identify PnL vector columns dynamically
+    pnl_vector_cols = [col for col in df.columns if str(col).startswith('pnl_vector') or '[T-2]' in str(col)]
+
+    # Filter for the relevant range if it's the current day data
+    if sheet_type == "current":
+        valid_pnl_cols = [col for col in pnl_vector_cols if (str(col).startswith('pnl_vector') and PNL_VECTOR_START <= int(str(col).replace('pnl_vector', '')) <= PNL_VECTOR_END)]
+    else: # For previous day, assume all pnl_vector[T-2] columns are relevant
+        valid_pnl_cols = pnl_vector_cols
+        # Rename pnl_vector[T-2] columns to a generic 'pnl_vector_T_minus_2' for consistency if needed,
+        # but for now, we'll keep original names and map to dates.
+    
+    # Ensure all id_vars are present in the dataframe columns
+    id_vars_present = [col for col in id_vars if col in df.columns]
+    
+    # Melt only if valid pnl columns exist
+    if not valid_pnl_cols:
+        st.warning(f"No valid PnL vector columns found for {sheet_type} data. Skipping DVaR calculation.")
+        return None, None, None, None, None, None
+
+    df_melted = df.melt(id_vars=id_vars_present,
+                         value_vars=valid_pnl_cols,
+                         var_name='Pnl_Vector_Name',
+                         value_name='Value')
+    
+    # Add a 'Date' column using the pnl_date_map
+    df_melted['Date'] = df_melted['Pnl_Vector_Name'].map(pnl_date_map)
+    df_melted['Date'] = pd.to_datetime(df_melted['Date'], errors='coerce') # Coerce errors for NaT dates
+    
+    # Filter out rows where Date is NaT (if date mapping failed for some columns)
+    df_melted = df_melted.dropna(subset=['Date'])
+
+
+    # Filter for DVaR
+    df_dvar = df_melted[df_melted['Var Type'] == 'DVaR'].copy()
+
+    # Filter for SVaR (if available)
+    df_svar = df_melted[df_melted['Var Type'] == 'SVaR'].copy()
+
+
+    # --- Calculate DVaR for each asset class ---
+    asset_classes = ['fx', 'rates', 'em macro']
+    asset_dvar_dfs = {}
+    
+    node_mapping = {
+        'fx': FX_DVAR_NODE,
+        'rates': RATES_DVAR_NODE,
+        'em macro': EM_MACRO_DVAR_NODE
+    }
+
+    for ac in asset_classes:
+        filtered_df = df_dvar[
+            (df_dvar['Asset class'] == ac) &
+            (df_dvar['Node'] == node_mapping.get(ac, FX_DVAR_NODE)) # Default to FX_DVAR_NODE if not in map
+        ]
+        if not filtered_df.empty:
+            asset_dvar_dfs[ac] = filtered_df.groupby(['Date', 'Pnl_Vector_Name'])['Value'].sum().reset_index(name=f'{ac.replace(" ", "_")}_DVaR_Value')
+            asset_dvar_dfs[ac]['Sheet_Type'] = sheet_type # Add sheet type for merging
+        else:
+            asset_dvar_dfs[ac] = pd.DataFrame(columns=['Date', 'Pnl_Vector_Name', f'{ac.replace(" ", "_")}_DVaR_Value', 'Sheet_Type'])
+            
+    # --- Combine all DVaR tails for Macro DVaR ---
+    macro_dvar_df = None
+    if 'fx' in asset_dvar_dfs:
+        macro_dvar_df = asset_dvar_dfs['fx']
+        for ac in ['rates', 'em macro']:
+            if ac in asset_dvar_dfs:
+                macro_dvar_df = pd.merge(macro_dvar_df, asset_dvar_dfs[ac], on=['Date', 'Pnl_Vector_Name', 'Sheet_Type'], how='outer')
+        
+        # Calculate Macro DVaR if merge was successful
+        if macro_dvar_df is not None:
+            macro_dvar_df['Macro_DVaR_Value'] = macro_dvar_df[[f'{ac.replace(" ", "_")}_DVaR_Value' for ac in asset_classes]].sum(axis=1)
+            macro_dvar_df = macro_dvar_df.sort_values('Date').reset_index(drop=True)
+            macro_dvar_df['Sheet_Type'] = sheet_type # Ensure this column is consistent
+        else:
+            macro_dvar_df = pd.DataFrame(columns=['Date', 'Pnl_Vector_Name', 'Macro_DVaR_Value', 'Sheet_Type'])
+    else:
+        macro_dvar_df = pd.DataFrame(columns=['Date', 'Pnl_Vector_Name', 'Macro_DVaR_Value', 'Sheet_Type'])
+    
+    # Calculate SVaR similarly (if data exists)
+    macro_svar_df = pd.DataFrame()
+    if not df_svar.empty:
+        svar_asset_dvar_dfs = {}
+        for ac in asset_classes:
+            filtered_svar_df = df_svar[
+                (df_svar['Asset class'] == ac) &
+                (df_svar['Node'] == node_mapping.get(ac, FX_DVAR_NODE)) # Use same node logic for SVaR
+            ]
+            if not filtered_svar_df.empty:
+                svar_asset_dvar_dfs[ac] = filtered_svar_df.groupby(['Date', 'Pnl_Vector_Name'])['Value'].sum().reset_index(name=f'{ac.replace(" ", "_")}_SVaR_Value')
+                svar_asset_dvar_dfs[ac]['Sheet_Type'] = sheet_type
+        
+        if 'fx' in svar_asset_dvar_dfs:
+            macro_svar_df = svar_asset_dvar_dfs['fx']
+            for ac in ['rates', 'em macro']:
+                if ac in svar_asset_dvar_dfs:
+                    macro_svar_df = pd.merge(macro_svar_df, svar_asset_dvar_dfs[ac], on=['Date', 'Pnl_Vector_Name', 'Sheet_Type'], how='outer')
+            
+            macro_svar_df['Macro_SVaR_Value'] = macro_svar_df[[f'{ac.replace(" ", "_")}_SVaR_Value' for ac in asset_classes]].sum(axis=1)
+            macro_svar_df = macro_svar_df.sort_values('Date').reset_index(drop=True)
+            macro_svar_df['Sheet_Type'] = sheet_type
+    
+    # Return df_dvar for sensitivity analysis and the other calculated DFs
+    return asset_dvar_dfs['fx'], asset_dvar_dfs['rates'], asset_dvar_dfs['em macro'], macro_dvar_df, df_dvar, macro_svar_df
+
+
+# --- Visualization Functions ---
+
+def plot_dvar_trends(df, title, y_column, legend_title="Type"):
+    """Generates a line chart for DVaR trends."""
+    chart = alt.Chart(df).mark_line(point=True).encode(
+        x=alt.X('Date:T', title='Date'),
+        y=alt.Y(y_column, title='DVaR Value'),
+        color=alt.Color('Sheet_Type:N', title=legend_title),
+        tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), y_column, 'Sheet_Type']
+    ).properties(
+        title=title
+    ).interactive() # Enable zooming and panning
+    st.altair_chart(chart, use_container_width=True)
+
+def plot_dvar_volatility(df, title):
+    """Generates a line chart for rolling DVaR volatility."""
+    if 'Rolling_Std_DVaR' not in df.columns:
+        st.warning("Rolling Standard Deviation column not found for volatility plot.")
+        return
+
+    chart = alt.Chart(df).mark_line(point=True).encode(
+        x=alt.X('Date:T', title='Date'),
+        y=alt.Y('Rolling_Std_DVaR', title='Rolling Std Dev of DVaR'),
+        color=alt.Color('Sheet_Type:N', title='Data Type'),
+        tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), 'Rolling_Std_DVaR', 'Sheet_Type']
+    ).properties(
+        title=title
+    ).interactive()
+    st.altair_chart(chart, use_container_width=True)
+
+def plot_contribution(df, title):
+    """Generates a stacked area chart for asset class DVaR contributions."""
+    df_long = df.melt(id_vars=['Date', 'Pnl_Vector_Name', 'Macro_DVaR_Value', 'Sheet_Type'],
+                      value_vars=[col for col in df.columns if '_DVaR_Value' in col and col != 'Macro_DVaR_Value'],
+                      var_name='Asset_Class',
+                      value_name='Contribution_Value')
+    
+    df_long['Contribution_Percentage'] = (df_long['Contribution_Value'] / df_long['Macro_DVaR_Value']) * 100
+    df_long = df_long.dropna(subset=['Contribution_Percentage'])
+
+    chart = alt.Chart(df_long).mark_area().encode(
+        x=alt.X('Date:T', title='Date'),
+        y=alt.Y('Contribution_Percentage', title='Percentage Contribution (%)', stack='normalize'),
+        color=alt.Color('Asset_Class:N', title='Asset Class'),
+        tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), 'Asset_Class:N', alt.Tooltip('Contribution_Percentage', format='.2f') + '%']
+    ).properties(
+        title=title
+    ).interactive()
+    st.altair_chart(chart, use_container_width=True)
+
+def display_correlations(df):
+    """Calculates and displays correlation matrix for DVaR asset classes."""
+    if df.empty:
+        st.info("No data available to calculate correlations.")
+        return
+
+    # Select only the DVaR value columns for current day data for correlation
+    df_current_day = df[df['Sheet_Type'] == 'current']
+    if df_current_day.empty:
+        st.info("No 'Current Day' data available for correlation calculation.")
+        return
+
+    correlation_df = df_current_day[['FX_DVaR_Value', 'Rates_DVaR_Value', 'EM_Macro_DVaR_Value']].corr()
+    st.subheader("DVaR Asset Class Correlations (Current Day)")
+    st.dataframe(correlation_df.style.background_gradient(cmap='viridis', axis=None).format("{:.2f}"))
+    st.markdown("Higher positive values indicate stronger positive correlation, negative values indicate inverse correlation.")
+
+
+def plot_exceedances(df, title, threshold):
+    """Plots DVaR values and highlights exceedances."""
+    if threshold is None or df.empty:
+        st.warning("Please set a threshold and ensure data is available for exceedance analysis.")
+        return
+
+    df['Exceeds_Threshold'] = df['Macro_DVaR_Value'] > threshold
+
+    chart = alt.Chart(df).mark_line().encode(
+        x=alt.X('Date:T', title='Date'),
+        y=alt.Y('Macro_DVaR_Value', title='Macro DVaR Value'),
+        tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), 'Macro_DVaR_Value']
+    ).properties(
+        title=title
+    )
+
+    exceedance_points = alt.Chart(df[df['Exceeds_Threshold']]).mark_point(color='red', size=100).encode(
+        x=alt.X('Date:T'),
+        y=alt.Y('Macro_DVaR_Value'),
+        tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), 'Macro_DVaR_Value', alt.value('Exceeded Threshold')]
+    )
+
+    threshold_line = alt.Chart(pd.DataFrame({'threshold': [threshold]})).mark_rule(color='red', strokeDash=[5,5]).encode(
+        y='threshold'
+    )
+
+    st.altair_chart(chart + exceedance_points + threshold_line, use_container_width=True)
+    st.info(f"Number of times Macro DVaR exceeded {threshold:.2f}: {df['Exceeds_Threshold'].sum()}")
+
+
+def plot_svar_dvar_comparison(dvar_df, svar_df, title):
+    """Compares Macro DVaR and Macro SVaR."""
+    if svar_df.empty or dvar_df.empty:
+        st.info("SVaR or DVaR data not available for comparison.")
+        return
+    
+    # Merge DVaR and SVaR on Date and Pnl_Vector_Name
+    comparison_df = pd.merge(dvar_df[['Date', 'Pnl_Vector_Name', 'Macro_DVaR_Value', 'Sheet_Type']],
+                             svar_df[['Date', 'Pnl_Vector_Name', 'Macro_SVaR_Value', 'Sheet_Type']],
+                             on=['Date', 'Pnl_Vector_Name', 'Sheet_Type'], how='inner')
+    
+    if comparison_df.empty:
+        st.info("No common dates/pnl vectors found between DVaR and SVaR data for comparison.")
+        return
+
+    # Melt for Altair
+    df_melted = comparison_df.melt(id_vars=['Date', 'Pnl_Vector_Name', 'Sheet_Type'],
+                                   value_vars=['Macro_DVaR_Value', 'Macro_SVaR_Value'],
+                                   var_name='VaR_Type',
+                                   value_name='Value')
+
+    chart = alt.Chart(df_melted).mark_line(point=True).encode(
+        x=alt.X('Date:T', title='Date'),
+        y=alt.Y('Value', title='VaR Value'),
+        color=alt.Color('VaR_Type:N', title='VaR Type'),
+        strokeDash='VaR_Type:N', # Different line styles for clarity
+        tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), 'VaR_Type', 'Value', 'Sheet_Type']
+    ).properties(
+        title=title
+    ).interactive()
+    st.altair_chart(chart, use_container_width=True)
+
+
+def plot_sensitivity_attribution(df_dvar_raw, pnl_date_map, selected_asset_class):
+    """
+    Calculates and plots DVaR contribution by sensitivity type for a selected asset class.
+    """
+    if df_dvar_raw.empty:
+        st.info("Raw DVaR data not available for sensitivity attribution.")
+        return
+
+    df_filtered = df_dvar_raw[
+        (df_dvar_raw['Asset class'] == selected_asset_class) &
+        (df_dvar_raw['Node'] == globals()[f"{selected_asset_class.replace(' ', '_').upper()}_DVAR_NODE"])
+    ].copy()
+    
+    if df_filtered.empty:
+        st.info(f"No DVaR data found for '{selected_asset_class}' with Node {globals()[f"{selected_asset_class.replace(' ', '_').upper()}_DVAR_NODE"]}.")
+        return
+
+    # Group by Date, Pnl_Vector_Name, and Sensitivity Type to sum values
+    sensitivity_contributions = df_filtered.groupby(['Date', 'Pnl_Vector_Name', 'sensitivity_type'])['Value'].sum().reset_index()
+    
+    # Calculate total DVaR for normalization
+    total_dvar_by_date = sensitivity_contributions.groupby(['Date', 'Pnl_Vector_Name'])['Value'].sum().reset_index(name='Total_DVaR')
+    
+    # Merge total DVaR back
+    sensitivity_contributions = pd.merge(sensitivity_contributions, total_dvar_by_date, on=['Date', 'Pnl_Vector_Name'])
+    
+    # Calculate percentage contribution
+    sensitivity_contributions['Percentage_Contribution'] = (sensitivity_contributions['Value'] / sensitivity_contributions['Total_DVaR']) * 100
+    
+    # Handle potential NaN if Total_DVaR is 0
+    sensitivity_contributions.replace([np.inf, -np.inf], np.nan, inplace=True)
+    sensitivity_contributions.dropna(subset=['Percentage_Contribution'], inplace=True)
+
+    # Sort for consistent stacking
+    sensitivity_contributions = sensitivity_contributions.sort_values(['Date', 'Pnl_Vector_Name', 'Percentage_Contribution'], ascending=[True, True, False])
+
+    # Get top N sensitivities for display, group others
+    top_n = st.slider(f"Show Top N Sensitivities for {selected_asset_class}", 5, 20, 10)
+    
+    # Calculate average contribution of each sensitivity to identify top N
+    avg_sens_contrib = sensitivity_contributions.groupby('sensitivity_type')['Percentage_Contribution'].mean().nlargest(top_n).index
+    
+    sensitivity_contributions['Display_Sensitivity'] = sensitivity_contributions['sensitivity_type'].apply(
+        lambda x: x if x in avg_sens_contrib else 'Other'
+    )
+    
+    # Recalculate contributions for 'Other' category
+    sensitivity_contributions = sensitivity_contributions.groupby(['Date', 'Pnl_Vector_Name', 'Display_Sensitivity'])['Value'].sum().reset_index()
+    total_dvar_by_date_recalculated = sensitivity_contributions.groupby(['Date', 'Pnl_Vector_Name'])['Value'].sum().reset_index(name='Total_DVaR')
+    sensitivity_contributions = pd.merge(sensitivity_contributions, total_dvar_by_date_recalculated, on=['Date', 'Pnl_Vector_Name'])
+    sensitivity_contributions['Percentage_Contribution'] = (sensitivity_contributions['Value'] / sensitivity_contributions['Total_DVaR']) * 100
+    
+    # Ensure Date is datetime for Altair
+    sensitivity_contributions['Date'] = pd.to_datetime(sensitivity_contributions['Date'])
+
+    chart = alt.Chart(sensitivity_contributions).mark_area().encode(
+        x=alt.X('Date:T', title='Date'),
+        y=alt.Y('Percentage_Contribution', title='Percentage Contribution (%)', stack='normalize'),
+        color=alt.Color('Display_Sensitivity:N', title='Sensitivity Type', legend=alt.Legend(columns=2)),
+        order=alt.Order('Percentage_Contribution', sort='descending'),
+        tooltip=[alt.Tooltip('Date:T', format='%Y-%m-%d'), 'Display_Sensitivity:N', alt.Tooltip('Percentage_Contribution', format='.2f') + '%']
+    ).properties(
+        title=f"DVaR Contribution by Sensitivity Type for {selected_asset_class}"
+    ).interactive()
+    st.altair_chart(chart, use_container_width=True)
+
+
+# --- Main Application Logic ---
+uploaded_file = st.file_uploader("Choose your Excel file", type="xlsx")
+
+if uploaded_file is not None:
+    data_sheets, date_mappings = load_data(uploaded_file)
+
+    if data_sheets is not None and date_mappings is not None:
+        current_day_df = data_sheets.get(CURRENT_DAY_SHEET_NAME)
+        previous_day_df = data_sheets.get(PREVIOUS_DAY_SHEET_NAME)
+
+        current_day_date_map = date_mappings.get(CURRENT_DAY_SHEET_NAME)
+        previous_day_date_map = date_mappings.get(PREVIOUS_DAY_SHEET_NAME)
+
+        if current_day_df is None or previous_day_df is None:
+            st.error("Could not find both specified sheets in the Excel file. Please check sheet names.")
+        elif current_day_date_map is None or previous_day_date_map is None:
+            st.error("Could not extract date mappings for one or both sheets. Check the first row of your Excel sheets.")
+        else:
+            st.success("Excel data loaded and dates extracted successfully!")
+
+            with st.spinner("Calculating DVaR tails... This may take a moment."):
+                fx_dvar_curr, rates_dvar_curr, em_macro_dvar_curr, macro_dvar_curr, raw_dvar_curr, macro_svar_curr = \
+                    calculate_dvar_tails(current_day_df, current_day_date_map, "current")
+                
+                fx_dvar_prev, rates_dvar_prev, em_macro_dvar_prev, macro_dvar_prev, raw_dvar_prev, macro_svar_prev = \
+                    calculate_dvar_tails(previous_day_df, previous_day_date_map, "previous")
+            
+            all_macro_dvar = pd.DataFrame()
+            if macro_dvar_curr is not None and not macro_dvar_curr.empty:
+                all_macro_dvar = pd.concat([all_macro_dvar, macro_dvar_curr], ignore_index=True)
+            if macro_dvar_prev is not None and not macro_dvar_prev.empty:
+                all_macro_dvar = pd.concat([all_macro_dvar, macro_dvar_prev], ignore_index=True)
+
+            all_fx_dvar = pd.DataFrame()
+            if fx_dvar_curr is not None and not fx_dvar_curr.empty:
+                all_fx_dvar = pd.concat([all_fx_dvar, fx_dvar_curr], ignore_index=True)
+            if fx_dvar_prev is not None and not fx_dvar_prev.empty:
+                all_fx_dvar = pd.concat([all_fx_dvar, fx_dvar_prev], ignore_index=True)
+
+            all_rates_dvar = pd.DataFrame()
+            if rates_dvar_curr is not None and not rates_dvar_curr.empty:
+                all_rates_dvar = pd.concat([all_rates_dvar, rates_dvar_curr], ignore_index=True)
+            if rates_dvar_prev is not None and not rates_dvar_prev.empty:
+                all_rates_dvar = pd.concat([all_rates_dvar, rates_dvar_prev], ignore_index=True)
+
+            all_em_macro_dvar = pd.DataFrame()
+            if em_macro_dvar_curr is not None and not em_macro_dvar_curr.empty:
+                all_em_macro_dvar = pd.concat([all_em_macro_dvar, em_macro_dvar_curr], ignore_index=True)
+            if em_macro_dvar_prev is not None and not em_macro_dvar_prev.empty:
+                all_em_macro_dvar = pd.concat([all_em_macro_dvar, em_macro_dvar_prev], ignore_index=True)
+
+
+            if not all_macro_dvar.empty:
+                st.success("DVaR calculations complete for both Current and Previous Day data!")
+                st.write("### Data Head (Macro DVaR)")
+                st.dataframe(all_macro_dvar.head())
+            else:
+                st.warning("No DVaR data could be calculated. Please check your Excel file's format and content.")
+                st.stop() # Stop execution if no DVaR data to display
+
+
+            # --- Analysis Tabs ---
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+                "DVaR Trends", "Volatility", "Contribution", "Correlations",
+                "Exceedance & Outliers", "Sensitivity Attribution", "SVaR Comparison" # "Backtesting (Needs PnL)"
+            ])
+
+            with tab1:
+                st.header("📈 DVaR Time Series Trends")
+                st.markdown("Visualize the evolution of Macro DVaR and individual Asset Class DVaRs over time.")
+
+                if not all_macro_dvar.empty:
+                    plot_dvar_trends(all_macro_dvar, "Macro DVaR Trend (Current vs. Previous Day)", 'Macro_DVaR_Value')
+                    
+                    st.subheader("Individual Asset Class DVaR Trends")
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        if not all_fx_dvar.empty:
+                            plot_dvar_trends(all_fx_dvar, "FX DVaR Trend", 'FX_DVaR_Value')
+                    with col2:
+                        if not all_rates_dvar.empty:
+                            plot_dvar_trends(all_rates_dvar, "Rates DVaR Trend", 'Rates_DVaR_Value')
+                    with col3:
+                        if not all_em_macro_dvar.empty:
+                            plot_dvar_trends(all_em_macro_dvar, "EM Macro DVaR Trend", 'EM_Macro_DVaR_Value')
+                else:
+                    st.info("No DVaR data to display trends.")
+
+            with tab2:
+                st.header("📉 DVaR Volatility Analysis")
+                st.markdown("Understand the stability of your DVaR over time by examining rolling standard deviation.")
+
+                window_size = st.slider("Select Rolling Window Size (days)", 5, 60, 20)
+                
+                if not all_macro_dvar.empty:
+                    # Calculate rolling std for Macro DVaR
+                    all_macro_dvar['Rolling_Std_DVaR'] = all_macro_dvar.groupby('Sheet_Type')['Macro_DVaR_Value'].transform(lambda x: x.rolling(window=window_size, min_periods=1).std())
+                    plot_dvar_volatility(all_macro_dvar, f"Macro DVaR Rolling Volatility ({window_size}-day window)")
+
+                    st.subheader("Individual Asset Class DVaR Volatility")
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        if not all_fx_dvar.empty:
+                            all_fx_dvar['Rolling_Std_DVaR'] = all_fx_dvar.groupby('Sheet_Type')['FX_DVaR_Value'].transform(lambda x: x.rolling(window=window_size, min_periods=1).std())
+                            plot_dvar_volatility(all_fx_dvar, f"FX DVaR Rolling Volatility ({window_size}-day window)")
+                    with col2:
+                        if not all_rates_dvar.empty:
+                            all_rates_dvar['Rolling_Std_DVaR'] = all_rates_dvar.groupby('Sheet_Type')['Rates_DVaR_Value'].transform(lambda x: x.rolling(window=window_size, min_periods=1).std())
+                            plot_dvar_volatility(all_rates_dvar, f"Rates DVaR Rolling Volatility ({window_size}-day window)")
+                    with col3:
+                        if not all_em_macro_dvar.empty:
+                            all_em_macro_dvar['Rolling_Std_DVaR'] = all_em_macro_dvar.groupby('Sheet_Type')['EM_Macro_DVaR_Value'].transform(lambda x: x.rolling(window=window_size, min_periods=1).std())
+                            plot_dvar_volatility(all_em_macro_dvar, f"EM Macro DVaR Rolling Volatility ({window_size}-day window)")
+                else:
+                    st.info("No DVaR data to analyze volatility.")
+
+            with tab3:
+                st.header("🏛️ Asset Class Contribution to Macro DVaR")
+                st.markdown("See how each asset class contributes to the overall Macro DVaR over time. Only for 'Current Day' data.")
+                if not macro_dvar_curr.empty:
+                    plot_contribution(macro_dvar_curr, "Asset Class Contribution to Macro DVaR (Current Day)")
+                else:
+                    st.info("No 'Current Day' Macro DVaR data to show contribution.")
+
+            with tab4:
+                st.header("🤝 Asset Class DVaR Correlations")
+                st.markdown("Examine the correlation between DVaR values of different asset classes. Only for 'Current Day' data.")
+                if not macro_dvar_curr.empty:
+                    display_correlations(macro_dvar_curr)
+                else:
+                    st.info("No 'Current Day' DVaR data to calculate correlations.")
+
+            with tab5:
+                st.header("⚠️ DVaR Exceedance & Outlier Analysis")
+                st.markdown("Identify periods where DVaR values exceeded a defined threshold or were statistically anomalous.")
+
+                st.subheader("DVaR Exceedance Analysis")
+                if not macro_dvar_curr.empty:
+                    default_threshold = macro_dvar_curr['Macro_DVaR_Value'].quantile(0.95) if not macro_dvar_curr.empty else 0
+                    exceedance_threshold = st.number_input(
+                        "Set DVaR Exceedance Threshold",
+                        value=float(default_threshold),
+                        step=100.0,
+                        format="%.2f"
+                    )
+                    plot_exceedances(macro_dvar_curr, "Macro DVaR Exceedance Plot (Current Day)", exceedance_threshold)
+                else:
+                    st.info("No 'Current Day' Macro DVaR data for exceedance analysis.")
+
+                st.subheader("DVaR Outlier Detection (Current Day)")
+                st.markdown("Detecting outliers using Z-score method (values +/- 3 standard deviations from mean).")
+                if not macro_dvar_curr.empty:
+                    mean_dvar = macro_dvar_curr['Macro_DVaR_Value'].mean()
+                    std_dvar = macro_dvar_curr['Macro_DVaR_Value'].std()
+                    
+                    if std_dvar > 0:
+                        macro_dvar_curr['Z_Score'] = (macro_dvar_curr['Macro_DVaR_Value'] - mean_dvar) / std_dvar
+                        outliers = macro_dvar_curr[(macro_dvar_curr['Z_Score'].abs() > 3)]
+                        if not outliers.empty:
+                            st.warning(f"Found {len(outliers)} outliers in Macro DVaR (Current Day):")
+                            st.dataframe(outliers[['Date', 'Macro_DVaR_Value', 'Z_Score']].sort_values('Z_Score', ascending=False))
+                            st.markdown("Consider investigating these dates for specific market events or data anomalies.")
+                        else:
+                            st.info("No significant outliers (Z-score > 3) detected in Macro DVaR (Current Day).")
+                    else:
+                        st.info("Standard deviation is zero, no outliers detected.")
+                else:
+                    st.info("No 'Current Day' Macro DVaR data for outlier detection.")
+
+
+            with tab6:
+                st.header("🔬 DVaR Sensitivity Attribution")
+                st.markdown("Break down DVaR by underlying sensitivity types within each asset class. Only for 'Current Day' data.")
+                
+                if raw_dvar_curr is not None and not raw_dvar_curr.empty:
+                    asset_class_options = raw_dvar_curr['Asset class'].unique().tolist()
+                    selected_asset_class_attr = st.selectbox(
+                        "Select Asset Class for Sensitivity Attribution",
+                        options=[ac for ac in asset_class_options if ac in ['fx', 'rates', 'em macro']], # Ensure only relevant are shown
+                        key='attr_asset_class_select'
+                    )
+                    if selected_asset_class_attr:
+                        plot_sensitivity_attribution(raw_dvar_curr, current_day_date_map, selected_asset_class_attr)
+                    else:
+                         st.info("No relevant asset classes found for sensitivity attribution.")
+                else:
+                    st.info("Raw DVaR data is not available for sensitivity attribution.")
+
+
+            with tab7:
+                st.header("⚖️ SVaR vs. DVaR Comparison")
+                st.markdown("Compare the Stressed VaR (SVaR) against the Diversified VaR (DVaR) to understand stress uplift. Only for 'Current Day' data.")
+                if not macro_svar_curr.empty and not macro_dvar_curr.empty:
+                    plot_svar_dvar_comparison(macro_dvar_curr, macro_svar_curr, "Macro SVaR vs. Macro DVaR (Current Day)")
+                    
+                    # Calculate and display SVaR/DVaR ratio
+                    merged_var_data = pd.merge(macro_dvar_curr[['Date', 'Macro_DVaR_Value', 'Pnl_Vector_Name']],
+                                               macro_svar_curr[['Date', 'Macro_SVaR_Value', 'Pnl_Vector_Name']],
+                                               on=['Date', 'Pnl_Vector_Name'], how='inner')
+                    
+                    if not merged_var_data.empty:
+                        # Avoid division by zero
+                        merged_var_data['SVaR_DVaR_Ratio'] = merged_var_data.apply(
+                            lambda row: row['Macro_SVaR_Value'] / row['Macro_DVaR_Value'] if row['Macro_DVaR_Value'] != 0 else np.nan,
+                            axis=1
+                        )
+                        st.subheader("SVaR / DVaR Ratio Statistics")
+                        st.dataframe(merged_var_data['SVaR_DVaR_Ratio'].describe())
+                        st.info("A higher ratio indicates greater sensitivity to stress conditions.")
+                    else:
+                        st.info("No overlapping data for SVaR/DVaR ratio calculation.")
+
+                elif 'SVaR' not in current_day_df['Var Type'].unique().tolist():
+                    st.info("The 'Current Day Data' sheet does not contain 'SVaR' entries under 'Var Type'. SVaR comparison cannot be performed.")
+                else:
+                    st.info("No SVaR or DVaR data available for comparison.")
+
+            # Backtesting Tab (Placeholder - requires Actual PnL)
+            # with tab7: # If you add backtesting, move SVaR to tab8
+            #     st.header("🚦 DVaR Backtesting (Requires Actual PnL)")
+            #     st.warning("This section requires actual realized daily PnL data for backtesting.")
+            #     st.write(
+            #         """
+            #         To perform DVaR backtesting, you need to provide a column in your data
+            #         that represents the actual daily profit or loss for the same period.
+            #         """
+            #     )
+            #     st.write("Please specify how to get actual PnL (e.g., specific column in `current_day_df`).")
+            #     st.info("Once actual PnL is integrated, we can implement Kupiec's POF test and plot exceptions.")
+
+
+else:
+    st.info("Please upload an Excel file to start your DVaR analysis.")
+
