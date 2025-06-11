@@ -303,77 +303,74 @@ def index():
 
 @app.route('/process_data', methods=['POST'])
 def process_data():
-    global processed_data_loaded_flag # Declare global to modify it
-    global processed_data_store # Declare global to modify it
+    global processed_data_loaded_flag 
+    global processed_data_store 
 
-    if processed_data_loaded_flag:
-        # Data already loaded and cached, return success
-        return jsonify({'success': True, 'message': 'Data already processed from cache.', 'key_metrics': get_key_metrics_from_store()}), 200
+    # Only process if data is not already loaded
+    if not processed_data_loaded_flag:
+        try:
+            # Directly load from pre-defined path
+            data_sheets, date_mappings = load_data_backend(EXCEL_FILE_PATH)
 
-    try:
-        # Directly load from pre-defined path
-        data_sheets, date_mappings = load_data_backend(EXCEL_FILE_PATH)
+            current_day_df = data_sheets.get(CURRENT_DAY_SHEET_NAME)
+            previous_day_df = data_sheets.get(PREVIOUS_DAY_SHEET_NAME)
+            svar_cob_df = data_sheets.get(SVAR_COB_SHEET_NAME)
+            svar_prev_cob_df = data_sheets.get(SVAR_PREV_COB_SHEET_NAME)
 
-        current_day_df = data_sheets.get(CURRENT_DAY_SHEET_NAME)
-        previous_day_df = data_sheets.get(PREVIOUS_DAY_SHEET_NAME)
-        svar_cob_df = data_sheets.get(SVAR_COB_SHEET_NAME)
-        svar_prev_cob_df = data_sheets.get(SVAR_PREV_COB_SHEET_NAME)
+            current_day_date_map = date_mappings.get(CURRENT_DAY_SHEET_NAME)
+            previous_day_date_map = date_mappings.get(PREVIOUS_DAY_SHEET_NAME)
+            svar_cob_date_map = date_mappings.get(SVAR_COB_SHEET_NAME)
+            svar_prev_cob_date_map = date_mappings.get(SVAR_PREV_COB_SHEET_NAME)
 
-        current_day_date_map = date_mappings.get(CURRENT_DAY_SHEET_NAME)
-        previous_day_date_map = date_mappings.get(PREVIOUS_DAY_SHEET_NAME)
-        svar_cob_date_map = date_mappings.get(SVAR_COB_SHEET_NAME)
-        svar_prev_cob_date_map = date_mappings.get(SVAR_PREV_COB_SHEET_NAME)
+            if not all([df is not None for df in [current_day_df, previous_day_df, svar_cob_df, svar_prev_cob_df]]):
+                raise Exception("One or more required sheets could not be loaded or are empty.")
+            if not all([m is not None for m in [current_day_date_map, previous_day_date_map, svar_cob_date_map, svar_prev_cob_date_map]]):
+                raise Exception("Date mappings could not be extracted for one or more sheets.")
 
-        if not all([df is not None for df in [current_day_df, previous_day_df, svar_cob_df, svar_prev_cob_df]]):
-            raise Exception("One or more required sheets could not be loaded or are empty.")
-        if not all([m is not None for m in [current_day_date_map, previous_day_date_map, svar_cob_date_map, svar_prev_cob_date_map]]):
-            raise Exception("Date mappings could not be extracted for one or more sheets.")
+            # Calculate DVaR for Current COB
+            fx_dvar_curr, rates_dvar_curr, em_macro_dvar_curr, macro_dvar_curr, raw_dvar_curr = \
+                calculate_var_tails_backend(current_day_df, current_day_date_map, "current", "DVaR", 
+                                            DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
+                                            SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
+            
+            # Calculate DVaR for Previous COB
+            fx_dvar_prev, rates_dvar_prev, em_macro_dvar_prev, macro_dvar_prev, raw_dvar_prev = \
+                calculate_var_tails_backend(previous_day_df, previous_day_date_map, "previous", "DVaR", 
+                                            DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
+                                            SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
+            
+            # Calculate SVaR for Current COB
+            fx_svar_curr, rates_svar_curr, em_macro_svar_curr, macro_svar_curr, raw_svar_curr = \
+                calculate_var_tails_backend(svar_cob_df, svar_cob_date_map, "current", "SVaR", 
+                                            DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
+                                            SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
 
-        # Calculate DVaR for Current COB
-        fx_dvar_curr, rates_dvar_curr, em_macro_dvar_curr, macro_dvar_curr, raw_dvar_curr = \
-            calculate_var_tails_backend(current_day_df, current_day_date_map, "current", "DVaR", 
-                                        DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
-                                        SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
-        
-        # Calculate DVaR for Previous COB
-        fx_dvar_prev, rates_dvar_prev, em_macro_dvar_prev, macro_dvar_prev, raw_dvar_prev = \
-            calculate_var_tails_backend(previous_day_df, previous_day_date_map, "previous", "DVaR", 
-                                        DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
-                                        SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
-        
-        # Calculate SVaR for Current COB
-        fx_svar_curr, rates_svar_curr, em_macro_svar_curr, macro_svar_curr, raw_svar_curr = \
-            calculate_var_tails_backend(svar_cob_df, svar_cob_date_map, "current", "SVaR", 
-                                        DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
-                                        SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
+            # Calculate SVaR for Previous COB
+            fx_svar_prev, rates_svar_prev, em_macro_svar_prev, macro_svar_prev, raw_svar_prev = \
+                calculate_var_tails_backend(svar_prev_cob_df, svar_prev_cob_date_map, "previous", "SVaR", 
+                                            DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
+                                            SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
 
-        # Calculate SVaR for Previous COB
-        fx_svar_prev, rates_svar_prev, em_macro_svar_prev, macro_svar_prev, raw_svar_prev = \
-            calculate_var_tails_backend(svar_prev_cob_df, svar_prev_cob_date_map, "previous", "SVaR", 
-                                        DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
-                                        SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
+            # Store processed data in the global dictionary
+            processed_data_store['macro_dvar_curr'] = macro_dvar_curr
+            processed_data_store['macro_dvar_prev'] = macro_dvar_prev
+            processed_data_store['fx_dvar_curr'] = fx_dvar_curr
+            processed_data_store['fx_dvar_prev'] = fx_dvar_prev
+            processed_data_store['rates_dvar_curr'] = rates_dvar_curr
+            processed_data_store['rates_dvar_prev'] = rates_dvar_prev
+            processed_data_store['em_macro_dvar_curr'] = em_macro_dvar_curr
+            processed_data_store['em_macro_dvar_prev'] = em_macro_dvar_prev
+            processed_data_store['macro_svar_curr'] = macro_svar_curr
+            processed_data_store['macro_svar_prev'] = macro_svar_prev
+            
+            processed_data_loaded_flag = True # Set flag to true as data is now processed
 
-        # Store processed data in the global dictionary
-        processed_data_store['macro_dvar_curr'] = macro_dvar_curr
-        processed_data_store['macro_dvar_prev'] = macro_dvar_prev
-        processed_data_store['fx_dvar_curr'] = fx_dvar_curr
-        processed_data_store['fx_dvar_prev'] = fx_dvar_prev
-        processed_data_store['rates_dvar_curr'] = rates_dvar_curr
-        processed_data_store['rates_dvar_prev'] = rates_dvar_prev
-        processed_data_store['em_macro_dvar_curr'] = em_macro_dvar_curr
-        processed_data_store['em_macro_dvar_prev'] = em_macro_dvar_prev
-        processed_data_store['macro_svar_curr'] = macro_svar_curr
-        processed_data_store['macro_svar_prev'] = macro_svar_prev
-        
-        processed_data_loaded_flag = True # Set flag to true as data is now processed
-
-        # Prepare data for "Lowest Metrics" cards
-        key_metrics = get_key_metrics_from_store()
-
-        return jsonify({'success': True, 'message': 'Data processed successfully', 'key_metrics': key_metrics}), 200
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    # If successful or data already loaded, return metrics
+    key_metrics = get_key_metrics_from_store()
+    return jsonify({'success': True, 'message': 'Data processed successfully', 'key_metrics': key_metrics}), 200
 
 def get_key_metrics_from_store():
     """Helper to extract lowest metrics from the processed_data_store."""
@@ -500,20 +497,6 @@ def get_dvar_trends_plot():
 def static_files(filename):
     return send_from_directory('static', filename)
 
-# Initial data processing on Flask startup/first request
-@app.before_first_request
-def initialize_data():
-    global processed_data_loaded_flag
-    if not processed_data_loaded_flag:
-        try:
-            # Simulate a POST request to /process_data to trigger loading
-            with app.test_request_context('/process_data', method='POST'):
-                response = app.full_dispatch_request()
-                if response.status_code != 200:
-                    print(f"Error during initial data load: {response.get_data(as_text=True)}")
-                    # Optionally, log this error more persistently
-        except Exception as e:
-            print(f"Unhandled exception during initial data load: {e}")
 
 if __name__ == '__main__':
     # Create the 'data' directory if it doesn't exist
