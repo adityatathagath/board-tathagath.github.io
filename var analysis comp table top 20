@@ -296,6 +296,11 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
         macro_var_df = macro_var_df.sort_values('Date').reset_index(drop=True)
         macro_var_df['Sheet_Type'] = sheet_type # Ensure this column is consistent
     
+    if debug_mode:
+        st.write(f"DEBUG: Final Macro DVaR DF ({sheet_type}, {var_type_filter}) head and shape:")
+        st.dataframe(macro_var_df.head())
+        st.write(macro_var_df.shape)
+
     # Return individual asset class VaR DFs, macro VaR DF, and the raw filtered VaR DF for sensitivity analysis
     return asset_var_dfs.get('fx', pd.DataFrame()), \
            asset_var_dfs.get('rates', pd.DataFrame()), \
@@ -555,7 +560,7 @@ def plot_sensitivity_attribution(df_raw_var_type, pnl_date_map, selected_asset_c
     ).interactive()
     st.altair_chart(chart, use_container_width=True)
 
-def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_curr, fx_dvar_prev, rates_dvar_curr, rates_dvar_prev, em_macro_dvar_curr, em_macro_dvar_prev):
+def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_curr, fx_dvar_prev, rates_dvar_curr, rates_dvar_prev, em_macro_dvar_curr, em_macro_dvar_prev, debug_mode):
     """
     Generates and displays the top 20 positive and negative Macro DVaR tails table using AgGrid.
     """
@@ -571,36 +576,60 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
     ]
 
     # Initialize a list to hold dataframes for merging
-    dfs_to_merge = []
+    # We will combine current and previous for each asset class first, then merge these combined DFs
+    combined_asset_dfs = []
     
-    # Track common merge keys
+    # Common merge keys
     common_merge_keys = ['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank']
 
     for current_df, previous_df, prefix in data_sources:
-        # Create current and previous versions with standardized column names
-        current_cols = common_merge_keys + [f'{prefix}_DVaR_Value']
-        previous_cols = common_merge_keys + [f'{prefix}_DVaR_Value']
-
-        if not current_df.empty:
-            df_curr_renamed = current_df[current_cols].rename(columns={f'{prefix}_DVaR_Value': f'{prefix}_DVaR_Value_Current'})
-            dfs_to_merge.append(df_curr_renamed)
+        # Standardize column names for current and previous DFs
+        # Ensure that value column exists before renaming
+        current_val_col = f'{prefix}_DVaR_Value'
+        previous_val_col = f'{prefix}_DVaR_Value'
         
-        if not previous_df.empty:
-            df_prev_renamed = previous_df[previous_cols].rename(columns={f'{prefix}_DVaR_Value': f'{prefix}_DVaR_Value_Previous'})
-            dfs_to_merge.append(df_prev_renamed)
+        df_curr_standard = pd.DataFrame(columns=common_merge_keys + [f'{prefix}_DVaR_Value_Current'])
+        if not current_df.empty and current_val_col in current_df.columns:
+            df_curr_standard = current_df[common_merge_keys + [current_val_col]].rename(columns={current_val_col: f'{prefix}_DVaR_Value_Current'})
+            if debug_mode:
+                st.write(f"DEBUG: {prefix} Current DVaR values (head):", df_curr_standard.head())
+        elif debug_mode:
+            st.write(f"DEBUG: {prefix} Current DVaR data is empty or missing value column.")
 
-    if not dfs_to_merge:
-        st.info("No DVaR data available for current or previous COB to perform Top/Bottom Tails analysis.")
+
+        df_prev_standard = pd.DataFrame(columns=common_merge_keys + [f'{prefix}_DVaR_Value_Previous'])
+        if not previous_df.empty and previous_val_col in previous_df.columns:
+            df_prev_standard = previous_df[common_merge_keys + [previous_val_col]].rename(columns={previous_val_col: f'{prefix}_DVaR_Value_Previous'})
+            if debug_mode:
+                st.write(f"DEBUG: {prefix} Previous DVaR values (head):", df_prev_standard.head())
+        elif debug_mode:
+            st.write(f"DEBUG: {prefix} Previous DVaR data is empty or missing value column.")
+
+
+        # Merge current and previous for this specific asset class
+        combined_asset_df = pd.merge(df_curr_standard, df_prev_standard, on=common_merge_keys, how='outer')
+        
+        # Add to list for the final merge
+        combined_asset_dfs.append(combined_asset_df)
+
+    if not combined_asset_dfs:
+        st.info("No DVaR data available for current or previous COB after initial processing. Cannot generate Top/Bottom Tails table.")
         return
 
-    # Perform the initial merge (start with the first dataframe, then outer merge others)
-    all_assets_combined = dfs_to_merge[0]
-    for i in range(1, len(dfs_to_merge)):
-        all_assets_combined = pd.merge(all_assets_combined, dfs_to_merge[i], on=common_merge_keys, how='outer')
+    # Perform the final merge of all combined asset DFs
+    all_assets_combined = combined_asset_dfs[0]
+    for i in range(1, len(combined_asset_dfs)):
+        all_assets_combined = pd.merge(all_assets_combined, combined_asset_dfs[i], on=common_merge_keys, how='outer')
+
+    if debug_mode:
+        st.write("DEBUG: all_assets_combined DataFrame before fillna and change calculation (head):")
+        st.dataframe(all_assets_combined.head())
+        st.write("DEBUG: all_assets_combined DataFrame columns before fillna:", all_assets_combined.columns.tolist())
+
 
     # Fill NaN values with 0 for numerical columns that are expected to be present
     # Get all column names that might contain 'Value_Current' or 'Value_Previous'
-    value_cols = [col for col in all_assets_combined.columns if '_DVaR_Value' in col]
+    value_cols = [col for col in all_assets_combined.columns if '_DVaR_Value_Current' in col or '_DVaR_Value_Previous' in col]
     all_assets_combined[value_cols] = all_assets_combined[value_cols].fillna(0)
 
     # Calculate Change columns
@@ -609,33 +638,41 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
         previous_col = f'{prefix}_DVaR_Value_Previous'
         change_col = f'{prefix}_DVaR_Change'
         
-        # Only calculate if both current and previous columns exist
         if current_col in all_assets_combined.columns and previous_col in all_assets_combined.columns:
             all_assets_combined[change_col] = all_assets_combined[current_col] - all_assets_combined[previous_col]
         else:
-            all_assets_combined[change_col] = 0 # Default to 0 if columns missing
+            # If current or previous columns are missing even after fillna, default change to 0
+            all_assets_combined[change_col] = 0 
 
 
-    # Drop rows where Macro_DVaR_Value_Current is NaN (no current data for Macro)
-    # This should be handled by the fillna(0) for value_cols, but keeping for safety if source is fully missing
+    # Drop rows where Macro_DVaR_Value_Current is NaN (no current data for Macro) - should be zero due to fillna but safety check
     all_assets_combined.dropna(subset=['Macro_DVaR_Value_Current'], inplace=True)
     
     # Sort by Date and Pnl_Vector_Rank for consistent ordering
     all_assets_combined = all_assets_combined.sort_values(by=['Date', 'Pnl_Vector_Rank']).reset_index(drop=True)
 
+    if debug_mode:
+        st.write("DEBUG: all_assets_combined DataFrame after fillna and change calculation (head):")
+        st.dataframe(all_assets_combined.head())
+        st.write("DEBUG: all_assets_combined DataFrame columns after change calculation:", all_assets_combined.columns.tolist())
+        st.write("DEBUG: Sample of Macro_DVaR_Value_Current values:", all_assets_combined['Macro_DVaR_Value_Current'].head())
+
 
     # Identify Top 20 Positive and Negative Macro Tails
-    top_20_positive = all_assets_combined.nlargest(20, 'Macro_DVaR_Value_Current', keep='all') # Use keep='all' to get all rows if tied
-    top_20_negative = all_assets_combined.nsmallest(20, 'Macro_DVaR_Value_Current', keep='all') # Use keep='all'
+    # Ensure there's enough data to select top/bottom 20
+    if all_assets_combined.empty:
+        st.info("No sufficient DVaR data to identify top/bottom tails.")
+        return
+
+    top_20_positive = all_assets_combined.nlargest(min(20, len(all_assets_combined)), 'Macro_DVaR_Value_Current', keep='all')
+    top_20_negative = all_assets_combined.nsmallest(min(20, len(all_assets_combined)), 'Macro_DVaR_Value_Current', keep='all')
 
     # Define AgGrid column definitions and cell styles
-    gb = GridOptionsBuilder.from_dataframe(pd.DataFrame(columns=[
-        'Date', 'Pnl_Vector_Name', 'Macro_DVaR_Value_Current', 'Macro_DVaR_Value_Previous', 'Macro_DVaR_Change',
-        'FX_DVaR_Value_Current', 'FX_DVaR_Value_Previous', 'FX_DVaR_Change',
-        'Rates_DVaR_Value_Current', 'Rates_DVaR_Value_Previous', 'Rates_DVaR_Change',
-        'EM_Macro_DVaR_Value_Current', 'EM_Macro_DVaR_Value_Previous', 'EM_Macro_DVaR_Change'
-    ])) # Create a dummy DataFrame for column inference to define initial columns
-
+    # Dynamically build column definitions to ensure all calculated columns are included
+    columnDefs = [
+        {"field": "Date", "headerName": "Date", "type": ["dateColumnFilter", "customDateTimeFormat"], "custom_format_string": 'dd-MM-yyyy'},
+        {"field": "Pnl_Vector_Name", "headerName": "P&L Vector"},
+    ]
 
     # JavaScript code for cell styling (red for negative, green for positive)
     change_cell_style_jscode = JsCode("""
@@ -649,43 +686,43 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
     }
     """)
     
-    # Format number with thousands separator
-    number_formatter_jscode = JsCode("function(params) { return params.value.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0}); }")
+    # Format number with thousands separator and 2 decimal places
+    number_formatter_jscode = JsCode("function(params) { return params.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}); }")
 
+    asset_prefixes = ['Macro', 'FX', 'Rates', 'EM_Macro']
+    for prefix in asset_prefixes:
+        columnDefs.append({"field": f"{prefix}_DVaR_Value_Current", "headerName": f"{prefix} Current", "type": ["numericColumn", "numberColumnFilter"], "valueFormatter": number_formatter_jscode})
+        columnDefs.append({"field": f"{prefix}_DVaR_Value_Previous", "headerName": f"{prefix} Previous", "type": ["numericColumn", "numberColumnFilter"], "valueFormatter": number_formatter_jscode})
+        columnDefs.append({"field": f"{prefix}_DVaR_Change", "headerName": f"{prefix} Change", "type": ["numericColumn", "numberColumnFilter"], "cellStyle": change_cell_style_jscode, "valueFormatter": number_formatter_jscode})
 
-    # Column definitions with formatting and styling
-    gb.configure_column("Date", type=["dateColumnFilter", "customDateTimeFormat"], custom_format_string='dd-MM-yyyy', headerName="Date")
-    gb.configure_column("Pnl_Vector_Name", headerName="P&L Vector")
-    
-    for col in ['Macro', 'FX', 'Rates', 'EM_Macro']:
-        gb.configure_column(f"{col}_DVaR_Value_Current", headerName=f"{col} Current", type=["numericColumn", "numberColumnFilter"], valueFormatter=number_formatter_jscode)
-        gb.configure_column(f"{col}_DVaR_Value_Previous", headerName=f"{col} Previous", type=["numericColumn", "numberColumnFilter"], valueFormatter=number_formatter_jscode)
-        gb.configure_column(f"{col}_DVaR_Change", headerName=f"{col} Change", type=["numericColumn", "numberColumnFilter"], cellStyle=change_cell_style_jscode, valueFormatter=number_formatter_jscode)
-
+    # Build GridOptions
+    gb = GridOptionsBuilder.from_dataframe(pd.DataFrame(columns=[col['field'] for col in columnDefs])) # Dummy DF for builder
+    gb.configure_columns(columnDefs)
     gb.configure_grid_options(domLayout='autoHeight') # Adjust grid height automatically
     gridOptions = gb.build()
 
+
     st.subheader("Top 20 Positive Macro DVaR Tails (Current COB)")
     if not top_20_positive.empty:
-        # Convert Date column to string for AgGrid if not already. Ensure correct format.
         top_20_positive_display = top_20_positive.copy()
-        top_20_positive_display['Date'] = top_20_positive_display['Date'].dt.strftime('%Y-%m-%d') # AgGrid handles date formats better with YYYY-MM-DD
+        # Convert Date column to string for AgGrid (YYYY-MM-DD for custom_format_string to work reliably)
+        top_20_positive_display['Date'] = top_20_positive_display['Date'].dt.strftime('%Y-%m-%d') 
         AgGrid(top_20_positive_display, gridOptions=gridOptions, 
                data_return_mode='AS_INPUT', update_mode='MODEL_CHANGED', 
-               fit_columns_on_grid_load=True, allow_unsafe_jscode=True, # Set allow_unsafe_jscode to True
-               enable_enterprise_modules=True, height=350, width='100%', reload_data=True)
+               fit_columns_on_grid_load=True, allow_unsafe_jscode=True, 
+               enable_enterprise_modules=True, height=350, width='100%', reload_data=True, key='ag_pos_tails')
     else:
         st.info("No positive Macro DVaR tails found.")
 
     st.subheader("Top 20 Negative Macro DVaR Tails (Current COB)")
     if not top_20_negative.empty:
-        # Convert Date column to string for AgGrid if not already. Ensure correct format.
         top_20_negative_display = top_20_negative.copy()
-        top_20_negative_display['Date'] = top_20_negative_display['Date'].dt.strftime('%Y-%m-%d') # AgGrid handles date formats better with YYYY-MM-DD
+        # Convert Date column to string for AgGrid (YYYY-MM-DD for custom_format_string to work reliably)
+        top_20_negative_display['Date'] = top_20_negative_display['Date'].dt.strftime('%Y-%m-%d') 
         AgGrid(top_20_negative_display, gridOptions=gridOptions, 
                data_return_mode='AS_INPUT', update_mode='MODEL_CHANGED', 
-               fit_columns_on_grid_load=True, allow_unsafe_jscode=True, # Set allow_unsafe_jscode to True
-               enable_enterprise_modules=True, height=350, width='100%', reload_data=True)
+               fit_columns_on_grid_load=True, allow_unsafe_jscode=True, 
+               enable_enterprise_modules=True, height=350, width='100%', reload_data=True, key='ag_neg_tails')
     else:
         st.info("No negative Macro DVaR tails found.")
 
@@ -742,7 +779,7 @@ if uploaded_file is not None:
     if not macro_dvar_curr.empty: # Check if current DVaR macro data exists
         st.success("DVaR and SVaR calculations complete for all sheets!")
         # Display Top/Bottom Tails table immediately
-        display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_curr, fx_dvar_prev, rates_dvar_curr, rates_dvar_prev, em_macro_dvar_curr, em_macro_dvar_prev)
+        display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_curr, fx_dvar_prev, rates_dvar_curr, rates_dvar_prev, em_macro_dvar_curr, em_macro_dvar_prev, DEBUG_MODE)
     else:
         st.warning("No DVaR data could be calculated. Please check your Excel file's format and content and enable debug mode for more details.")
         st.stop() # Stop execution if no DVaR data to display
@@ -783,7 +820,7 @@ if uploaded_file is not None:
             st.info("No DVaR data to display trends.")
 
     with tab2:
-        st.header("� DVaR Volatility Analysis")
+        st.header("📉 DVaR Volatility Analysis")
         st.markdown("Understand the stability of your DVaR over time by examining rolling standard deviation.")
 
         window_size = st.slider("Select Rolling Window Size (days)", 5, 60, 20, key='dvar_vol_window')
@@ -912,4 +949,3 @@ if uploaded_file is not None:
 
 else:
     st.info("Please upload your Excel file ('Tail_analysis_auto.xlsx') to start your DVaR analysis.")
-�
