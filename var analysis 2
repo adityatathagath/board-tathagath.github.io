@@ -343,7 +343,7 @@ def plot_contribution(df, title):
         x=alt.X('Date:T', title='Date', axis=alt.Axis(format='%d-%m-%Y')), # Date format change
         y=alt.Y('Contribution_Percentage', title='Percentage Contribution (%)', stack='normalize'),
         color=alt.Color('Asset_Class:N', title='Asset Class'),
-        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Asset_Class:N', alt.Tooltip('Contribution_Percentage', format='.2f') + '%'] # Date format change
+        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Asset_Class:N', alt.Tooltip('Contribution_Percentage', format='.2f%')] # CORRECTED LINE
     ).properties(
         title=title
     ).interactive()
@@ -526,7 +526,7 @@ def plot_sensitivity_attribution(df_raw_var_type, pnl_date_map, selected_asset_c
         y=alt.Y('Percentage_Contribution', title='Percentage Contribution (%)', stack='normalize'),
         color=alt.Color('Display_Sensitivity:N', title='Sensitivity Type', legend=alt.Legend(columns=2)),
         order=alt.Order('Percentage_Contribution', sort='descending'),
-        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Display_Sensitivity:N', alt.Tooltip('Percentage_Contribution', format='.2f') + '%', 'Value'] # Date format change
+        tooltip=[alt.Tooltip('Date:T', format='%d-%m-%Y'), 'Display_Sensitivity:N', alt.Tooltip('Percentage_Contribution', format='.2f%'), 'Value'] # Date format change
     ).properties(
         title=f"DVaR Contribution by Sensitivity Type for {selected_asset_class}"
     ).interactive()
