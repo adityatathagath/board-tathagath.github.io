@@ -4,6 +4,7 @@ import numpy as np
 import altair as alt # Still importing for general Altair.Axis.format string use, though not plotting directly
 from bokeh.plotting import figure, show 
 from bokeh.models import ColumnDataSource, NumeralTickFormatter, DatetimeTickFormatter, HoverTool
+from bokeh.embed import json_item # Not directly used for st.bokeh_chart, but useful for debugging Bokeh plots
 from bokeh.palettes import Category10, Category20 
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
 
@@ -15,7 +16,7 @@ SVAR_PREV_COB_SHEET_NAME = "SVaR_Prev_COB"
 
 FX_DVAR_NODE = 10
 RATES_DVAR_NODE = 22194
-EM_MACRO_DVAR_NODE = 137354
+EM_MACRO_DVAR_NODE = 1373254
 
 DVAR_PNL_VECTOR_START = 261
 DVAR_PNL_VECTOR_END = 520 
@@ -194,7 +195,14 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
                          value_name='Value')
     
     def extract_pnl_rank(pnl_vector_name):
-        name_without_suffix = pnl_vector_name.split('[T-2]')[0]
+        # Ensure pnl_vector_name is a string before attempting string operations
+        pnl_vector_name_str = str(pnl_vector_name) 
+        
+        if '[T-2]' in pnl_vector_name_str:
+            name_without_suffix = pnl_vector_name_str.split('[T-2]')[0]
+        else:
+            name_without_suffix = pnl_vector_name_str
+        
         numeric_part = ''.join(filter(str.isdigit, name_without_suffix))
         return int(numeric_part) if numeric_part else np.nan
     
@@ -354,7 +362,6 @@ def create_bokeh_stacked_area_chart(df, title, colors=BARCLAYS_COLOR_PALETTE):
     asset_class_cols_for_stack = df_wide.columns.drop('Date').tolist()
     source_wide = ColumnDataSource(df_wide)
     
-    # Use Category colors for stacking
     bokeh_colors = Category10[len(asset_class_cols_for_stack)] if len(asset_class_cols_for_stack) <= 10 else Category20[len(asset_class_cols_for_stack)]
 
     p_stacked = figure(
