@@ -180,7 +180,9 @@ def load_data(file_buffer, debug_mode):
     return data_frames, date_mappings
 
 
-def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter="DVaR", debug_mode=False):
+def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter="DVaR", 
+                        dvar_pnl_vector_start=None, dvar_pnl_vector_end=None, 
+                        svar_pnl_vector_start=None, svar_pnl_vector_end=None, debug_mode=False): # Added PNL ranges as parameters
     """
     Calculates VaR tails (DVaR or SVaR) for FX, Rates, EM Macro, and Macro.
     Adds a 'Sheet_Type' column for differentiation.
@@ -196,13 +198,20 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
         st.sidebar.write(pnl_date_map)
 
     # Determine PnL vector range based on VAR type
-    current_pnl_vector_start = PNL_VECTOR_START # Default to DVaR range
-    current_pnl_vector_end = PNL_VECTOR_END
+    current_pnl_vector_start = None
+    current_pnl_vector_end = None
 
-    if var_type_filter == "SVaR":
-        current_pnl_vector_start = SVAR_PNL_VECTOR_START
-        current_pnl_vector_end = SVAR_PNL_VECTOR_END
+    if var_type_filter == "DVaR":
+        current_pnl_vector_start = dvar_pnl_vector_start
+        current_pnl_vector_end = dvar_pnl_vector_end
+    elif var_type_filter == "SVaR":
+        current_pnl_vector_start = svar_pnl_vector_start
+        current_pnl_vector_end = svar_pnl_vector_end
     
+    if current_pnl_vector_start is None or current_pnl_vector_end is None:
+        st.error(f"Error: PnL vector range not defined for {var_type_filter}.")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame() # Return empty DFs
+
     if debug_mode:
         st.sidebar.write(f"DEBUG: PnL Vector Range for {var_type_filter}: {current_pnl_vector_start} to {current_pnl_vector_end}")
 
@@ -411,7 +420,7 @@ def plot_contribution(df, title):
         np.where(df_long['Contribution_Value'] == 0, 0, np.nan) # If Macro_DVaR_Value is 0, and Contribution_Value is also 0, then 0. Else NaN.
     )
     
-    df_long = df_long.dropna(subset=['Percentage_Percentage'])
+    df_long = df_long.dropna(subset=['Contribution_Percentage']) # Corrected typo here
 
     if df_long.empty: # Added guard after dropna
         st.info(f"No valid contribution data after filtering for {title}.")
@@ -830,19 +839,27 @@ if uploaded_file is not None:
     with st.spinner("Calculating VaR tails... This may take a moment."):
         # Calculate DVaR for Current COB
         fx_dvar_curr, rates_dvar_curr, em_macro_dvar_curr, macro_dvar_curr, raw_dvar_curr = \
-            calculate_var_tails(current_day_df, current_day_date_map, "current", "DVaR", DEBUG_MODE) # Pass DEBUG_MODE
+            calculate_var_tails(current_day_df, current_day_date_map, "current", "DVaR", 
+                                DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
+                                SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END, DEBUG_MODE) # Pass PNL ranges
         
         # Calculate DVaR for Previous COB
         fx_dvar_prev, rates_dvar_prev, em_macro_dvar_prev, macro_dvar_prev, raw_dvar_prev = \
-            calculate_var_tails(previous_day_df, previous_day_date_map, "previous", "DVaR", DEBUG_MODE) # Pass DEBUG_MODE
+            calculate_var_tails(previous_day_df, previous_day_date_map, "previous", "DVaR", 
+                                DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
+                                SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END, DEBUG_MODE) # Pass PNL ranges
         
         # Calculate SVaR for Current COB
         fx_svar_curr, rates_svar_curr, em_macro_svar_curr, macro_svar_curr, raw_svar_curr = \
-            calculate_var_tails(svar_cob_df, svar_cob_date_map, "current", "SVaR", DEBUG_MODE) # Pass DEBUG_MODE
+            calculate_var_tails(svar_cob_df, svar_cob_date_map, "current", "SVaR", 
+                                DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
+                                SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END, DEBUG_MODE) # Pass PNL ranges
 
         # Calculate SVaR for Previous COB
         fx_svar_prev, rates_svar_prev, em_macro_svar_prev, macro_svar_prev, raw_svar_prev = \
-            calculate_var_tails(svar_prev_cob_df, svar_prev_cob_date_map, "previous", "SVaR", DEBUG_MODE) # Pass DEBUG_MODE
+            calculate_var_tails(svar_prev_cob_df, svar_prev_cob_date_map, "previous", "SVaR", 
+                                DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
+                                SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END, DEBUG_MODE) # Pass PNL ranges
 
     # Check if *any* macro_dvar_curr data exists to proceed with display
     if not macro_dvar_curr.empty: 
