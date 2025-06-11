@@ -4,17 +4,19 @@ import pandas as pd
 import numpy as np
 import io
 import os # For path joining
+import sqlite3 # For SQLite database operations
 from bokeh.embed import json_item
 from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource, NumeralTickFormatter, DatetimeTickFormatter
 from bokeh.palettes import Category10, Category20 # For Bokeh plot colors
+from sqlalchemy import create_engine # For pandas to_sql
 
 app = Flask(__name__)
 app.secret_key = 'your_strong_secret_key_here' # IMPORTANT: Replace with a strong secret key
 
-# --- Configuration (UPDATE THESE BASED ON YOUR DATA) ---
-EXCEL_FILE_PATH = os.path.join(app.root_path, 'data', 'Tail_analysis_auto.xlsx') # Path to your Excel file
-# Create a 'data' directory in your Flask app's root and place the Excel file there.
+# --- Configuration ---
+EXCEL_FILE_PATH = os.path.join(app.root_path, 'data', 'Tail_analysis_auto.xlsx')
+DB_FILE_PATH = os.path.join(app.root_path, 'data', 'data.db') # SQLite database file path
 
 CURRENT_DAY_SHEET_NAME = "DVaR_COB"
 PREVIOUS_DAY_SHEET_NAME = "DVaR_Prev_COB"
@@ -31,208 +33,236 @@ DVAR_PNL_VECTOR_END = 520
 SVAR_PNL_VECTOR_START = 1
 SVAR_PNL_VECTOR_END = 260
 
-# Define Barclays-specific color palette (example professional blue/grey tones)
 BARCLAYS_COLOR_PALETTE = [
-    '#0076B6',  # Primary Blue (Barclays blue)
+    '#0076B6',  # Primary Blue
     '#2188D7',  # Lighter Blue
     '#004B7F',  # Darker Blue
     '#6A6C6E',  # Medium Grey
     '#A0A3A6',  # Light Grey
-    '#FF4B4B',  # Red for negative changes
-    '#28a745',  # Green for positive changes
+    '#FF4B4B',  # Red for negative changes (index 5)
+    '#28a745',  # Green for positive changes (index 6)
 ]
 
-# --- Data Storage and Caching ---
-processed_data_store = {} # Stores results of calculate_var_tails
-processed_data_loaded_flag = False # Flag to indicate if data has been loaded and processed
+# --- Database Helper ---
+def get_db_engine():
+    """Returns a SQLAlchemy engine for SQLite."""
+    return create_engine(f'sqlite:///{DB_FILE_PATH}')
 
-# --- Helper Functions (Adapted from Streamlit app) ---
+def get_db_connection():
+    """Returns a direct SQLite connection."""
+    conn = sqlite3.connect(DB_FILE_PATH)
+    conn.row_factory = sqlite3.Row # Allows accessing columns by name
+    return conn
 
-def load_data_backend(file_path):
+# --- Data Ingestion Function ---
+def ingest_excel_to_sqlite(excel_file_path):
     """
-    Loads data from the specified sheets in the Excel workbook from a given file path.
-    Handles date extraction from the first row and sets proper headers.
-    Ensures 'Node' column is numeric.
-    Returns (data_frames, date_mappings)
+    Reads the Excel file and ingests all relevant data into a SQLite database.
+    Stores processed data in a single 'pnl_data' table in long format.
     """
-    data_frames = {}
-    date_mappings = {}
+    print(f"Ingesting Excel data from {excel_file_path} into SQLite database {DB_FILE_PATH}...")
+    engine = get_db_engine()
 
-    sheets_to_load = [
-        CURRENT_DAY_SHEET_NAME,
-        PREVIOUS_DAY_SHEET_NAME,
-        SVAR_COB_SHEET_NAME,
-        SVAR_PREV_COB_SHEET_NAME
-    ]
-    
-    # Ensure file exists before opening
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Excel file not found at: {file_path}")
+    sheets_to_process = {
+        CURRENT_DAY_SHEET_NAME: {"type": "DVaR", "sheet_type": "current", "vector_start": DVAR_PNL_VECTOR_START, "vector_end": DVAR_PNL_VECTOR_END},
+        PREVIOUS_DAY_SHEET_NAME: {"type": "DVaR", "sheet_type": "previous", "vector_start": DVAR_PNL_VECTOR_START, "vector_end": DVAR_PNL_VECTOR_END},
+        SVAR_COB_SHEET_NAME: {"type": "SVaR", "sheet_type": "current", "vector_start": SVAR_PNL_VECTOR_START, "vector_end": SVAR_PNL_VECTOR_END},
+        SVAR_PREV_COB_SHEET_NAME: {"type": "SVaR", "sheet_type": "previous", "vector_start": SVAR_PNL_VECTOR_START, "vector_end": SVAR_PNL_VECTOR_END},
+    }
 
-    # Use a single file handle for all sheets to avoid re-opening
-    # Using pd.ExcelFile context manager is more robust
-    with pd.ExcelFile(file_path) as xls:
-        for sheet_name in sheets_to_load:
-            # Added more robust error handling for each sheet's header parsing
+    all_melted_dfs = []
+
+    with pd.ExcelFile(excel_file_path) as xls:
+        for sheet_name, config in sheets_to_process.items():
+            print(f"  Processing sheet: {sheet_name} (Type: {config['type']}, Period: {config['sheet_type']})")
             try:
-                # Read the first two rows to get dates and column names
-                # It's better to read data directly via pd.read_excel if pd.ExcelFile causes issues
-                # with header=None and nrows=2
-                # Re-opening with pd.read_excel per sheet is safer if ExcelFile is buggy with headers
+                # Read header rows first to get dates and column names
                 df_temp = pd.read_excel(xls, sheet_name=sheet_name, header=None, nrows=2)
-                
-                if df_temp.empty:
-                    raise ValueError(f"Sheet '{sheet_name}' is empty or could not be read.")
-                if len(df_temp) < 2:
-                    raise ValueError(f"Sheet '{sheet_name}' has fewer than 2 rows (expected dates in row 1, headers in row 2). Found {len(df_temp)} rows.")
+                if df_temp.empty or len(df_temp) < 2:
+                    print(f"    WARNING: Sheet '{sheet_name}' is empty or has insufficient header rows. Skipping.")
+                    continue
 
                 dates_row = df_temp.iloc[0]
                 column_names_row = df_temp.iloc[1]
 
-                # Read the actual data, skipping the first two rows, using the same ExcelFile object
+                # Read actual data
                 df = pd.read_excel(xls, sheet_name=sheet_name, header=None, skiprows=2)
-                df.columns = column_names_row # Assign the second row as column headers
-                
-                df = df.dropna(axis=1, how='all')
+                df.columns = column_names_row
+                df = df.dropna(axis=1, how='all') # Drop columns that are entirely NaN
 
+                # Ensure 'Node' column is numeric
                 if 'Node' in df.columns:
-                    df['Node'] = pd.to_numeric(df['Node'], errors='coerce')
-                    df['Node'] = df['Node'].astype('Int64')
+                    df['Node'] = pd.to_numeric(df['Node'], errors='coerce').astype('Int64')
 
+                # Create PnL date map
                 pnl_date_map = {}
                 for col_idx, col_name in enumerate(column_names_row):
-                    if pd.isna(col_name):
-                        continue
-                    if str(col_name).startswith('pnl_vector') or ('[T-2]' in str(col_name) and 'pnl_vector' in str(col_name)): 
+                    if pd.isna(col_name): continue
+                    if str(col_name).startswith('pnl_vector') or ('[T-2]' in str(col_name) and 'pnl_vector' in str(col_name)):
                         if col_idx < len(dates_row):
                             date_val = dates_row.iloc[col_idx]
                             if isinstance(date_val, (int, float)):
-                                try:
-                                    pnl_date_map[str(col_name)] = pd.to_datetime(date_val, unit='D', origin='1899-12-30')
-                                except:
-                                    pnl_date_map[str(col_name)] = pd.NaT
-                            else:
-                                pnl_date_map[str(col_name)] = pd.to_datetime(date_val, errors='coerce')
+                                try: pnl_date_map[str(col_name)] = pd.to_datetime(date_val, unit='D', origin='1899-12-30')
+                                except: pnl_date_map[str(col_name)] = pd.NaT
+                            else: pnl_date_map[str(col_name)] = pd.to_datetime(date_val, errors='coerce')
+
+                # Identify valid PnL vector columns based on sheet type and range
+                pnl_vector_cols = [col for col in df.columns if str(col).startswith('pnl_vector') or ('[T-2]' in str(col) and 'pnl_vector' in str(col))]
+                valid_pnl_cols_for_sheet = []
+                for col_name in pnl_vector_cols:
+                    col_str = str(col_name)
+                    is_previous_cob_vector = '[T-2]' in col_str
+                    numeric_part_str = ''.join(filter(str.isdigit, col_str.split('[T-2]')[0]))
+
+                    if not numeric_part_str.isdigit(): continue
+                    vector_number = int(numeric_part_str)
+
+                    if config["sheet_type"] == "current":
+                        if not is_previous_cob_vector and config["vector_start"] <= vector_number <= config["vector_end"]:
+                            valid_pnl_cols_for_sheet.append(col_name)
+                    elif config["sheet_type"] == "previous":
+                        if is_previous_cob_vector and config["vector_start"] <= vector_number <= config["vector_end"]:
+                            valid_pnl_cols_for_sheet.append(col_name)
+
+                if not valid_pnl_cols_for_sheet:
+                    print(f"    WARNING: No valid PnL vector columns found for sheet '{sheet_name}'. Skipping.")
+                    continue
+
+                # Melt the DataFrame
+                id_vars = ['Var Type', 'Node', 'Asset class', 'currency', 'sensitivity_type', 'load_code']
+                id_vars_present = [col for col in id_vars if col in df.columns]
+                df_melted = df.melt(id_vars=id_vars_present,
+                                     value_vars=valid_pnl_cols_for_sheet,
+                                     var_name='Pnl_Vector_Name',
+                                     value_name='Value')
                 
-                data_frames[sheet_name] = df
-                date_mappings[sheet_name] = pnl_date_map
+                # Add Pnl_Vector_Rank
+                def extract_pnl_rank_ingest(pnl_vector_name):
+                    name_without_suffix = pnl_vector_name.split('[T-2]')[0]
+                    numeric_part = ''.join(filter(str.isdigit, name_without_suffix))
+                    return int(numeric_part) if numeric_part else np.nan
+                df_melted['Pnl_Vector_Rank'] = df_melted['Pnl_Vector_Name'].apply(extract_pnl_rank_ingest)
+                df_melted['Pnl_Vector_Rank'] = df_melted['Pnl_Vector_Rank'].astype('Int64')
+
+                # Add Date and Sheet_Type
+                df_melted['Date'] = df_melted['Pnl_Vector_Name'].map(pnl_date_map)
+                df_melted['Date'] = pd.to_datetime(df_melted['Date'], errors='coerce')
+                df_melted = df_melted.dropna(subset=['Date'])
+                df_melted['Sheet_Type'] = config["sheet_type"]
+                df_melted['Var_Type_Original'] = config["type"] # Keep original Var Type for filtering in queries
+
+                all_melted_dfs.append(df_melted)
+                print(f"    Successfully processed sheet '{sheet_name}'. Rows: {len(df_melted)}")
 
             except Exception as e:
-                raise Exception(f"Error processing sheet '{sheet_name}': {e}")
+                print(f"    ERROR processing sheet '{sheet_name}': {e}")
+                raise # Re-raise to stop ingestion if one sheet fails critically
+
+    if not all_melted_dfs:
+        print("No data processed from any sheet. Database will be empty.")
+        return
+
+    final_ingestion_df = pd.concat(all_melted_dfs, ignore_index=True)
+    # Convert dates to string for SQLite storage to prevent issues with different drivers/versions
+    final_ingestion_df['Date'] = final_ingestion_df['Date'].dt.strftime('%Y-%m-%d')
     
-    return data_frames, date_mappings
+    print(f"Total rows to ingest: {len(final_ingestion_df)}")
+    # Write to SQLite
+    final_ingestion_df.to_sql('pnl_data', engine, if_exists='replace', index=False, dtype={
+        'Date': 'TEXT',
+        'Pnl_Vector_Name': 'TEXT',
+        'Pnl_Vector_Rank': 'INTEGER',
+        'Value': 'REAL',
+        'Var Type': 'TEXT',
+        'Node': 'INTEGER',
+        'Asset class': 'TEXT',
+        'currency': 'TEXT',
+        'sensitivity_type': 'TEXT',
+        'load_code': 'TEXT',
+        'Sheet_Type': 'TEXT',
+        'Var_Type_Original': 'TEXT'
+    })
+    print("Ingestion complete. Data stored in 'pnl_data' table.")
 
 
-def calculate_var_tails_backend(df, pnl_date_map, sheet_type="current", var_type_filter="DVaR", 
-                                dvar_pnl_vector_start=None, dvar_pnl_vector_end=None, 
-                                svar_pnl_vector_start=None, svar_pnl_vector_end=None):
+# --- Data Retrieval Functions (Querying SQLite) ---
+
+def get_filtered_var_data_from_db(conn, sheet_type, var_type_original, debug_mode):
     """
-    Calculates VaR tails (DVaR or SVaR) for FX, Rates, EM Macro, and Macro.
-    Returns (fx_df, rates_df, em_macro_df, macro_df, raw_filtered_df)
+    Fetches and calculates aggregated VAR data (Macro, FX, Rates, EM Macro) from DB.
     """
-    current_pnl_vector_start = None
-    current_pnl_vector_end = None
-
-    if var_type_filter == "DVaR":
-        current_pnl_vector_start = dvar_pnl_vector_start
-        current_pnl_vector_end = dvar_pnl_vector_end
-    elif var_type_filter == "SVaR":
-        current_pnl_vector_start = svar_pnl_vector_start
-        current_pnl_vector_end = svar_pnl_vector_end
-    
-    if current_pnl_vector_start is None or current_pnl_vector_end is None:
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-
-    id_vars = ['Var Type', 'Node', 'Asset class', 'currency', 'sensitivity_type', 'load_code']
-    pnl_vector_cols = [col for col in df.columns if str(col).startswith('pnl_vector') or ('[T-2]' in str(col) and 'pnl_vector' in str(col))]
-
-    valid_pnl_cols = []
-    for col in pnl_vector_cols:
-        col_str = str(col)
-        is_previous_cob_vector = '[T-2]' in col_str
-        numeric_part_str = ''.join(filter(str.isdigit, col_str.split('[T-2]')[0]))
-        
-        if not numeric_part_str.isdigit():
-            continue
-        
-        vector_number = int(numeric_part_str)
-
-        if sheet_type == "current":
-            if not is_previous_cob_vector and current_pnl_vector_start <= vector_number <= current_pnl_vector_end:
-                valid_pnl_cols.append(col)
-        elif sheet_type == "previous":
-            if is_previous_cob_vector and current_pnl_vector_start <= vector_number <= current_pnl_vector_end:
-                valid_pnl_cols.append(col)
-    
-    if not valid_pnl_cols:
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-
-    id_vars_present = [col for col in id_vars if col in df.columns]
-    
-    df_melted = df.melt(id_vars=id_vars_present,
-                         value_vars=valid_pnl_cols,
-                         var_name='Pnl_Vector_Name',
-                         value_name='Value')
-    
-    def extract_pnl_rank(pnl_vector_name):
-        name_without_suffix = pnl_vector_name.split('[T-2]')[0]
-        numeric_part = ''.join(filter(str.isdigit, name_without_suffix))
-        return int(numeric_part) if numeric_part else np.nan
-    
-    df_melted['Pnl_Vector_Rank'] = df_melted['Pnl_Vector_Name'].apply(extract_pnl_rank)
-    df_melted['Pnl_Vector_Rank'] = df_melted['Pnl_Vector_Rank'].astype('Int64')
-
-    df_melted['Date'] = df_melted['Pnl_Vector_Name'].map(pnl_date_map)
-    df_melted['Date'] = pd.to_datetime(df_melted['Date'], errors='coerce')
-    df_melted = df_melted.dropna(subset=['Date'])
-
-    df_filtered_var_type = df_melted[df_melted['Var Type'] == var_type_filter].copy()
-
-    asset_classes = ['FX', 'Rates', 'EM Macro'] # Corrected casing
-    asset_var_dfs = {}
-    
+    asset_classes = ['FX', 'Rates', 'EM Macro']
     node_mapping = {
         'FX': FX_DVAR_NODE, 
         'Rates': RATES_DVAR_NODE, 
         'EM Macro': EM_MACRO_DVAR_NODE
     }
-
-    for ac in asset_classes:
-        node_val_for_filter = node_mapping.get(ac, FX_DVAR_NODE)
-        filtered_df = df_filtered_var_type[
-            (df_filtered_var_type['Asset class'] == ac) &
-            (df_filtered_var_type['Node'] == node_val_for_filter)
-        ]
-        if not filtered_df.empty:
-            asset_var_dfs[ac] = filtered_df.groupby(['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank'])['Value'].sum().reset_index(name=f'{ac.replace(" ", "_")}_{var_type_filter}_Value')
-            asset_var_dfs[ac]['Sheet_Type'] = sheet_type
-        else:
-            asset_var_dfs[ac] = pd.DataFrame(columns=['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank', f'{ac.replace(" ", "_")}_{var_type_filter}_Value', 'Sheet_Type'])
-            
-    macro_var_df = pd.DataFrame(columns=['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank', f'Macro_{var_type_filter}_Value', 'Sheet_Type'])
     
-    if 'FX' in asset_var_dfs and not asset_var_dfs['FX'].empty:
-        macro_var_df = asset_var_dfs['FX']
-        for ac in ['Rates', 'EM Macro']:
-            if ac in asset_var_dfs and not asset_var_dfs[ac].empty:
-                macro_var_df = pd.merge(macro_var_df, asset_var_dfs[ac], on=['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank', 'Sheet_Type'], how='outer')
+    # Base query for the specific sheet type and original VAR type (DVaR or SVaR)
+    # The 'Var Type' column in the DB corresponds to DVaR or SVaR from the original sheet
+    # We are filtering by 'Var_Type_Original' now, as 'Var Type' column is just 'DVaR' or 'SVaR'
+    # depending on what was in the source Excel column.
+    
+    # Construct individual asset class queries first
+    asset_dfs = {}
+    for ac in asset_classes:
+        query = f"""
+            SELECT
+                Date,
+                Pnl_Vector_Name,
+                Pnl_Vector_Rank,
+                SUM(Value) AS "{ac.replace(" ", "_")}_{var_type_original}_Value"
+            FROM pnl_data
+            WHERE
+                Sheet_Type = '{sheet_type}' AND
+                "Var Type" = '{var_type_original}' AND  -- Use the 'Var Type' column which stores DVaR/SVaR for filtering
+                "Asset class" = '{ac}' AND
+                Node = {node_mapping[ac]}
+            GROUP BY Date, Pnl_Vector_Name, Pnl_Vector_Rank
+            ORDER BY Date, Pnl_Vector_Rank;
+        """
+        try:
+            df = pd.read_sql_query(query, conn)
+            # Ensure Pnl_Vector_Rank is Int64 for merging
+            df['Pnl_Vector_Rank'] = df['Pnl_Vector_Rank'].astype('Int64')
+            asset_dfs[ac] = df
+            if debug_mode: print(f"  DB Query: {ac} {var_type_original} {sheet_type} rows: {len(df)}")
+        except Exception as e:
+            print(f"  ERROR DB Query for {ac} {var_type_original} {sheet_type}: {e}")
+            asset_dfs[ac] = pd.DataFrame(columns=['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank', f'{ac.replace(" ", "_")}_{var_type_original}_Value'])
+
+    # Combine into macro_var_df
+    macro_var_df = pd.DataFrame(columns=['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank', f'Macro_{var_type_original}_Value'])
+
+    # Start with FX, then outer join others
+    if 'FX' in asset_dfs and not asset_dfs['FX'].empty:
+        macro_var_df = asset_dfs['FX'].copy()
+        for ac_other in [ac for ac in asset_classes if ac != 'FX']:
+            if ac_other in asset_dfs and not asset_dfs[ac_other].empty:
+                macro_var_df = pd.merge(macro_var_df, asset_dfs[ac_other], on=['Date', 'Pnl_Vector_Name', 'Pnl_Vector_Rank'], how='outer')
         
-        cols_for_sum = [f'{ac.replace(" ", "_")}_{var_type_filter}_Value' for ac in asset_classes]
+        # Calculate Macro Sum
+        cols_for_sum = [f'{ac.replace(" ", "_")}_{var_type_original}_Value' for ac in asset_classes]
+        # Fill NA for summing, as outer merge might introduce them
         for col_sum in cols_for_sum:
             if col_sum not in macro_var_df.columns:
-                macro_var_df[col_sum] = 0
-        
-        macro_var_df[f'Macro_{var_type_filter}_Value'] = macro_var_df[cols_for_sum].sum(axis=1)
-        macro_var_df = macro_var_df.sort_values('Date').reset_index(drop=True)
-        macro_var_df['Sheet_Type'] = sheet_type
-    
-    return asset_var_dfs.get('FX', pd.DataFrame()), \
-           asset_var_dfs.get('Rates', pd.DataFrame()), \
-           asset_var_dfs.get('EM Macro', pd.DataFrame()), \
-           macro_var_df, \
-           df_filtered_var_type
+                macro_var_df[col_sum] = 0.0 # Ensure float type for summing
+            macro_var_df[col_sum] = macro_var_df[col_sum].fillna(0.0)
 
-# --- Bokeh Plotting Functions (remain the same as they operate on DataFrames) ---
+        macro_var_df[f'Macro_{var_type_original}_Value'] = macro_var_df[cols_for_sum].sum(axis=1)
+        macro_var_df['Sheet_Type'] = sheet_type # Add Sheet_Type column
+        macro_var_df = macro_var_df.sort_values(['Date', 'Pnl_Vector_Rank']).reset_index(drop=True)
+    else:
+        print(f"  WARNING: No FX data found for Macro {var_type_original} {sheet_type} calculation.")
+
+
+    return asset_dfs.get('FX', pd.DataFrame()), \
+           asset_dfs.get('Rates', pd.DataFrame()), \
+           asset_dfs.get('EM Macro', pd.DataFrame()), \
+           macro_var_df
+
+
+# --- Bokeh Plotting Functions ---
 
 def create_dvar_trends_bokeh_plot(df, title, y_column, legend_title="Type"):
     """Generates a Bokeh line chart for DVaR trends."""
@@ -258,7 +288,6 @@ def create_dvar_trends_bokeh_plot(df, title, y_column, legend_title="Type"):
 
     for i, sheet_type in enumerate(sheet_types):
         view = ColumnDataSource(df[df['Sheet_Type'] == sheet_type])
-        # Ensure that the index is within the bounds of BARCLAYS_COLOR_PALETTE
         color_index = i % len(colors)
         p.line(
             x='Date', 
@@ -309,47 +338,52 @@ def process_data():
     # Only process if data is not already loaded
     if not processed_data_loaded_flag:
         try:
-            # Directly load from pre-defined path
-            data_sheets, date_mappings = load_data_backend(EXCEL_FILE_PATH)
+            # Establish DB connection
+            conn = get_db_connection()
+            cursor = conn.cursor()
 
-            current_day_df = data_sheets.get(CURRENT_DAY_SHEET_NAME)
-            previous_day_df = data_sheets.get(PREVIOUS_DAY_SHEET_NAME)
-            svar_cob_df = data_sheets.get(SVAR_COB_SHEET_NAME)
-            svar_prev_cob_df = data_sheets.get(SVAR_PREV_COB_SHEET_NAME)
-
-            current_day_date_map = date_mappings.get(CURRENT_DAY_SHEET_NAME)
-            previous_day_date_map = date_mappings.get(PREVIOUS_DAY_SHEET_NAME)
-            svar_cob_date_map = date_mappings.get(SVAR_COB_SHEET_NAME)
-            svar_prev_cob_date_map = date_mappings.get(SVAR_PREV_COB_SHEET_NAME)
-
-            if not all([df is not None for df in [current_day_df, previous_day_df, svar_cob_df, svar_prev_cob_df]]):
-                raise Exception("One or more required sheets could not be loaded or are empty.")
-            if not all([m is not None for m in [current_day_date_map, previous_day_date_map, svar_cob_date_map, svar_prev_cob_date_map]]):
-                raise Exception("Date mappings could not be extracted for one or more sheets.")
-
-            # Calculate DVaR for Current COB
-            fx_dvar_curr, rates_dvar_curr, em_macro_dvar_curr, macro_dvar_curr, raw_dvar_curr = \
-                calculate_var_tails_backend(current_day_df, current_day_date_map, "current", "DVaR", 
-                                            DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
-                                            SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
+            # --- Check if 'pnl_data' table exists and is populated ---
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pnl_data';")
+            table_exists = cursor.fetchone()
             
-            # Calculate DVaR for Previous COB
-            fx_dvar_prev, rates_dvar_prev, em_macro_dvar_prev, macro_dvar_prev, raw_dvar_prev = \
-                calculate_var_tails_backend(previous_day_df, previous_day_date_map, "previous", "DVaR", 
-                                            DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
-                                            SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
+            if not table_exists:
+                # Table doesn't exist, or is empty: ingest from Excel
+                conn.close() # Close connection before ingestion (ingestion will open its own)
+                ingest_excel_to_sqlite(EXCEL_FILE_PATH)
+                # Re-establish connection after ingestion
+                conn = get_db_connection()
+                cursor = conn.cursor()
+            else:
+                # Check if table has data
+                cursor.execute("SELECT COUNT(*) FROM pnl_data;")
+                if cursor.fetchone()[0] == 0:
+                    print("WARNING: 'pnl_data' table is empty. Ingesting from Excel...")
+                    conn.close()
+                    ingest_excel_to_sqlite(EXCEL_FILE_PATH)
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
             
-            # Calculate SVaR for Current COB
-            fx_svar_curr, rates_svar_curr, em_macro_svar_curr, macro_svar_curr, raw_svar_curr = \
-                calculate_var_tails_backend(svar_cob_df, svar_cob_date_map, "current", "SVaR", 
-                                            DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
-                                            SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
+            # Now that we are sure data is in DB, retrieve it via queries
+            # For this simplified Flask structure, we'll fetch all necessary data here
+            # that is needed by subsequent GET requests and store in 'processed_data_store'
 
-            # Calculate SVaR for Previous COB
-            fx_svar_prev, rates_svar_prev, em_macro_svar_prev, macro_svar_prev, raw_svar_prev = \
-                calculate_var_tails_backend(svar_prev_cob_df, svar_prev_cob_date_map, "previous", "SVaR", 
-                                            DVAR_PNL_VECTOR_START, DVAR_PNL_VECTOR_END, 
-                                            SVAR_PNL_VECTOR_START, SVAR_PNL_VECTOR_END)
+            # DVaR Current COB
+            fx_dvar_curr, rates_dvar_curr, em_macro_dvar_curr, macro_dvar_curr = \
+                get_filtered_var_data_from_db(conn, "current", "DVaR", request.json.get('debug_mode', False))
+            
+            # DVaR Previous COB
+            fx_dvar_prev, rates_dvar_prev, em_macro_dvar_prev, macro_dvar_prev = \
+                get_filtered_var_data_from_db(conn, "previous", "DVaR", request.json.get('debug_mode', False))
+            
+            # SVaR Current COB
+            fx_svar_curr, rates_svar_curr, em_macro_svar_curr, macro_svar_curr = \
+                get_filtered_var_data_from_db(conn, "current", "SVaR", request.json.get('debug_mode', False))
+
+            # SVaR Previous COB
+            fx_svar_prev, rates_svar_prev, em_macro_svar_prev, macro_svar_prev = \
+                get_filtered_var_data_from_db(conn, "previous", "SVaR", request.json.get('debug_mode', False))
+            
+            conn.close() # Close connection after all queries
 
             # Store processed data in the global dictionary
             processed_data_store['macro_dvar_curr'] = macro_dvar_curr
@@ -366,6 +400,9 @@ def process_data():
             processed_data_loaded_flag = True # Set flag to true as data is now processed
 
         except Exception as e:
+            # Ensure connection is closed on error
+            if 'conn' in locals() and conn:
+                conn.close()
             return jsonify({'success': False, 'error': str(e)}), 500
     
     # If successful or data already loaded, return metrics
@@ -509,6 +546,7 @@ if __name__ == '__main__':
         print("Please create a 'data' folder in the same directory as app.py and place 'Tail_analysis_auto.xlsx' inside it.")
         print("Exiting...")
         exit() # Exit if file is not found
-        
+    
+    # Run Flask app
     app.run(debug=True)
 
