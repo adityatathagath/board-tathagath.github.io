@@ -84,9 +84,11 @@ def load_data(file_buffer, debug_mode):
                 df_temp = pd.read_excel(xls, sheet_name=sheet_name, header=None, nrows=2)
                 
                 if df_temp.empty:
-                    raise ValueError(f"Sheet '{sheet_name}' is empty or could not be read.")
+                    print(f"ERROR: Sheet '{sheet_name}' is empty or could not be read.")
+                    return None, None # Indicate error
                 if len(df_temp) < 2:
-                    raise ValueError(f"Sheet '{sheet_name}' has fewer than 2 rows (expected dates in row 1, headers in row 2). Found {len(df_temp)} rows.")
+                    print(f"ERROR: Sheet '{sheet_name}' has fewer than 2 rows (expected dates in row 1, headers in row 2). Found {len(df_temp)} rows.")
+                    return None, None # Indicate error
 
                 dates_row = df_temp.iloc[0]
                 column_names_row = df_temp.iloc[1]
@@ -122,10 +124,9 @@ def load_data(file_buffer, debug_mode):
                 data_frames[sheet_name] = df
                 date_mappings[sheet_name] = pnl_date_map
 
-            except Exception as e:
-                st.error(f"Error loading data from sheet '{sheet_name}': {e}. "
-                         "Please ensure the sheet names are correct and the first two rows contain dates/headers as expected.")
-                return None, None
+        except Exception as e:
+            print(f"ERROR: Failed to process sheet '{sheet_name}': {e}. Check file format.")
+            return None, None # Indicate error
     
     return data_frames, date_mappings
 
@@ -155,7 +156,7 @@ def calculate_var_tails(df, pnl_date_map, sheet_type="current", var_type_filter=
         current_pnl_vector_end = svar_pnl_vector_end
     
     if current_pnl_vector_start is None or current_pnl_vector_end is None:
-        st.error(f"Error: PnL vector range not defined for {var_type_filter}.")
+        print(f"ERROR: PnL vector range not defined for {var_type_filter}.")
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
     id_vars = ['Var Type', 'Node', 'Asset class', 'currency', 'sensitivity_type', 'load_code']
@@ -744,7 +745,6 @@ def display_top_bottom_tails_table(macro_dvar_curr, macro_dvar_prev, fx_dvar_cur
     ]
 
     # JavaScript code for cell styling (red for negative, green for positive)
-    # Using the defined BARCLAYS_COLOR_PALETTE indexes for direct color use in JS
     change_cell_style_jscode = JsCode(f"""
     function(params) {{
         if (typeof params.value === 'number') {{
@@ -1034,4 +1034,3 @@ if uploaded_file is not None:
 
 else:
     st.info("Please upload your Excel file ('Tail_analysis_auto.xlsx') using the sidebar to start your DVaR analysis.")
-
