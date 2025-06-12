@@ -35,35 +35,27 @@ st.markdown("""
         border-radius: 5px;
         box-shadow: 0 2px 4px 0 rgba(0,0,0,0.1);
     }
-    .grid-container {
-        border: 1px solid #DADCE0;
-        border-radius: 10px;
-        overflow: hidden;
-        box-shadow: 0 2px 4px 0 rgba(0,0,0,0.05);
-    }
-    .custom-header-row {
-        display: flex;
-        background-color: #F8F9FA;
-        border-bottom: 1px solid #DADCE0;
-    }
-    .header-group {
+    /* Group Header Styling to match screenshot */
+    .ag-header-group-cell {
+        background-color: #DDEBF7;
+        color: #2F528F;
         font-weight: bold;
-        text-align: center;
-        padding: 10px;
-        flex-grow: 1;
-        border-right: 1px solid #DADCE0;
+        border-bottom: 1px solid #9BC2E6;
+        border-right: 1px solid #9BC2E6;
     }
-    .header-group:last-child {
-        border-right: none;
+    .header-group-prevcob .ag-header-group-cell-label {
+        background-color: #E2F0D9 !important;
+        color: #385723 !important;
     }
-    .header-cob {
-        background-color: #DDEBF7; color: #2F528F; flex-basis: 45%;
+    .header-group-diff .ag-header-group-cell-label {
+        background-color: #FCE4D6 !important;
+        color: #C65911 !important;
     }
-    .header-prevcob {
-        background-color: #E2F0D9; color: #385723; flex-basis: 35%;
-    }
-    .header-diff {
-        background-color: #FCE4D6; color: #C65911; flex-basis: 20%;
+    /* Individual Header Styling */
+    .ag-theme-streamlit .ag-header-cell {
+        background-color: #E2F0D9; /* Light blue for all headers */
+        border-bottom: 1px solid #9BC2E6;
+        border-right: 1px solid #9BC2E6;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -179,25 +171,25 @@ def process_data_file(file_path):
                  comparison[f'Diff_{col}'] = comparison[f'{col}_COB'] - comparison[f'{col}_PrevCOB']
         
         final_df = pd.DataFrame()
-        final_df["COB Rank"] = comparison["COB Rank"]
-        final_df["COB P&L Vector No"] = comparison["P&L Vector No_COB"]
+        final_df["COB_Rank"] = comparison["COB Rank"]
+        final_df["COB_PNL_Vector_No"] = comparison["P&L Vector No_COB"]
         final_df["Date"] = pd.to_datetime(comparison["Date"], errors='coerce').dt.strftime('%d %b %Y')
-        final_df["Macro"] = comparison.get("Macro_COB") / 1_000_000
-        final_df["Rates"] = comparison.get("Rates_COB") / 1_000_000
-        final_df["FX"] = comparison.get("FX_COB") / 1_000_000
-        final_df["EM Macro"] = comparison.get("EM Macro_COB") / 1_000_000
-        final_df["Prev Cob Rank"] = comparison.get("Value Rank_PrevCOB")
-        final_df["Prev COB P&L Vector No"] = comparison.get("P&L Vector No_PrevCOB")
-        final_df["Macro "] = comparison.get("Macro_PrevCOB") / 1_000_000
-        final_df["Rates "] = comparison.get("Rates_PrevCOB") / 1_000_000
-        final_df["FX "] = comparison.get("FX_PrevCOB") / 1_000_000
-        final_df["EM Macro "] = comparison.get("EM Macro_PrevCOB") / 1_000_000
-        final_df["Macro  "] = comparison.get("Diff_Macro") / 1_000_000
-        final_df["Rates  "] = comparison.get("Diff_Rates") / 1_000_000
-        final_df["FX  "] = comparison.get("Diff_FX") / 1_000_000
-        final_df["EM Macro  "] = comparison.get("Diff_EM Macro") / 1_000_000
+        final_df["COB_Macro"] = comparison.get("Macro_COB") / 1_000_000
+        final_df["COB_Rates"] = comparison.get("Rates_COB") / 1_000_000
+        final_df["COB_FX"] = comparison.get("FX_COB") / 1_000_000
+        final_df["COB_EM_Macro"] = comparison.get("EM Macro_COB") / 1_000_000
+        final_df["Prev_Cob_Rank"] = comparison.get("Value Rank_PrevCOB")
+        final_df["Prev_PNL_Vector_No"] = comparison.get("P&L Vector No_PrevCOB")
+        final_df["Prev_Macro"] = comparison.get("Macro_PrevCOB") / 1_000_000
+        final_df["Prev_Rates"] = comparison.get("Rates_PrevCOB") / 1_000_000
+        final_df["Prev_FX"] = comparison.get("FX_PrevCOB") / 1_000_000
+        final_df["Prev_EM_Macro"] = comparison.get("EM Macro_PrevCOB") / 1_000_000
+        final_df["Diff_Macro"] = comparison.get("Diff_Macro") / 1_000_000
+        final_df["Diff_Rates"] = comparison.get("Diff_Rates") / 1_000_000
+        final_df["Diff_FX"] = comparison.get("Diff_FX") / 1_000_000
+        final_df["Diff_EM_Macro"] = comparison.get("Diff_EM Macro") / 1_000_000
 
-        return final_df.sort_values(by="COB Rank").reset_index(drop=True)
+        return final_df.sort_values(by="COB_Rank").reset_index(drop=True)
 
     def create_top_changes_df(cob_df, prev_cob_df):
         merged_df = pd.merge(cob_df, prev_cob_df, on="P&L Vector No", how="inner", suffixes=('_COB', '_PrevCOB'))
@@ -245,30 +237,11 @@ def display_aggrid(df, is_comparison=False):
         st.warning("Data not available or no matching records found.")
         return
         
-    st.markdown("<div class='grid-container'>", unsafe_allow_html=True)
-    if is_comparison:
-        # Custom headers for the comparison table using HTML flexbox for responsiveness
-        st.markdown("""
-            <div class='custom-header-row'>
-                <div class='header-group header-cob'>COB</div>
-                <div class='header-group header-prevcob'>PrevCOB</div>
-                <div class='header-group header-diff'>Difference</div>
-            </div>
-        """, unsafe_allow_html=True)
-
-
-    gb = GridOptionsBuilder.from_dataframe(df)
-    
-    gb.configure_default_column(
-        resizable=True, filterable=False, sortable=True, enableValue=True,
-        enableRowGroup=False, enablePivot=False, wrapText=True, autoHeight=True
-    )
-    
     cells_renderer = JsCode("""
     class BlackRedCellRenderer {
         init(params) {
             this.eGui = document.createElement('div');
-            const formattedValue = params.value != null ? params.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A';
+            const formattedValue = params.value != null ? params.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '';
             if (params.value < 0) {
                 this.eGui.innerHTML = `<span style="color: red; font-weight: 500;">${formattedValue}</span>`;
             } else {
@@ -279,35 +252,64 @@ def display_aggrid(df, is_comparison=False):
     }
     """)
     
-    # Define column widths for better layout control
-    column_defs = {}
+    # Define column groups and properties
     if is_comparison:
-        column_defs = {
-            "COB Rank": {"width": 80}, "COB P&L Vector No": {"width": 120},
-            "Prev Cob Rank": {"width": 100}, "Prev COB P&L Vector No": {"width": 120},
-        }
+        column_defs = [
+            {
+                "headerName": "COB", "headerClass": "header-group-cob",
+                "children": [
+                    {"field": "COB_Rank", "headerName": "COB\nRank", "width": 70},
+                    {"field": "COB_PNL_Vector_No", "headerName": "COB P&L\nVector No", "width": 100},
+                    {"field": "Date", "width": 110},
+                    {"field": "COB_Macro", "headerName": "Macro", "cellRenderer": cells_renderer, "width": 100},
+                    {"field": "COB_Rates", "headerName": "Rates", "cellRenderer": cells_renderer, "width": 100},
+                    {"field": "COB_FX", "headerName": "FX", "cellRenderer": cells_renderer, "width": 100},
+                    {"field": "COB_EM_Macro", "headerName": "EM Macro", "cellRenderer": cells_renderer, "width": 100},
+                ]
+            },
+            {
+                "headerName": "PrevCOB", "headerClass": "header-group-prevcob",
+                "children": [
+                    {"field": "Prev_Cob_Rank", "headerName": "Prev Cob\nRank", "width": 90},
+                    {"field": "Prev_PNL_Vector_No", "headerName": "Prev COB\nP&L Vector No", "width": 110},
+                    {"field": "Prev_Macro", "headerName": "Macro", "cellRenderer": cells_renderer, "width": 100},
+                    {"field": "Prev_Rates", "headerName": "Rates", "cellRenderer": cells_renderer, "width": 100},
+                    {"field": "Prev_FX", "headerName": "FX", "cellRenderer": cells_renderer, "width": 100},
+                    {"field": "Prev_EM_Macro", "headerName": "EM Macro", "cellRenderer": cells_renderer, "width": 100},
+                ]
+            },
+            {
+                "headerName": "Difference", "headerClass": "header-group-diff",
+                "children": [
+                    {"field": "Diff_Macro", "headerName": "Macro", "cellRenderer": cells_renderer, "width": 100},
+                    {"field": "Diff_Rates", "headerName": "Rates", "cellRenderer": cells_renderer, "width": 100},
+                    {"field": "Diff_FX", "headerName": "FX", "cellRenderer": cells_renderer, "width": 100},
+                    {"field": "Diff_EM_Macro", "headerName": "EM Macro", "cellRenderer": cells_renderer, "width": 100},
+                ]
+            }
+        ]
+    else: # For Top Changes table
+        gb = GridOptionsBuilder.from_dataframe(df)
+        for col in df.columns:
+            if df[col].dtype in ['float64', 'int64'] and col not in ["Rank", "COB P&L Vector No", "Prev COB P&L Vector No"]:
+                gb.configure_column(col, cellRenderer=cells_renderer)
+        column_defs = gb.build()['columnDefs']
 
-    for col in df.columns:
-        # Apply specific width if defined
-        if col in column_defs:
-            gb.configure_column(col, **column_defs[col])
 
-        # Apply cell styling
-        if "Diff" in col or col.strip() != col or col in ["Macro", "Rates", "FX", "EM Macro", "Macro COB", "Macro PrevCob"]:
-             gb.configure_column(col, cellRenderer=cells_renderer, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=2)
-        elif df[col].dtype in ['float64', 'int64']:
-             if col not in ["COB Rank", "COB P&L Vector No", "Prev COB P&L Vector No", "Rank", "Prev Cob Rank", "Value Rank"]:
-                gb.configure_column(col, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
-
-    # Configure grid to not use pagination and auto-adjust height
-    gb.configure_grid_options(domLayout='autoHeight')
-    gridOptions = gb.build()
+    gridOptions = {
+        "columnDefs": column_defs,
+        "defaultColDef": {
+            "resizable": True, "sortable": True, "filter": False,
+            "wrapHeaderText": True, "autoHeaderHeight": True
+        },
+        "domLayout": 'autoHeight',
+        "suppressMenuHide": True,
+    }
 
     AgGrid(
         df, gridOptions=gridOptions, width='100%',
         theme='streamlit', allow_unsafe_jscode=True
     )
-    st.markdown("</div>", unsafe_allow_html=True)
 
 def create_bokeh_chart(cob_df, prev_cob_df, title):
     if cob_df is None or prev_cob_df is None or cob_df.empty or prev_cob_df.empty:
