@@ -26,6 +26,22 @@ st.markdown("""
     .ag-header-cell-label {
         justify-content: center;
     }
+    .metric-card {
+        background-color: #FFFFFF;
+        border-left: 5px solid #0068C9;
+        padding: 1rem;
+        border-radius: 5px;
+        box-shadow: 0 2px 4px 0 rgba(0,0,0,0.1);
+    }
+    .header-group {
+        background-color: #E0E0E0;
+        color: #333;
+        font-weight: bold;
+        text-align: center;
+        padding: 8px;
+        border-radius: 5px;
+        margin-bottom: -10px; /* Pull the grid up */
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -113,13 +129,8 @@ def process_data_file(file_path):
 
         if not all_results: return pd.DataFrame()
         final_df = pd.DataFrame(all_results)
-        
-        # FIX: The P&L Vector No is the rank, as requested.
         final_df["P&L Vector No"] = final_df["Pnl_Vector"].str.extract(r'(\d+)').astype(int)
-        
-        # This is the rank based on the Macro value, used for the "Prev Cob Rank" column
         final_df['Value Rank'] = final_df['Macro'].rank(method='first', ascending=True).astype(int)
-        
         final_df.drop_duplicates(subset=['P&L Vector No'], keep='first', inplace=True)
         return final_df
 
@@ -138,9 +149,6 @@ def process_data_file(file_path):
         top_20_pos['COB Rank'] = range(260, 260 - len(top_20_pos), -1)
 
         combined_top = pd.concat([top_20_neg, top_20_pos])
-        
-        # FIX: Merge on 'Date' to correctly find the corresponding PrevCOB event.
-        # This will create suffixed columns for all non-key columns, including 'P&L Vector No'.
         comparison = pd.merge(combined_top, prev_cob_df, on="Date", how="left", suffixes=('_COB', '_PrevCOB'))
         
         for col in ["Macro", "Rates", "FX", "EM Macro"]:
@@ -150,21 +158,21 @@ def process_data_file(file_path):
         final_df = pd.DataFrame()
         final_df["COB Rank"] = comparison["COB Rank"]
         final_df["COB P&L Vector No"] = comparison["P&L Vector No_COB"]
-        final_df["Date"] = comparison["Date"] # The merge key
-        final_df["Macro"] = comparison.get("Macro_COB")
-        final_df["Rates"] = comparison.get("Rates_COB")
-        final_df["FX"] = comparison.get("FX_COB")
-        final_df["EM Macro"] = comparison.get("EM Macro_COB")
+        final_df["Date"] = comparison["Date"]
+        final_df["Macro"] = comparison.get("Macro_COB") / 1_000_000
+        final_df["Rates"] = comparison.get("Rates_COB") / 1_000_000
+        final_df["FX"] = comparison.get("FX_COB") / 1_000_000
+        final_df["EM Macro"] = comparison.get("EM Macro_COB") / 1_000_000
         final_df["Prev Cob Rank"] = comparison.get("Value Rank_PrevCOB")
         final_df["Prev COB P&L Vector No"] = comparison.get("P&L Vector No_PrevCOB")
-        final_df["Macro "] = comparison.get("Macro_PrevCOB")
-        final_df["Rates "] = comparison.get("Rates_PrevCOB")
-        final_df["FX "] = comparison.get("FX_PrevCOB")
-        final_df["EM Macro "] = comparison.get("EM Macro_PrevCOB")
-        final_df["Macro  "] = comparison.get("Diff_Macro")
-        final_df["Rates  "] = comparison.get("Diff_Rates")
-        final_df["FX  "] = comparison.get("Diff_FX")
-        final_df["EM Macro  "] = comparison.get("Diff_EM Macro")
+        final_df["Macro "] = comparison.get("Macro_PrevCOB") / 1_000_000
+        final_df["Rates "] = comparison.get("Rates_PrevCOB") / 1_000_000
+        final_df["FX "] = comparison.get("FX_PrevCOB") / 1_000_000
+        final_df["EM Macro "] = comparison.get("EM Macro_PrevCOB") / 1_000_000
+        final_df["Macro  "] = comparison.get("Diff_Macro") / 1_000_000
+        final_df["Rates  "] = comparison.get("Diff_Rates") / 1_000_000
+        final_df["FX  "] = comparison.get("Diff_FX") / 1_000_000
+        final_df["EM Macro  "] = comparison.get("Diff_EM Macro") / 1_000_000
 
         return final_df.sort_values(by="COB Rank").reset_index(drop=True)
 
@@ -187,12 +195,12 @@ def process_data_file(file_path):
         final_df["COB P&L Vector No"] = combined_changes["P&L Vector No"]
         final_df["Prev COB P&L Vector No"] = combined_changes["P&L Vector No"]
         final_df["Date"] = combined_changes["Date_COB"]
-        final_df["Macro COB"] = combined_changes["Macro_COB"]
-        final_df["Macro PrevCob"] = combined_changes["Macro_PrevCOB"]
-        final_df["Diff"] = combined_changes["Diff"]
-        final_df["Rates"] = combined_changes["Rates_COB"]
-        final_df["FX"] = combined_changes["FX_COB"]
-        final_df["EM Macro"] = combined_changes["EM Macro_COB"]
+        final_df["Macro COB"] = combined_changes["Macro_COB"] / 1_000_000
+        final_df["Macro PrevCob"] = combined_changes["Macro_PrevCOB"] / 1_000_000
+        final_df["Diff"] = combined_changes["Diff"] / 1_000_000
+        final_df["Rates"] = combined_changes["Rates_COB"] / 1_000_000
+        final_df["FX"] = combined_changes["FX_COB"] / 1_000_000
+        final_df["EM Macro"] = combined_changes["EM Macro_COB"] / 1_000_000
         
         return final_df
 
@@ -208,11 +216,19 @@ def process_data_file(file_path):
     return data_dict
 
 # --- UI Rendering Functions ---
-def display_aggrid(df):
+def display_aggrid(df, is_comparison=False):
     """Configures and displays a dataframe with Streamlit AgGrid."""
     if df is None or df.empty:
         st.warning("Data not available or no matching records found.")
         return
+        
+    if is_comparison:
+        # Custom headers for the comparison table
+        c1, c2, c3 = st.columns([7, 6, 4])
+        with c1: st.markdown("<div class='header-group'>COB</div>", unsafe_allow_html=True)
+        with c2: st.markdown("<div class='header-group'>PrevCOB</div>", unsafe_allow_html=True)
+        with c3: st.markdown("<div class='header-group'>Difference</div>", unsafe_allow_html=True)
+
 
     gb = GridOptionsBuilder.from_dataframe(df)
     
@@ -221,16 +237,17 @@ def display_aggrid(df):
         enableRowGroup=False, enablePivot=False
     )
     
+    # FIX: JS Code to render positive numbers in black, negatives in red.
     cells_renderer = JsCode("""
     class GreenRedCellRenderer {
         init(params) {
             this.eGui = document.createElement('div');
+            // Format to 2 decimal places for millions
+            const formattedValue = params.value != null ? params.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A';
             if (params.value < 0) {
-                this.eGui.innerHTML = `<span style="color: red; font-weight: bold;">${params.value.toLocaleString()}</span>`;
-            } else if (params.value > 0) {
-                this.eGui.innerHTML = `<span style="color: green; font-weight: bold;">${params.value.toLocaleString()}</span>`;
+                this.eGui.innerHTML = `<span style="color: red; font-weight: bold;">${formattedValue}</span>`;
             } else {
-                 this.eGui.innerHTML = params.value.toLocaleString();
+                 this.eGui.innerHTML = `<span style="color: black;">${formattedValue}</span>`;
             }
         }
         getGui() { return this.eGui; }
@@ -238,8 +255,8 @@ def display_aggrid(df):
     """)
 
     for col in df.columns:
-        if "Diff" in col or col.strip() != col:
-             gb.configure_column(col, cellRenderer=cells_renderer, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
+        if "Diff" in col or col.strip() != col or col in ["Macro", "Rates", "FX", "EM Macro", "Macro COB", "Macro PrevCob"]:
+             gb.configure_column(col, cellRenderer=cells_renderer, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=2)
         elif df[col].dtype in ['float64', 'int64']:
              if col not in ["COB Rank", "COB P&L Vector No", "Prev COB P&L Vector No", "Rank", "Prev Cob Rank", "Value Rank"]:
                 gb.configure_column(col, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
@@ -322,16 +339,50 @@ def main():
             dvar_tab, svar_tab = st.tabs(["DVaR Analysis", "SVaR Analysis"])
             with dvar_tab:
                 st.header("DVaR Analysis")
+                
+                # Metric Card for DVaR
+                worst_dvar = data["dvar_cob"].sort_values("Macro").iloc[0]
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                st.metric(
+                    label=f"Worst DVaR | Date: {worst_dvar['Date']} | P&L Vector: {worst_dvar['P&L Vector No']}",
+                    value=f"{worst_dvar['Macro']/1_000_000:.2f}M"
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
+                st.write("") # Spacer
+
                 chart_tab, comparison_tab, changes_tab = st.tabs(["📈 Time Series Chart", "🏆 Top 20 Comparison", "🔄 Top Changes"])
                 with chart_tab: st.bokeh_chart(create_bokeh_chart(data["dvar_cob"], data["dvar_prev_cob"], "DVaR: Macro COB vs. Macro PrevCOB"), use_container_width=True)
-                with comparison_tab: st.subheader("Top 20 Positive & Negative DVaR Macro Values"); display_aggrid(data['dvar_comparison'])
-                with changes_tab: st.subheader("Top 20 Largest DVaR Macro Changes (COB vs PrevCOB)"); display_aggrid(data['dvar_changes'])
+                with comparison_tab: 
+                    st.subheader("Top 20 Positive & Negative DVaR Macro Values")
+                    st.info("All values are in millions.")
+                    display_aggrid(data['dvar_comparison'], is_comparison=True)
+                with changes_tab: 
+                    st.subheader("Top 20 Largest DVaR Macro Changes (COB vs PrevCOB)")
+                    st.info("All values are in millions.")
+                    display_aggrid(data['dvar_changes'])
             with svar_tab:
                 st.header("SVaR Analysis")
+
+                # Metric Card for SVaR
+                worst_svar = data["svar_cob"].sort_values("Macro").iloc[0]
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                st.metric(
+                    label=f"Worst SVaR | Date: {worst_svar['Date']} | P&L Vector: {worst_svar['P&L Vector No']}",
+                    value=f"{worst_svar['Macro']/1_000_000:.2f}M"
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
+                st.write("") # Spacer
+
                 chart_tab, comparison_tab, changes_tab = st.tabs(["📈 Time Series Chart", "🏆 Top 20 Comparison", "🔄 Top Changes"])
                 with chart_tab: st.bokeh_chart(create_bokeh_chart(data["svar_cob"], data["svar_prev_cob"], "SVaR: Macro COB vs. Macro PrevCOB"), use_container_width=True)
-                with comparison_tab: st.subheader("Top 20 Positive & Negative SVaR Macro Values"); display_aggrid(data['svar_comparison'])
-                with changes_tab: st.subheader("Top 20 Largest SVaR Macro Changes (COB vs PrevCOB)"); display_aggrid(data['svar_changes'])
+                with comparison_tab: 
+                    st.subheader("Top 20 Positive & Negative SVaR Macro Values")
+                    st.info("All values are in millions.")
+                    display_aggrid(data['svar_comparison'], is_comparison=True)
+                with changes_tab: 
+                    st.subheader("Top 20 Largest SVaR Macro Changes (COB vs PrevCOB)")
+                    st.info("All values are in millions.")
+                    display_aggrid(data['svar_changes'])
     else: st.error("No data files could be found or created. Please check the folder path.")
 
 if __name__ == "__main__":
