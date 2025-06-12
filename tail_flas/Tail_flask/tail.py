@@ -165,23 +165,29 @@ def process_data_file(file_path):
     if any(df is None for df in [dvar_cob_df, dvar_prev_cob_df, svar_cob_df, svar_prev_cob_df]): return None
 
     def create_top_20_comparison_df(cob_df, prev_cob_df):
-        # Pre-calculate the internal rank for the PrevCOB data
+        # Pre-calculate the internal rank for the PrevCOB data based on its own Macro values
         prev_cob_df['Prev_Internal_Rank'] = prev_cob_df['Macro'].rank(method='first', ascending=True).astype(int)
 
+        # 1. Select top 20 positive and negative events from the COB data
         top_20_neg = cob_df.sort_values("Macro", ascending=True).head(20).copy()
         top_20_pos = cob_df.sort_values("Macro", ascending=False).head(20).copy()
         
+        # 2. Assign the final "COB Rank" as specified
         top_20_neg['COB Rank'] = range(1, len(top_20_neg) + 1)
         top_20_pos['COB Rank'] = range(260, 260 - len(top_20_pos), -1)
 
+        # 3. Combine the selections
         combined_top = pd.concat([top_20_neg, top_20_pos])
+
+        # 4. Merge with PrevCOB data. Use a 'left' merge to keep all 40 COB events.
         comparison = pd.merge(combined_top, prev_cob_df, on="Rank", how="left", suffixes=('_COB', '_PrevCOB'))
         
+        # 5. Calculate the difference columns
         for col in ["Macro", "Rates", "FX", "EM Macro"]:
             if f'{col}_COB' in comparison.columns and f'{col}_PrevCOB' in comparison.columns:
                  comparison[f'Diff_{col}'] = comparison[f'{col}_COB'] - comparison[f'{col}_PrevCOB']
         
-        # Assemble the final dataframe with exact column names and order
+        # 6. Assemble the final dataframe with exact column names and order from screenshot
         final_df = pd.DataFrame()
         final_df["COB Rank"] = comparison["COB Rank"]
         final_df["COB P&L Vector No"] = comparison["Rank"]
@@ -192,7 +198,7 @@ def process_data_file(file_path):
         final_df["EM Macro"] = comparison.get("EM Macro_COB")
         final_df["Prev Cob Rank"] = comparison.get("Prev_Internal_Rank")
         final_df["Prev COB P&L Vector No"] = comparison.get("Rank")
-        final_df["Macro "] = comparison.get("Macro_PrevCOB") # Note the trailing space in user screenshot
+        final_df["Macro "] = comparison.get("Macro_PrevCOB") # Note the trailing space
         final_df["Rates "] = comparison.get("Rates_PrevCOB")
         final_df["FX "] = comparison.get("FX_PrevCOB")
         final_df["EM Macro "] = comparison.get("EM Macro_PrevCOB")
@@ -204,6 +210,7 @@ def process_data_file(file_path):
         return final_df.sort_values(by="COB Rank").reset_index(drop=True)
 
     def create_top_changes_df(cob_df, prev_cob_df):
+        # An 'inner' merge is correct here because a change requires both values to exist.
         merged_df = pd.merge(cob_df, prev_cob_df, on="Rank", how="inner", suffixes=('_COB', '_PrevCOB'))
         if merged_df.empty: return pd.DataFrame() 
         
@@ -215,8 +222,10 @@ def process_data_file(file_path):
         combined_changes = pd.concat([top_20_neg_changes, top_20_pos_changes])
         if combined_changes.empty: return pd.DataFrame()
 
+        # Assign the final rank (1-20 for neg, 1-20 for pos)
         combined_changes['Final_Rank'] = list(range(1, len(top_20_neg_changes) + 1)) + list(range(1, len(top_20_pos_changes) + 1))
         
+        # Assemble the final dataframe with exact column names
         final_df = pd.DataFrame()
         final_df["Rank"] = combined_changes["Final_Rank"]
         final_df["COB P&L Vector No"] = combined_changes["Rank"]
@@ -231,6 +240,7 @@ def process_data_file(file_path):
         
         return final_df
 
+    # --- Generate all data dictionaries ---
     data_dict = {
         "dvar_cob": dvar_cob_df, "svar_cob": svar_cob_df,
         "dvar_prev_cob": dvar_prev_cob_df, "svar_prev_cob": svar_prev_cob_df
@@ -246,14 +256,11 @@ def process_data_file(file_path):
 def format_df_for_display(df):
     if df is None or df.empty: return "<p>Data not available or no matching records found.</p>"
     
-    # Create a copy with filled NaNs for display to avoid errors in formatting
     formatted_df = df.copy().fillna('N/A')
     
     for col in formatted_df.columns:
-        # Identify columns that represent a difference
-        is_diff_col = "Diff" in col or col.endswith("  ") 
+        is_diff_col = "Diff" in col or col.strip() != col
         
-        # Check if column contains numeric data before trying to format
         if any(isinstance(x, (int, float)) for x in formatted_df[col] if pd.notna(x) and x != 'N/A'):
              if col not in ["COB Rank", "COB P&L Vector No", "Prev COB P&L Vector No", "Rank", "Prev Cob Rank"]:
                 formatted_df[col] = formatted_df[col].apply(
@@ -267,9 +274,10 @@ def create_bokeh_chart(cob_df, prev_cob_df, title):
     if cob_df is None or prev_cob_df is None or cob_df.empty or prev_cob_df.empty:
         p = figure(height=400, title=f"{title} - No Data Available", sizing_mode="stretch_width")
         return p
+    # An inner merge is correct for the chart to compare only matching vectors
     source_df = pd.merge(cob_df, prev_cob_df, on='Rank', how="inner", suffixes=('_COB', '_PrevCOB'))
     if source_df.empty:
-        p = figure(height=400, title=f"{title} - No Matching P&L Vectors", sizing_mode="stretch_width")
+        p = figure(height=400, title=f"{title} - No Matching P&L Vectors to Compare", sizing_mode="stretch_width")
         return p
     source_df['Date_COB_dt'] = pd.to_datetime(source_df['Date_COB'], errors='coerce')
     source = ColumnDataSource(source_df)
