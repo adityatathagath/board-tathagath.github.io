@@ -11,7 +11,7 @@ from bokeh.models import HoverTool, ColumnDataSource, NumeralTickFormatter
 # --- Page Configuration and Styling ---
 st.set_page_config(
     page_title="Tail Analysis Dashboard",
-    page_icon="📊",
+    page_icon="�",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -181,6 +181,10 @@ def process_data_file(file_path):
         pivot_df["Macro"] = pivot_df.sum(axis=1)
         pivot_df["Date"] = pivot_df.index.map(date_map)
         pivot_df["Rank"] = pivot_df.index.str.extract(r'(\d+)').astype(int)
+        
+        # FIX: Handle cases where source columns like 'pnl_vetor1' and 'pnl_vetor1.1'
+        # would lead to duplicate ranks. We keep the first occurrence.
+        pivot_df.drop_duplicates(subset=['Rank'], keep='first', inplace=True)
         
         return pivot_df.reset_index()
 
@@ -395,3 +399,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+�
