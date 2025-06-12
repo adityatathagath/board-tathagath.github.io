@@ -99,20 +99,35 @@ def process_data_file(file_path):
         raw_df, date_map, pnl_vectors = read_sheet(sheet_name)
         if raw_df is None: return None
         
-        long_df = pd.melt(raw_df, id_vars=["Node"], value_vars=pnl_vectors, var_name="Pnl_Vector", value_name="Value")
-        long_df["Asset_Class"] = long_df["Node"].map(node_map)
-        summary = long_df.groupby(["Pnl_Vector", "Asset_Class"])["Value"].sum().reset_index()
-        pivot_df = summary.pivot_table(index="Pnl_Vector", columns="Asset_Class", values="Value").fillna(0)
+        # FIX: Implement a direct, explicit loop to prevent aggregation errors.
+        all_results = []
+        for pnl_col in pnl_vectors:
+            # For each pnl_vector column, calculate the sums for each asset class
+            fx_sum = raw_df.loc[raw_df['Node'] == 10, pnl_col].sum()
+            rates_sum = raw_df.loc[raw_df['Node'] == 22194, pnl_col].sum()
+            em_macro_sum = raw_df.loc[raw_df['Node'] == 1373254, pnl_col].sum()
+
+            # Create a dictionary for the new row
+            result_row = {
+                'Pnl_Vector': pnl_col,
+                'FX': fx_sum,
+                'Rates': rates_sum,
+                'EM Macro': em_macro_sum,
+                'Macro': fx_sum + rates_sum + em_macro_sum,
+                'Date': date_map.get(pnl_col)
+            }
+            all_results.append(result_row)
+
+        if not all_results:
+            return pd.DataFrame()
+            
+        final_df = pd.DataFrame(all_results)
+
+        final_df["P&L Vector No"] = final_df["Pnl_Vector"].str.extract(r'(\d+)').astype(int)
+        final_df['Macro Rank'] = final_df['Macro'].rank(method='first', ascending=True).astype(int)
         
-        pivot_df["Macro"] = pivot_df.sum(axis=1)
-        pivot_df["Date"] = pivot_df.index.map(date_map)
-        pivot_df["P&L Vector No"] = pivot_df.index.str.extract(r'(\d+)').astype(int)
-        
-        # FIX: Add the requested internal rank column based on Macro value
-        pivot_df['Macro Rank'] = pivot_df['Macro'].rank(method='first', ascending=True).astype(int)
-        
-        pivot_df.drop_duplicates(subset=['P&L Vector No'], keep='first', inplace=True)
-        return pivot_df.reset_index()
+        final_df.drop_duplicates(subset=['P&L Vector No'], keep='first', inplace=True)
+        return final_df
 
     dvar_cob_df = create_summary_df("DVaR_COB")
     dvar_prev_cob_df = create_summary_df("DVaR_Prev_COB")
@@ -204,17 +219,11 @@ def display_aggrid(df):
 
     gb = GridOptionsBuilder.from_dataframe(df)
     
-    # Enable sorting, filtering, and resizable columns
     gb.configure_default_column(
-        resizable=True,
-        filterable=True,
-        sortable=True,
-        enableValue=True,
-        enableRowGroup=False,
-        enablePivot=False,
+        resizable=True, filterable=True, sortable=True, enableValue=True,
+        enableRowGroup=False, enablePivot=False
     )
     
-    # Custom JS for cell styling (red for negative, green for positive)
     cells_renderer = JsCode("""
     class GreenRedCellRenderer {
         init(params) {
@@ -227,17 +236,14 @@ def display_aggrid(df):
                  this.eGui.innerHTML = params.value.toLocaleString();
             }
         }
-        getGui() {
-            return this.eGui;
-        }
+        getGui() { return this.eGui; }
     }
     """)
 
-    # Apply formatting and styling
     for col in df.columns:
-        if "Diff" in col or col.strip() != col: # Identify difference columns
+        if "Diff" in col or col.strip() != col:
              gb.configure_column(col, cellRenderer=cells_renderer, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
-        elif df[col].dtype == 'float64' or df[col].dtype == 'int64':
+        elif df[col].dtype in ['float64', 'int64']:
              if col not in ["COB Rank", "COB P&L Vector No", "Prev COB P&L Vector No", "Rank", "Prev Cob Rank", "Macro Rank"]:
                 gb.configure_column(col, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
 
@@ -246,13 +252,8 @@ def display_aggrid(df):
     gridOptions = gb.build()
 
     AgGrid(
-        df,
-        gridOptions=gridOptions,
-        height=600,
-        width='100%',
-        theme='streamlit',
-        allow_unsafe_jscode=True,
-        fit_columns_on_grid_load=True
+        df, gridOptions=gridOptions, height=600, width='100%',
+        theme='streamlit', allow_unsafe_jscode=True, fit_columns_on_grid_load=True
     )
 
 def create_bokeh_chart(cob_df, prev_cob_df, title):
