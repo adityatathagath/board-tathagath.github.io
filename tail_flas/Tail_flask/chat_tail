@@ -12,7 +12,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 # --- Page Configuration and Styling ---
 st.set_page_config(
     page_title="Tail Analysis Dashboard",
-    page_icon="📊",
+    page_icon="�",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -20,7 +20,7 @@ st.set_page_config(
 # Custom CSS for AgGrid theming and alignment
 st.markdown("""
 <style>
-    .stApp {
+    body {
         background-color: #F0F2F6;
     }
     .ag-header-cell-label, .ag-cell {
@@ -36,22 +36,38 @@ st.markdown("""
         box-shadow: 0 2px 4px 0 rgba(0,0,0,0.1);
     }
     /* Group Header Styling to match screenshot */
-    .ag-header-group-cell-label {
+    .ag-header-group-cell {
         font-weight: bold;
+        border-right: 1px solid #BDC3C7;
     }
-    .header-group-cob { background-color: #DDEBF7 !important; color: #2F528F !important; }
-    .header-group-prevcob { background-color: #E2F0D9 !important; color: #385723 !important; }
-    .header-group-diff { background-color: #FCE4D6 !important; color: #C65911 !important; }
+    .header-group-cob .ag-header-group-cell-label { background-color: #DDEBF7 !important; color: #2F528F !important; }
+    .header-group-prevcob .ag-header-group-cell-label { background-color: #E2F0D9 !important; color: #385723 !important; }
+    .header-group-diff .ag-header-group-cell-label { background-color: #FCE4D6 !important; color: #C65911 !important; }
 
-    /* Individual Header Styling */
-    .ag-theme-streamlit .ag-header-cell {
-        background-color: #FFFFFF;
-        border-bottom: 1px solid #DADCE0;
-        border-right: 1px solid #DADCE0;
-    }
     /* Row highlighting styles */
     .ag-row-negative { background-color: #FFEBEE !important; }
     .ag-row-positive { background-color: #E8F5E9 !important; }
+
+    /* --- Dark Mode Overrides --- */
+    .stApp[data-theme="dark"] {
+        background-color: #0E1117;
+    }
+    [data-theme="dark"] .metric-card {
+        background-color: #1E2128;
+        border-left: 5px solid #00A3FF;
+    }
+    [data-theme="dark"] .ag-theme-streamlit {
+        background-color: #1E2128;
+        color: #FAFAFA;
+    }
+    [data-theme="dark"] .ag-header-group-cell {
+        border-right: 1px solid #444;
+    }
+    [data-theme="dark"] .header-group-cob .ag-header-group-cell-label { background-color: #1E3A5F !important; color: #DDEBF7 !important; }
+    [data-theme="dark"] .header-group-prevcob .ag-header-group-cell-label { background-color: #2F4B37 !important; color: #E2F0D9 !important; }
+    [data-theme="dark"] .header-group-diff .ag-header-group-cell-label { background-color: #5E3C2F !important; color: #FCE4D6 !important; }
+    [data-theme="dark"] .ag-row-negative { background-color: #401A1A !important; }
+    [data-theme="dark"] .ag-row-positive { background-color: #1A401A !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -202,15 +218,15 @@ def process_data_file(file_path):
         
         final_df = pd.DataFrame()
         final_df["Rank"] = combined_changes["Final_Rank"]
-        final_df["COB P&L Vector No"] = combined_changes["P&L Vector No"]
-        final_df["Prev COB P&L Vector No"] = combined_changes["P&L Vector No"]
+        final_df["COB_PNL_Vector_No"] = combined_changes["P&L Vector No"]
+        final_df["Prev_PNL_Vector_No"] = combined_changes["P&L Vector No"]
         final_df["Date"] = pd.to_datetime(combined_changes["Date_COB"], errors='coerce').dt.strftime('%d %b %Y')
-        final_df["Macro COB"] = combined_changes["Macro_COB"] / 1_000_000
-        final_df["Macro PrevCob"] = combined_changes["Macro_PrevCOB"] / 1_000_000
+        final_df["Macro_COB"] = combined_changes["Macro_COB"] / 1_000_000
+        final_df["Macro_PrevCob"] = combined_changes["Macro_PrevCOB"] / 1_000_000
         final_df["Diff"] = combined_changes["Diff"] / 1_000_000
         final_df["Rates"] = combined_changes["Rates_COB"] / 1_000_000
         final_df["FX"] = combined_changes["FX_COB"] / 1_000_000
-        final_df["EM Macro"] = combined_changes["EM Macro_COB"] / 1_000_000
+        final_df["EM_Macro"] = combined_changes["EM Macro_COB"] / 1_000_000
         
         return final_df
 
@@ -226,7 +242,7 @@ def process_data_file(file_path):
     return data_dict
 
 # --- UI Rendering Functions ---
-def display_aggrid(df, is_comparison=False):
+def display_aggrid(df, is_comparison=False, is_changes=False):
     """Configures and displays a dataframe with Streamlit AgGrid."""
     if df is None or df.empty:
         st.warning("Data not available or no matching records found.")
@@ -285,12 +301,35 @@ def display_aggrid(df, is_comparison=False):
         ]
     else: # For Top Changes table
         gb = GridOptionsBuilder.from_dataframe(df)
+        gb.configure_column("Date", width=110)
+        gb.configure_column("Rank", width=70)
         for col in df.columns:
             if df[col].dtype in ['float64', 'int64'] and col not in ["Rank", "COB P&L Vector No", "Prev COB P&L Vector No"]:
                 gb.configure_column(col, cellRenderer=cells_renderer)
         column_defs = gb.build()['columnDefs']
 
-    # FIX: Add getRowStyle for row highlighting
+    # FIX: Add getRowStyle for row highlighting on both table types
+    getRowStyle_js = JsCode("""
+        function(params) {
+            let valueToCheck;
+            if (params.data.Diff !== undefined) {
+                // This is the Top Changes table
+                valueToCheck = params.data.Diff;
+            } else {
+                // This is the Top Comparison table
+                valueToCheck = params.data.COB_Macro;
+            }
+
+            if (valueToCheck < 0) {
+                return { 'background-color': '#FFEBEE' };
+            }
+            // In comparison table, we highlight positives too. In changes, diff > 0 is a positive change.
+            if (valueToCheck > 0) {
+                return { 'background-color': '#E8F5E9' };
+            }
+        }
+    """)
+    
     gridOptions = {
         "columnDefs": column_defs,
         "defaultColDef": {
@@ -299,16 +338,7 @@ def display_aggrid(df, is_comparison=False):
         },
         "domLayout": 'autoHeight',
         "suppressMenuHide": True,
-        "getRowStyle": JsCode("""
-            function(params) {
-                if (params.data.COB_Macro < 0) {
-                    return { 'background-color': '#FFEBEE' };
-                }
-                if (params.data.COB_Macro > 0) {
-                    return { 'background-color': '#E8F5E9' };
-                }
-            }
-        """),
+        "getRowStyle": getRowStyle_js,
     }
 
     AgGrid(
@@ -321,7 +351,13 @@ def create_bokeh_chart(cob_df, prev_cob_df, title, asset_class='Macro'):
     if cob_df is None or prev_cob_df is None or cob_df.empty or prev_cob_df.empty:
         p = figure(height=400, title=f"{title} - No Data Available", sizing_mode="stretch_width")
         return p
-    source_df = pd.merge(cob_df, prev_cob_df, on='P&L Vector No', how="inner", suffixes=('_COB', '_PrevCOB'))
+        
+    # FIX: Sanitize column names by replacing spaces for Bokeh compatibility
+    cob_df.columns = cob_df.columns.str.replace(' ', '_')
+    prev_cob_df.columns = prev_cob_df.columns.str.replace(' ', '_')
+    asset_class_sanitized = asset_class.replace(' ', '_')
+    
+    source_df = pd.merge(cob_df, prev_cob_df, on='P&L_Vector_No', how="inner", suffixes=('_COB', '_PrevCOB'))
     if source_df.empty:
         p = figure(height=400, title=f"{title} - No Matching P&L Vectors to Compare", sizing_mode="stretch_width")
         return p
@@ -332,16 +368,16 @@ def create_bokeh_chart(cob_df, prev_cob_df, title, asset_class='Macro'):
     p = figure(height=400, x_axis_label="P&L Vector No", y_axis_label="Value", title=f"{title}: {asset_class}", sizing_mode="stretch_width", tools="pan,wheel_zoom,box_zoom,reset,save")
     p.yaxis.formatter = NumeralTickFormatter(format="0,0.00a")
     
-    # Plot the selected asset class
-    p.line(x='P&L Vector No', y=f'{asset_class}_COB', source=source, legend_label=f"{asset_class} COB", color="dodgerblue", width=2.5, alpha=0.8)
-    p.circle(x='P&L Vector No', y=f'{asset_class}_COB', source=source, legend_label=f"{asset_class} COB", color="dodgerblue", size=5)
-    p.line(x='P&L Vector No', y=f'{asset_class}_PrevCOB', source=source, legend_label=f"{asset_class} PrevCOB", color="gray", width=2, line_dash="dashed")
+    # Plot the selected asset class using sanitized names
+    p.line(x='P&L_Vector_No', y=f'{asset_class_sanitized}_COB', source=source, legend_label=f"{asset_class} COB", color="dodgerblue", width=2.5, alpha=0.8)
+    p.circle(x='P&L_Vector_No', y=f'{asset_class_sanitized}_COB', source=source, legend_label=f"{asset_class} COB", color="dodgerblue", size=5)
+    p.line(x='P&L_Vector_No', y=f'{asset_class_sanitized}_PrevCOB', source=source, legend_label=f"{asset_class} PrevCOB", color="gray", width=2, line_dash="dashed")
     
     hover = HoverTool(tooltips=[
-        ("P&L Vector", "@{P&L Vector No}"), 
+        ("P&L Vector", "@{P&L_Vector_No}"), 
         ("Date", "@Date_COB_dt{%F}"), 
-        (f"{asset_class} COB", f"@{asset_class}_COB{{0,0}}"), 
-        (f"{asset_class} PrevCOB", f"@{asset_class}_PrevCOB{{0,0}}")
+        (f"{asset_class} COB", f"@{asset_class_sanitized}_COB{{0,0}}"), 
+        (f"{asset_class} PrevCOB", f"@{asset_class_sanitized}_PrevCOB{{0,0}}")
     ], formatters={'@Date_COB_dt': 'datetime'})
     p.add_tools(hover)
     p.legend.location = "top_left"
@@ -417,7 +453,7 @@ def main():
                 with changes_tab: 
                     st.subheader("Top 20 Largest DVaR Macro Changes (COB vs PrevCOB)")
                     st.info("All values are in millions.")
-                    display_aggrid(data['dvar_changes'])
+                    display_aggrid(data['dvar_changes'], is_changes=True)
             with svar_tab:
                 st.header("SVaR Analysis")
                 worst_svar = data["svar_cob"].sort_values("Macro").iloc[0]
@@ -440,8 +476,9 @@ def main():
                 with changes_tab: 
                     st.subheader("Top 20 Largest SVaR Macro Changes (COB vs PrevCOB)")
                     st.info("All values are in millions.")
-                    display_aggrid(data['svar_changes'])
+                    display_aggrid(data['svar_changes'], is_changes=True)
     else: st.error("No data files could be found or created. Please check the folder path.")
 
 if __name__ == "__main__":
     main()
+�
