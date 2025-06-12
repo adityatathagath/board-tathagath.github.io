@@ -1,0 +1,149 @@
+import os
+import pandas as pd
+import streamlit as st
+from datetime import datetime
+from bokeh.plotting import figure
+from bokeh.models import HoverTool
+from st_aggrid import AgGrid, GridOptionsBuilder
+
+# --- CONFIG ---
+DATA_DIR = "C:/Top tails daily run data/"
+st.set_page_config(layout="wide", page_title="Tail Risk Dashboard")
+
+# --- UTILS ---
+def extract_date_from_filename(filename):
+    try:
+        date_str = filename.split("_")[-1].replace(".xlsx", "")
+        return datetime.strptime(date_str, "%d_%b_%Y")
+    except:
+        return None
+
+def get_latest_file():
+    files = [f for f in os.listdir(DATA_DIR) if f.endswith(".xlsx") and "Tail_analysis_auto" in f]
+    files_with_dates = [(f, extract_date_from_filename(f)) for f in files]
+    files_with_dates = [f for f in files_with_dates if f[1] is not None]
+    files_sorted = sorted(files_with_dates, key=lambda x: x[1], reverse=True)
+    return os.path.join(DATA_DIR, files_sorted[0][0]) if files_sorted else None
+
+@st.cache_data(show_spinner=False)
+def load_and_process_data(filepath):
+    xls = pd.ExcelFile(filepath)
+
+    def read_var_sheet(sheet_name, var_type, max_vector):
+        df = xls.parse(sheet_name)
+        df = df[df['node'].isin([10, 22194, 1373254])]
+
+        df['asset_class'] = df['node'].map({10: 'FX', 22194: 'Rates', 1373254: 'EM Macro'})
+        vector_cols = [f"pnl_vector{i}" for i in range(1, max_vector + 1)]
+
+        result = []
+        for i in range(1, max_vector + 1):
+            vcol = f"pnl_vector{i}"
+            fx_sum = df[df['asset_class'] == 'FX'][vcol].sum()
+            rates_sum = df[df['asset_class'] == 'Rates'][vcol].sum()
+            em_sum = df[df['asset_class'] == 'EM Macro'][vcol].sum()
+            macro = fx_sum + rates_sum + em_sum
+            result.append([i, vcol, fx_sum, rates_sum, em_sum, macro])
+
+        return pd.DataFrame(result, columns=['rank', 'pnl_vector', 'FX', 'Rates', 'EM Macro', 'Macro'])
+
+    DVaR_COB_df = read_var_sheet('DVaR_COB', 'DVaR', 521)
+    DVaR_Prev_COB_df = read_var_sheet('DVaR_Prev_COB', 'DVaR', 521)
+    SVaR_COB_df = read_var_sheet('SVaR_COB', 'SVaR', 260)
+    SVaR_Prev_COB_df = read_var_sheet('SVaR_Prev_COB', 'SVaR', 260)
+
+    def create_top_20_comparison(COB_df, Prev_df, var_type):
+        neg = COB_df.nsmallest(20, 'Macro')
+        pos = COB_df.nlargest(20, 'Macro')
+        combined = pd.concat([neg, pos], ignore_index=True)
+        combined['COB Rank'] = list(range(1, 21)) + list(range(260, 240, -1))
+
+        prev_map = Prev_df.set_index('pnl_vector')
+        combined['Prev COB Macro'] = combined['pnl_vector'].map(prev_map['Macro'])
+        combined['Prev COB FX'] = combined['pnl_vector'].map(prev_map['FX'])
+        combined['Prev COB Rates'] = combined['pnl_vector'].map(prev_map['Rates'])
+        combined['Prev COB EM Macro'] = combined['pnl_vector'].map(prev_map['EM Macro'])
+        combined['Prev COB P&L Vector No'] = combined['pnl_vector'].map(prev_map['rank'])
+
+        combined['Diff Macro'] = combined['Macro'] - combined['Prev COB Macro']
+        combined['Diff FX'] = combined['FX'] - combined['Prev COB FX']
+        combined['Diff Rates'] = combined['Rates'] - combined['Prev COB Rates']
+        combined['Diff EM Macro'] = combined['EM Macro'] - combined['Prev COB EM Macro']
+        return combined
+
+    def create_top_changes(COB_df, Prev_df):
+        merged = COB_df.merge(Prev_df, on='pnl_vector', suffixes=('_cob', '_prev'))
+        merged['Diff'] = merged['Macro_cob'] - merged['Macro_prev']
+        top_neg = merged.nsmallest(20, 'Diff')
+        top_pos = merged.nlargest(20, 'Diff')
+        final = pd.concat([top_neg, top_pos], ignore_index=True)
+        final.rename(columns={
+            'rank_cob': 'COB Rank', 'rank_prev': 'Prev COB Rank',
+            'Macro_cob': 'COB Macro', 'Macro_prev': 'Prev COB Macro',
+            'FX_cob': 'COB FX', 'Rates_cob': 'COB Rates', 'EM Macro_cob': 'COB EM Macro',
+            'FX_prev': 'Prev FX', 'Rates_prev': 'Prev Rates', 'EM Macro_prev': 'Prev EM Macro'
+        }, inplace=True)
+        return final
+
+    return {
+        'DVaR_COB_df': DVaR_COB_df,
+        'DVaR_Prev_COB_df': DVaR_Prev_COB_df,
+        'SVaR_COB_df': SVaR_COB_df,
+        'SVaR_Prev_COB_df': SVaR_Prev_COB_df,
+        'DVaR_top_20_comparison_df': create_top_20_comparison(DVaR_COB_df, DVaR_Prev_COB_df, 'DVaR'),
+        'SVaR_top_20_comparison_df': create_top_20_comparison(SVaR_COB_df, SVaR_Prev_COB_df, 'SVaR'),
+        'DVaR_top_changes_df': create_top_changes(DVaR_COB_df, DVaR_Prev_COB_df),
+        'SVaR_top_changes_df': create_top_changes(SVaR_COB_df, SVaR_Prev_COB_df)
+    }
+
+# --- APP LAYOUT ---
+file_path = get_latest_file()
+st.title("📈 Tail Risk Dashboard")
+if not file_path:
+    st.error("No valid files found in directory.")
+    st.stop()
+
+st.success(f"Loaded: {os.path.basename(file_path)}")
+data = load_and_process_data(file_path)
+
+st.sidebar.header("View Options")
+tabs = st.sidebar.radio("Choose View", [
+    "DVaR Comparison", "SVaR Comparison",
+    "DVaR Changes", "SVaR Changes",
+    "Time Series"
+])
+
+def show_aggrid(df):
+    gb = GridOptionsBuilder.from_dataframe(df)
+    gb.configure_default_column(filterable=True, sortable=True, resizable=True)
+    grid_options = gb.build()
+    AgGrid(df, gridOptions=grid_options, enable_enterprise_modules=False, fit_columns_on_grid_load=True)
+
+if tabs == "DVaR Comparison":
+    st.header("📊 DVaR Top 20 Comparison")
+    show_aggrid(data['DVaR_top_20_comparison_df'])
+
+elif tabs == "SVaR Comparison":
+    st.header("📊 SVaR Top 20 Comparison")
+    show_aggrid(data['SVaR_top_20_comparison_df'])
+
+elif tabs == "DVaR Changes":
+    st.header("🔺 DVaR Top Changes")
+    show_aggrid(data['DVaR_top_changes_df'])
+
+elif tabs == "SVaR Changes":
+    st.header("🔺 SVaR Top Changes")
+    show_aggrid(data['SVaR_top_changes_df'])
+
+elif tabs == "Time Series":
+    st.header("📉 Macro Time Series Comparison")
+    var_choice = st.selectbox("Select Type", ["DVaR", "SVaR"])
+    cob_df = data[f"{var_choice}_COB_df"]
+    prev_df = data[f"{var_choice}_Prev_COB_df"]
+
+    p = figure(title=f"{var_choice} Macro: COB vs Prev COB", x_axis_label='Vector Rank', y_axis_label='Macro Value', width=900, height=400)
+    p.line(cob_df['rank'], cob_df['Macro'], legend_label='COB', color='blue', line_width=2)
+    p.line(prev_df['rank'], prev_df['Macro'], legend_label='Prev COB', color='orange', line_width=2)
+    p.legend.location = 'top_left'
+    p.add_tools(HoverTool(tooltips=[("Rank", "@x"), ("Value", "@y")]))
+    st.bokeh_chart(p)
