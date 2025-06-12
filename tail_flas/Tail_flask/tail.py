@@ -87,7 +87,6 @@ def create_mock_excel_file(path, file_date):
     sensitivity_types = ["IR Delta SABR", "EQ Delta", "IR Delta Normal Backbone", "FX Vega"]
     currencies = ["USD", "EUR", "GBP", "AUD", "JPY"]
     
-    # FIX: Use consistent vector numbers for COB and Prev_COB to ensure overlap for merging
     dvar_vectors = range(261, 522)
     svar_vectors = range(1, 261)
 
@@ -95,7 +94,6 @@ def create_mock_excel_file(path, file_date):
     dvar_dates = pd.to_datetime([file_date - timedelta(days=i*2) for i in range(len(dvar_vectors))]).strftime('%d-%m-%Y')
     for sheet_name_base in ["DVaR_COB", "DVaR_Prev_COB"]:
         df_data = []
-        # Create more data points to ensure enough data for top 20
         for i in range(300): 
             node = np.random.choice(list(nodes.keys()))
             df_data.append({
@@ -105,10 +103,12 @@ def create_mock_excel_file(path, file_date):
                 "currency": np.random.choice(currencies),
                 "sensitivity_type": np.random.choice(sensitivity_types),
                 "load_code": f"LC{np.random.randint(1000, 9999)}",
-                **{f"pnl_vetor{v}{'[T-2]' if 'Prev' in sheet_name_base else ''}": np.random.uniform(-5e5, 5e5) for v in dvar_vectors}
+                **{f"pnl_vector{v}{'[T-2]' if 'Prev' in sheet_name_base else ''}": np.random.uniform(-5e5, 5e5) for v in dvar_vectors}
             })
         df = pd.DataFrame(df_data)
-        header_df = pd.DataFrame([dvar_dates], columns=[f"pnl_vetor{v}{'[T-2]' if 'Prev' in sheet_name_base else ''}" for v in dvar_vectors])
+        # Create header with empty placeholders to mimic the real file structure
+        date_header_row = [np.nan] * 6 + list(dvar_dates)
+        header_df = pd.DataFrame([date_header_row])
         header_df.to_excel(writer, sheet_name=sheet_name_base, index=False, header=False)
         df.to_excel(writer, sheet_name=sheet_name_base, index=False, startrow=1)
 
@@ -125,10 +125,12 @@ def create_mock_excel_file(path, file_date):
                 "currency": np.random.choice(currencies),
                 "sensitivity_type": np.random.choice(sensitivity_types),
                 "load_code": f"LC{np.random.randint(1000, 9999)}",
-                **{f"pnl_vetor{v}{'[T-2]' if 'Prev' in sheet_name_base else ''}": np.random.uniform(-1e6, 1e6) for v in svar_vectors}
+                **{f"pnl_vector{v}{'[T-2]' if 'Prev' in sheet_name_base else ''}": np.random.uniform(-1e6, 1e6) for v in svar_vectors}
             })
         df = pd.DataFrame(df_data)
-        header_df = pd.DataFrame([svar_dates], columns=[f"pnl_vetor{v}{'[T-2]' if 'Prev' in sheet_name_base else ''}" for v in svar_vectors])
+        # Create header with empty placeholders
+        date_header_row = [np.nan] * 6 + list(svar_dates)
+        header_df = pd.DataFrame([date_header_row])
         header_df.to_excel(writer, sheet_name=sheet_name_base, index=False, header=False)
         df.to_excel(writer, sheet_name=sheet_name_base, index=False, startrow=1)
 
@@ -146,18 +148,16 @@ def process_data_file(file_path):
     # Helper function to read a single sheet correctly
     def read_sheet(sheet_name):
         try:
-            # Read header (dates) and data separately
             date_map_df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=1, header=None)
             raw_df = pd.read_excel(file_path, sheet_name=sheet_name, header=1)
             
-            # FIX: Programmatically find ID columns and PnL columns
+            # FIX: Create a direct mapping from the final column names to the values in the first row (dates)
+            # This correctly handles the offset empty cells by aligning the two series.
+            date_map = dict(zip(raw_df.columns, date_map_df.iloc[0]))
+            
             id_cols = ['Var Type', 'Node', 'Asset class', 'currency', 'sensitivity_type', 'load_code']
-            pnl_cols = [col for col in raw_df.columns if 'pnl_vetor' in str(col)]
+            pnl_cols = [col for col in raw_df.columns if 'pnl_vector' in str(col)]
             
-            # Reconstruct the date map to be robust
-            date_map = {pnl_col: date_map_df.iloc[0, i] for i, pnl_col in enumerate(pnl_cols)}
-            
-            # Ensure raw_df only contains the expected columns
             final_cols = id_cols + pnl_cols
             raw_df = raw_df[[col for col in final_cols if col in raw_df.columns]]
 
@@ -171,7 +171,6 @@ def process_data_file(file_path):
         raw_df, date_map, id_vars, pnl_vectors = read_sheet(sheet_name)
         if raw_df is None: return None
         
-        # Melt/unpivot the dataframe to make it long
         long_df = pd.melt(raw_df, id_vars=["Node"], value_vars=pnl_vectors, var_name="Pnl_Vector", value_name="Value")
         
         long_df["Asset_Class"] = long_df["Node"].map(node_map)
@@ -211,7 +210,7 @@ def process_data_file(file_path):
         final_cols_map = {
             "COB Rank": 'COB Rank', "COB P&L Vector No": 'Rank', "Date": 'Date_COB',
             "Macro": 'Macro_COB', "Rates": 'Rates_COB', "FX": 'FX_COB', "EM Macro": 'EM Macro_COB',
-            "Prev COB P&L Vector No": 'Rank_PrevCOB',
+            "Prev COB P&L Vector No": 'Rank', 
             "Prev Macro": 'Macro_PrevCOB', "Prev Rates": 'Rates_PrevCOB', "Prev FX": 'FX_PrevCOB', "Prev EM Macro": 'EM Macro_PrevCOB',
             "Diff Macro": 'Macro_Diff', "Diff Rates": 'Rates_Diff', "Diff FX": 'FX_Diff', "Diff EM Macro": 'EM Macro_Diff'
         }
@@ -224,7 +223,7 @@ def process_data_file(file_path):
     # Helper function to create the Top Changes dataframe
     def create_top_changes_df(cob_df, prev_cob_df):
         merged_df = pd.merge(cob_df, prev_cob_df, on="Rank", how="inner", suffixes=('_COB', '_PrevCOB'))
-        if merged_df.empty: return pd.DataFrame() # Return empty if no common vectors
+        if merged_df.empty: return pd.DataFrame() 
         
         merged_df['Diff'] = merged_df['Macro_COB'] - merged_df['Macro_PrevCOB']
         
@@ -237,8 +236,8 @@ def process_data_file(file_path):
         combined_changes['Rank_Final'] = list(range(1, len(top_20_neg_changes) + 1)) + list(range(1, len(top_20_pos_changes) + 1))
         
         final_cols_map = {
-            "Rank": 'Rank_Final', "COB P&L Vector No": 'Rank', "Prev COB P&L Vector No": 'Rank_PrevCOB', "Date": 'Date_COB',
-            "Macro COB": 'Macro_COB', "Macro PrevCob": 'Macro_PrevCOB', "Diff": 'Diff',
+            "Rank": 'Rank_Final', "COB P&L Vector No": 'Rank', "Prev COB P&L Vector No": 'Rank', 
+            "Date": 'Date_COB', "Macro COB": 'Macro_COB', "Macro PrevCob": 'Macro_PrevCOB', "Diff": 'Diff',
             "Rates": 'Rates_COB', "FX": 'FX_COB', "EM Macro": 'EM Macro_COB'
         }
         final_df = pd.DataFrame()
