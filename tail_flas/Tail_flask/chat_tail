@@ -34,13 +34,21 @@ st.markdown("""
         box-shadow: 0 2px 4px 0 rgba(0,0,0,0.1);
     }
     .header-group {
-        background-color: #E0E0E0;
-        color: #333;
+        background-color: #DDEBF7;
+        color: #2F528F;
         font-weight: bold;
         text-align: center;
         padding: 8px;
+        border: 1px solid #B4C7E7;
         border-radius: 5px;
-        margin-bottom: -10px; /* Pull the grid up */
+        margin-bottom: -2px; 
+        z-index: 1;
+        position: relative;
+    }
+    .header-group.diff {
+        background-color: #FCE4D6;
+        color: #C65911;
+        border-color: #F8CBAD;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -158,7 +166,8 @@ def process_data_file(file_path):
         final_df = pd.DataFrame()
         final_df["COB Rank"] = comparison["COB Rank"]
         final_df["COB P&L Vector No"] = comparison["P&L Vector No_COB"]
-        final_df["Date"] = comparison["Date"]
+        # FIX: Format Date column correctly
+        final_df["Date"] = pd.to_datetime(comparison["Date"], errors='coerce').dt.strftime('%d %b %Y')
         final_df["Macro"] = comparison.get("Macro_COB") / 1_000_000
         final_df["Rates"] = comparison.get("Rates_COB") / 1_000_000
         final_df["FX"] = comparison.get("FX_COB") / 1_000_000
@@ -194,7 +203,7 @@ def process_data_file(file_path):
         final_df["Rank"] = combined_changes["Final_Rank"]
         final_df["COB P&L Vector No"] = combined_changes["P&L Vector No"]
         final_df["Prev COB P&L Vector No"] = combined_changes["P&L Vector No"]
-        final_df["Date"] = combined_changes["Date_COB"]
+        final_df["Date"] = pd.to_datetime(combined_changes["Date_COB"], errors='coerce').dt.strftime('%d %b %Y')
         final_df["Macro COB"] = combined_changes["Macro_COB"] / 1_000_000
         final_df["Macro PrevCob"] = combined_changes["Macro_PrevCOB"] / 1_000_000
         final_df["Diff"] = combined_changes["Diff"] / 1_000_000
@@ -227,22 +236,20 @@ def display_aggrid(df, is_comparison=False):
         c1, c2, c3 = st.columns([7, 6, 4])
         with c1: st.markdown("<div class='header-group'>COB</div>", unsafe_allow_html=True)
         with c2: st.markdown("<div class='header-group'>PrevCOB</div>", unsafe_allow_html=True)
-        with c3: st.markdown("<div class='header-group'>Difference</div>", unsafe_allow_html=True)
+        with c3: st.markdown("<div class='header-group diff'>Difference</div>", unsafe_allow_html=True)
 
 
     gb = GridOptionsBuilder.from_dataframe(df)
     
     gb.configure_default_column(
         resizable=True, filterable=True, sortable=True, enableValue=True,
-        enableRowGroup=False, enablePivot=False
+        enableRowGroup=False, enablePivot=False, wrapText=True, autoHeight=True
     )
     
-    # FIX: JS Code to render positive numbers in black, negatives in red.
     cells_renderer = JsCode("""
     class GreenRedCellRenderer {
         init(params) {
             this.eGui = document.createElement('div');
-            // Format to 2 decimal places for millions
             const formattedValue = params.value != null ? params.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A';
             if (params.value < 0) {
                 this.eGui.innerHTML = `<span style="color: red; font-weight: bold;">${formattedValue}</span>`;
@@ -261,12 +268,12 @@ def display_aggrid(df, is_comparison=False):
              if col not in ["COB Rank", "COB P&L Vector No", "Prev COB P&L Vector No", "Rank", "Prev Cob Rank", "Value Rank"]:
                 gb.configure_column(col, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
 
-    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=40)
-    gb.configure_grid_options(domLayout='normal')
+    # FIX: Remove fixed height and pagination to show all data
+    gb.configure_grid_options(domLayout='autoHeight')
     gridOptions = gb.build()
 
     AgGrid(
-        df, gridOptions=gridOptions, height=600, width='100%',
+        df, gridOptions=gridOptions, width='100%',
         theme='streamlit', allow_unsafe_jscode=True, fit_columns_on_grid_load=True
     )
 
@@ -344,11 +351,11 @@ def main():
                 worst_dvar = data["dvar_cob"].sort_values("Macro").iloc[0]
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                 st.metric(
-                    label=f"Worst DVaR | Date: {worst_dvar['Date']} | P&L Vector: {worst_dvar['P&L Vector No']}",
+                    label=f"Worst DVaR | Date: {pd.to_datetime(worst_dvar['Date']).strftime('%d %b %Y')} | P&L Vector: {worst_dvar['P&L Vector No']}",
                     value=f"{worst_dvar['Macro']/1_000_000:.2f}M"
                 )
                 st.markdown('</div>', unsafe_allow_html=True)
-                st.write("") # Spacer
+                st.write("") 
 
                 chart_tab, comparison_tab, changes_tab = st.tabs(["📈 Time Series Chart", "🏆 Top 20 Comparison", "🔄 Top Changes"])
                 with chart_tab: st.bokeh_chart(create_bokeh_chart(data["dvar_cob"], data["dvar_prev_cob"], "DVaR: Macro COB vs. Macro PrevCOB"), use_container_width=True)
@@ -363,15 +370,14 @@ def main():
             with svar_tab:
                 st.header("SVaR Analysis")
 
-                # Metric Card for SVaR
                 worst_svar = data["svar_cob"].sort_values("Macro").iloc[0]
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                 st.metric(
-                    label=f"Worst SVaR | Date: {worst_svar['Date']} | P&L Vector: {worst_svar['P&L Vector No']}",
+                    label=f"Worst SVaR | Date: {pd.to_datetime(worst_svar['Date']).strftime('%d %b %Y')} | P&L Vector: {worst_svar['P&L Vector No']}",
                     value=f"{worst_svar['Macro']/1_000_000:.2f}M"
                 )
                 st.markdown('</div>', unsafe_allow_html=True)
-                st.write("") # Spacer
+                st.write("") 
 
                 chart_tab, comparison_tab, changes_tab = st.tabs(["📈 Time Series Chart", "🏆 Top 20 Comparison", "🔄 Top Changes"])
                 with chart_tab: st.bokeh_chart(create_bokeh_chart(data["svar_cob"], data["svar_prev_cob"], "SVaR: Macro COB vs. Macro PrevCOB"), use_container_width=True)
