@@ -36,27 +36,22 @@ st.markdown("""
         box-shadow: 0 2px 4px 0 rgba(0,0,0,0.1);
     }
     /* Group Header Styling to match screenshot */
-    .ag-header-group-cell {
-        background-color: #DDEBF7;
-        color: #2F528F;
+    .ag-header-group-cell-label {
         font-weight: bold;
-        border-bottom: 1px solid #9BC2E6;
-        border-right: 1px solid #9BC2E6;
     }
-    .header-group-prevcob .ag-header-group-cell-label {
-        background-color: #E2F0D9 !important;
-        color: #385723 !important;
-    }
-    .header-group-diff .ag-header-group-cell-label {
-        background-color: #FCE4D6 !important;
-        color: #C65911 !important;
-    }
+    .header-group-cob { background-color: #DDEBF7 !important; color: #2F528F !important; }
+    .header-group-prevcob { background-color: #E2F0D9 !important; color: #385723 !important; }
+    .header-group-diff { background-color: #FCE4D6 !important; color: #C65911 !important; }
+
     /* Individual Header Styling */
     .ag-theme-streamlit .ag-header-cell {
-        background-color: #E2F0D9; /* Light blue for all headers */
-        border-bottom: 1px solid #9BC2E6;
-        border-right: 1px solid #9BC2E6;
+        background-color: #FFFFFF;
+        border-bottom: 1px solid #DADCE0;
+        border-right: 1px solid #DADCE0;
     }
+    /* Row highlighting styles */
+    .ag-row-negative { background-color: #FFEBEE !important; }
+    .ag-row-positive { background-color: #E8F5E9 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -295,7 +290,7 @@ def display_aggrid(df, is_comparison=False):
                 gb.configure_column(col, cellRenderer=cells_renderer)
         column_defs = gb.build()['columnDefs']
 
-
+    # FIX: Add getRowStyle for row highlighting
     gridOptions = {
         "columnDefs": column_defs,
         "defaultColDef": {
@@ -304,6 +299,16 @@ def display_aggrid(df, is_comparison=False):
         },
         "domLayout": 'autoHeight',
         "suppressMenuHide": True,
+        "getRowStyle": JsCode("""
+            function(params) {
+                if (params.data.COB_Macro < 0) {
+                    return { 'background-color': '#FFEBEE' };
+                }
+                if (params.data.COB_Macro > 0) {
+                    return { 'background-color': '#E8F5E9' };
+                }
+            }
+        """),
     }
 
     AgGrid(
@@ -311,7 +316,8 @@ def display_aggrid(df, is_comparison=False):
         theme='streamlit', allow_unsafe_jscode=True
     )
 
-def create_bokeh_chart(cob_df, prev_cob_df, title):
+def create_bokeh_chart(cob_df, prev_cob_df, title, asset_class='Macro'):
+    """Creates a chart for the selected asset class."""
     if cob_df is None or prev_cob_df is None or cob_df.empty or prev_cob_df.empty:
         p = figure(height=400, title=f"{title} - No Data Available", sizing_mode="stretch_width")
         return p
@@ -319,14 +325,24 @@ def create_bokeh_chart(cob_df, prev_cob_df, title):
     if source_df.empty:
         p = figure(height=400, title=f"{title} - No Matching P&L Vectors to Compare", sizing_mode="stretch_width")
         return p
+        
     source_df['Date_COB_dt'] = pd.to_datetime(source_df['Date_COB'], errors='coerce')
     source = ColumnDataSource(source_df)
-    p = figure(height=400, x_axis_label="P&L Vector No", y_axis_label="Value", title=title, sizing_mode="stretch_width", tools="pan,wheel_zoom,box_zoom,reset,save")
+    
+    p = figure(height=400, x_axis_label="P&L Vector No", y_axis_label="Value", title=f"{title}: {asset_class}", sizing_mode="stretch_width", tools="pan,wheel_zoom,box_zoom,reset,save")
     p.yaxis.formatter = NumeralTickFormatter(format="0,0.00a")
-    p.line(x='P&L Vector No', y='Macro_COB', source=source, legend_label="Macro COB", color="dodgerblue", width=2.5, alpha=0.8)
-    p.circle(x='P&L Vector No', y='Macro_COB', source=source, legend_label="Macro COB", color="dodgerblue", size=5)
-    p.line(x='P&L Vector No', y='Macro_PrevCOB', source=source, legend_label="Macro PrevCOB", color="gray", width=2, line_dash="dashed")
-    hover = HoverTool(tooltips=[("P&L Vector", "@{P&L Vector No}"), ("Date", "@Date_COB_dt{%F}"), ("Macro COB", "@Macro_COB{0,0}"), ("Macro PrevCOB", "@Macro_PrevCOB{0,0}")], formatters={'@Date_COB_dt': 'datetime'})
+    
+    # Plot the selected asset class
+    p.line(x='P&L Vector No', y=f'{asset_class}_COB', source=source, legend_label=f"{asset_class} COB", color="dodgerblue", width=2.5, alpha=0.8)
+    p.circle(x='P&L Vector No', y=f'{asset_class}_COB', source=source, legend_label=f"{asset_class} COB", color="dodgerblue", size=5)
+    p.line(x='P&L Vector No', y=f'{asset_class}_PrevCOB', source=source, legend_label=f"{asset_class} PrevCOB", color="gray", width=2, line_dash="dashed")
+    
+    hover = HoverTool(tooltips=[
+        ("P&L Vector", "@{P&L Vector No}"), 
+        ("Date", "@Date_COB_dt{%F}"), 
+        (f"{asset_class} COB", f"@{asset_class}_COB{{0,0}}"), 
+        (f"{asset_class} PrevCOB", f"@{asset_class}_PrevCOB{{0,0}}")
+    ], formatters={'@Date_COB_dt': 'datetime'})
     p.add_tools(hover)
     p.legend.location = "top_left"
     p.legend.click_policy = "hide"
@@ -377,11 +393,10 @@ def main():
                         st.markdown(f"**DataFrame: `{name}`** (is None)")
                 st.markdown("---")
 
+            asset_classes = ["Macro", "FX", "Rates", "EM Macro"]
             dvar_tab, svar_tab = st.tabs(["DVaR Analysis", "SVaR Analysis"])
             with dvar_tab:
                 st.header("DVaR Analysis")
-                
-                # Metric Card for DVaR
                 worst_dvar = data["dvar_cob"].sort_values("Macro").iloc[0]
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                 st.metric(
@@ -392,7 +407,9 @@ def main():
                 st.write("") 
 
                 chart_tab, comparison_tab, changes_tab = st.tabs(["📈 Time Series Chart", "🏆 Top 20 Comparison", "🔄 Top Changes"])
-                with chart_tab: st.bokeh_chart(create_bokeh_chart(data["dvar_cob"], data["dvar_prev_cob"], "DVaR: Macro COB vs. Macro PrevCOB"), use_container_width=True)
+                with chart_tab:
+                    selected_asset_class_dvar = st.selectbox("Select Asset Class for Chart", asset_classes, key="dvar_asset_class")
+                    st.bokeh_chart(create_bokeh_chart(data["dvar_cob"], data["dvar_prev_cob"], "DVaR", asset_class=selected_asset_class_dvar), use_container_width=True)
                 with comparison_tab: 
                     st.subheader("Top 20 Positive & Negative DVaR Macro Values")
                     st.info("All values are in millions.")
@@ -403,7 +420,6 @@ def main():
                     display_aggrid(data['dvar_changes'])
             with svar_tab:
                 st.header("SVaR Analysis")
-
                 worst_svar = data["svar_cob"].sort_values("Macro").iloc[0]
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                 st.metric(
@@ -414,7 +430,9 @@ def main():
                 st.write("") 
 
                 chart_tab, comparison_tab, changes_tab = st.tabs(["📈 Time Series Chart", "🏆 Top 20 Comparison", "🔄 Top Changes"])
-                with chart_tab: st.bokeh_chart(create_bokeh_chart(data["svar_cob"], data["svar_prev_cob"], "SVaR: Macro COB vs. Macro PrevCOB"), use_container_width=True)
+                with chart_tab: 
+                    selected_asset_class_svar = st.selectbox("Select Asset Class for Chart", asset_classes, key="svar_asset_class")
+                    st.bokeh_chart(create_bokeh_chart(data["svar_cob"], data["svar_prev_cob"], "SVaR", asset_class=selected_asset_class_svar), use_container_width=True)
                 with comparison_tab: 
                     st.subheader("Top 20 Positive & Negative SVaR Macro Values")
                     st.info("All values are in millions.")
