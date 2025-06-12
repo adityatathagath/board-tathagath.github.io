@@ -23,8 +23,10 @@ st.markdown("""
     .stApp {
         background-color: #F0F2F6;
     }
-    .ag-header-cell-label {
-        justify-content: center;
+    .ag-header-cell-label, .ag-cell {
+        justify-content: center !important;
+        text-align: center !important;
+        font-size: 0.85rem !important; /* Smaller font size */
     }
     .metric-card {
         background-color: #FFFFFF;
@@ -33,22 +35,35 @@ st.markdown("""
         border-radius: 5px;
         box-shadow: 0 2px 4px 0 rgba(0,0,0,0.1);
     }
+    .grid-container {
+        border: 1px solid #DADCE0;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 2px 4px 0 rgba(0,0,0,0.05);
+    }
+    .custom-header-row {
+        display: flex;
+        background-color: #F8F9FA;
+        border-bottom: 1px solid #DADCE0;
+    }
     .header-group {
-        background-color: #DDEBF7;
-        color: #2F528F;
         font-weight: bold;
         text-align: center;
-        padding: 8px;
-        border: 1px solid #B4C7E7;
-        border-radius: 5px;
-        margin-bottom: -2px; 
-        z-index: 1;
-        position: relative;
+        padding: 10px;
+        flex-grow: 1;
+        border-right: 1px solid #DADCE0;
     }
-    .header-group.diff {
-        background-color: #FCE4D6;
-        color: #C65911;
-        border-color: #F8CBAD;
+    .header-group:last-child {
+        border-right: none;
+    }
+    .header-cob {
+        background-color: #DDEBF7; color: #2F528F; flex-basis: 45%;
+    }
+    .header-prevcob {
+        background-color: #E2F0D9; color: #385723; flex-basis: 35%;
+    }
+    .header-diff {
+        background-color: #FCE4D6; color: #C65911; flex-basis: 20%;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -166,7 +181,6 @@ def process_data_file(file_path):
         final_df = pd.DataFrame()
         final_df["COB Rank"] = comparison["COB Rank"]
         final_df["COB P&L Vector No"] = comparison["P&L Vector No_COB"]
-        # FIX: Format Date column correctly
         final_df["Date"] = pd.to_datetime(comparison["Date"], errors='coerce').dt.strftime('%d %b %Y')
         final_df["Macro"] = comparison.get("Macro_COB") / 1_000_000
         final_df["Rates"] = comparison.get("Rates_COB") / 1_000_000
@@ -231,28 +245,32 @@ def display_aggrid(df, is_comparison=False):
         st.warning("Data not available or no matching records found.")
         return
         
+    st.markdown("<div class='grid-container'>", unsafe_allow_html=True)
     if is_comparison:
-        # Custom headers for the comparison table
-        c1, c2, c3 = st.columns([7, 6, 4])
-        with c1: st.markdown("<div class='header-group'>COB</div>", unsafe_allow_html=True)
-        with c2: st.markdown("<div class='header-group'>PrevCOB</div>", unsafe_allow_html=True)
-        with c3: st.markdown("<div class='header-group diff'>Difference</div>", unsafe_allow_html=True)
+        # Custom headers for the comparison table using HTML flexbox for responsiveness
+        st.markdown("""
+            <div class='custom-header-row'>
+                <div class='header-group header-cob'>COB</div>
+                <div class='header-group header-prevcob'>PrevCOB</div>
+                <div class='header-group header-diff'>Difference</div>
+            </div>
+        """, unsafe_allow_html=True)
 
 
     gb = GridOptionsBuilder.from_dataframe(df)
     
     gb.configure_default_column(
-        resizable=True, filterable=True, sortable=True, enableValue=True,
+        resizable=True, filterable=False, sortable=True, enableValue=True,
         enableRowGroup=False, enablePivot=False, wrapText=True, autoHeight=True
     )
     
     cells_renderer = JsCode("""
-    class GreenRedCellRenderer {
+    class BlackRedCellRenderer {
         init(params) {
             this.eGui = document.createElement('div');
             const formattedValue = params.value != null ? params.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A';
             if (params.value < 0) {
-                this.eGui.innerHTML = `<span style="color: red; font-weight: bold;">${formattedValue}</span>`;
+                this.eGui.innerHTML = `<span style="color: red; font-weight: 500;">${formattedValue}</span>`;
             } else {
                  this.eGui.innerHTML = `<span style="color: black;">${formattedValue}</span>`;
             }
@@ -260,22 +278,36 @@ def display_aggrid(df, is_comparison=False):
         getGui() { return this.eGui; }
     }
     """)
+    
+    # Define column widths for better layout control
+    column_defs = {}
+    if is_comparison:
+        column_defs = {
+            "COB Rank": {"width": 80}, "COB P&L Vector No": {"width": 120},
+            "Prev Cob Rank": {"width": 100}, "Prev COB P&L Vector No": {"width": 120},
+        }
 
     for col in df.columns:
+        # Apply specific width if defined
+        if col in column_defs:
+            gb.configure_column(col, **column_defs[col])
+
+        # Apply cell styling
         if "Diff" in col or col.strip() != col or col in ["Macro", "Rates", "FX", "EM Macro", "Macro COB", "Macro PrevCob"]:
              gb.configure_column(col, cellRenderer=cells_renderer, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=2)
         elif df[col].dtype in ['float64', 'int64']:
              if col not in ["COB Rank", "COB P&L Vector No", "Prev COB P&L Vector No", "Rank", "Prev Cob Rank", "Value Rank"]:
                 gb.configure_column(col, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
 
-    # FIX: Remove fixed height and pagination to show all data
+    # Configure grid to not use pagination and auto-adjust height
     gb.configure_grid_options(domLayout='autoHeight')
     gridOptions = gb.build()
 
     AgGrid(
         df, gridOptions=gridOptions, width='100%',
-        theme='streamlit', allow_unsafe_jscode=True, fit_columns_on_grid_load=True
+        theme='streamlit', allow_unsafe_jscode=True
     )
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def create_bokeh_chart(cob_df, prev_cob_df, title):
     if cob_df is None or prev_cob_df is None or cob_df.empty or prev_cob_df.empty:
