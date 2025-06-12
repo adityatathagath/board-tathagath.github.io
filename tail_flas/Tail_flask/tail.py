@@ -11,7 +11,7 @@ from bokeh.models import HoverTool, ColumnDataSource, NumeralTickFormatter
 # --- Page Configuration and Styling ---
 st.set_page_config(
     page_title="Tail Analysis Dashboard",
-    page_icon="�",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -200,26 +200,24 @@ def process_data_file(file_path):
     # Helper function to create the Top 20 Comparison dataframe
     def create_top_20_comparison_df(cob_df, prev_cob_df, is_svar=False):
         # Top 20 Negative
-        top_20_neg = cob_df.sort_values("Macro", ascending=True).head(20)
+        top_20_neg = cob_df.sort_values("Macro", ascending=True).head(20).copy()
         # Top 20 Positive
-        top_20_pos = cob_df.sort_values("Macro", ascending=False).head(20)
+        top_20_pos = cob_df.sort_values("Macro", ascending=False).head(20).copy()
         
+        # FIX: Assign ranks dynamically based on the actual number of rows found.
+        top_20_neg['COB Rank'] = range(1, len(top_20_neg) + 1)
+        top_20_pos['COB Rank'] = range(260, 260 - len(top_20_pos), -1)
+
         combined_top = pd.concat([top_20_neg, top_20_pos], ignore_index=True)
         
         # Merge with Prev COB data
         comparison = pd.merge(combined_top, prev_cob_df, on="Rank", suffixes=('_COB', '_PrevCOB'))
         
         # Calculate Differences
-        # Placeholder for columns in case some asset class is missing in mock data
         all_asset_classes = ["Macro", "Rates", "FX", "EM Macro"]
         for col in all_asset_classes:
             if f'{col}_COB' in comparison.columns and f'{col}_PrevCOB' in comparison.columns:
                  comparison[f'{col}_Diff'] = comparison[f'{col}_COB'] - comparison[f'{col}_PrevCOB']
-
-        # Assign COB Rank
-        neg_ranks = list(range(1, 21))
-        pos_ranks = list(range(260, 240, -1))
-        comparison['COB Rank'] = neg_ranks + pos_ranks
         
         # Define final columns and fill missing ones with 0 or NaT
         final_cols_map = {
@@ -234,9 +232,9 @@ def process_data_file(file_path):
             if old_col in comparison:
                 final_df[new_col] = comparison[old_col]
             else:
-                 final_df[new_col] = 0 if 'Rank' in old_col or 'No' in old_col else pd.NaT
+                 final_df[new_col] = 0 if 'Rank' in old_col or 'No' in old_col or 'Prev' in old_col else pd.NaT
 
-        return final_df
+        return final_df.sort_values(by="COB Rank").reset_index(drop=True)
 
     # Helper function to create the Top Changes dataframe
     def create_top_changes_df(cob_df, prev_cob_df):
@@ -247,7 +245,11 @@ def process_data_file(file_path):
         top_20_pos_changes = merged_df.sort_values("Diff", ascending=False).head(20)
         
         combined_changes = pd.concat([top_20_neg_changes, top_20_pos_changes])
-        combined_changes['Rank_Final'] = list(range(1, 21)) + list(range(1, 21))
+        
+        # FIX: Assign ranks based on actual number of rows
+        neg_ranks = list(range(1, len(top_20_neg_changes) + 1))
+        pos_ranks = list(range(1, len(top_20_pos_changes) + 1))
+        combined_changes['Rank_Final'] = neg_ranks + pos_ranks
         
         final_cols_map = {
             "Rank": 'Rank_Final', "COB P&L Vector No": 'Rank', "Prev COB P&L Vector No": 'Rank_PrevCOB', "Date": 'Date_COB',
@@ -260,7 +262,7 @@ def process_data_file(file_path):
              if old_col in combined_changes:
                  final_df[new_col] = combined_changes[old_col]
              else:
-                  final_df[new_col] = 0 if 'Rank' in old_col or 'No' in old_col else pd.NaT
+                  final_df[new_col] = 0 if 'Rank' in old_col or 'No' in old_col or 'Prev' in old_col else pd.NaT
 
         return final_df
 
@@ -280,22 +282,32 @@ def process_data_file(file_path):
 # --- UI Rendering Functions ---
 def format_df_for_display(df):
     """Applies number formatting and CSS classes for HTML display."""
-    if df is None:
-        return "<p>Data not available.</p>"
+    if df is None or df.empty:
+        return "<p>Data not available or no matching records found.</p>"
     formatted_df = df.copy()
     for col in formatted_df.columns:
         # Safely check for 'Diff' in column name
         is_diff_col = 'Diff' in col or 'Change' in col
         
         if formatted_df[col].dtype in ['float64', 'int64'] and not (col in ["COB Rank", "COB P&L Vector No", "Prev COB P&L Vector No", "Rank"]):
+             # Skip formatting if column is all NaNs or zeros from placeholder
+            if formatted_df[col].isnull().all() or (formatted_df[col] == 0).all():
+                continue
             formatted_df[col] = formatted_df[col].apply(
-                lambda x: f'<span class="positive-change">{x:,.0f}</span>' if is_diff_col and x > 0 else (f'<span class="negative-change">{x:,.0f}</span>' if is_diff_col and x < 0 else f'{x:,.0f}')
+                lambda x: f'<span class="positive-change">{x:,.0f}</span>' if is_diff_col and pd.notna(x) and x > 0 else (f'<span class="negative-change">{x:,.0f}</span>' if is_diff_col and pd.notna(x) and x < 0 else (f'{x:,.0f}' if pd.notna(x) else 'N/A'))
             )
     return f"<div class='dataframe-container'>{formatted_df.to_html(escape=False, index=False)}</div>"
 
 def create_bokeh_chart(cob_df, prev_cob_df, title):
     """Creates an interactive Bokeh chart for comparing COB and PrevCOB."""
+    if cob_df.empty or prev_cob_df.empty:
+        p = figure(height=400, title=f"{title} - No Data Available", sizing_mode="stretch_width")
+        return p
+
     source_df = pd.merge(cob_df, prev_cob_df, on='Rank', suffixes=('_COB', '_PrevCOB'))
+    if source_df.empty:
+        p = figure(height=400, title=f"{title} - No Matching P&L Vectors", sizing_mode="stretch_width")
+        return p
 
     source = ColumnDataSource(source_df)
     
@@ -309,14 +321,17 @@ def create_bokeh_chart(cob_df, prev_cob_df, title):
     
     p.line(x='Rank', y='Macro_PrevCOB', source=source, legend_label="Macro PrevCOB", color="gray", width=2, line_dash="dashed")
 
+    # Ensure Date column is in datetime format for the hover tool
+    source_df['Date_COB_dt'] = pd.to_datetime(source_df['Date_COB'], errors='coerce')
+    
     hover = HoverTool(
         tooltips=[
             ("P&L Vector", "@Rank"),
-            ("Date", "@Date_COB{%F}"),
+            ("Date", "@Date_COB_dt{%F}"),
             ("Macro COB", "@Macro_COB{0,0}"),
             ("Macro PrevCOB", "@Macro_PrevCOB{0,0}"),
         ],
-        formatters={'@Date_COB': 'datetime'}
+        formatters={'@Date_COB_dt': 'datetime'}
     )
     p.add_tools(hover)
     p.legend.location = "top_left"
@@ -399,4 +414,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-�
