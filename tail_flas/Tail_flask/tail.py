@@ -76,11 +76,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- MOCK DATA GENERATION ---
-# This function creates a realistic mock file if no real file is found.
 def create_mock_excel_file(path, file_date):
     """Generates a mock Excel file with the specified structure."""
     if os.path.exists(path):
-        return # Don't overwrite if it exists
+        return
 
     writer = pd.ExcelWriter(path, engine='openpyxl')
     nodes = {10: "FX", 22194: "Rates", 1373254: "EM Macro"}
@@ -90,46 +89,32 @@ def create_mock_excel_file(path, file_date):
     dvar_vectors = range(261, 522)
     svar_vectors = range(1, 261)
 
-    # --- Generate Data for DVaR sheets ---
-    dvar_dates = pd.to_datetime([file_date - timedelta(days=i*2) for i in range(len(dvar_vectors))]).strftime('%d-%m-%Y')
     for sheet_name_base in ["DVaR_COB", "DVaR_Prev_COB"]:
         df_data = []
         for i in range(300): 
             node = np.random.choice(list(nodes.keys()))
             df_data.append({
-                "Var Type": "DVaR",
-                "Node": node,
-                "Asset class": nodes[node],
-                "currency": np.random.choice(currencies),
-                "sensitivity_type": np.random.choice(sensitivity_types),
-                "load_code": f"LC{np.random.randint(1000, 9999)}",
+                "Var Type": "DVaR", "Node": node, "Asset class": nodes[node], "currency": np.random.choice(currencies),
+                "sensitivity_type": np.random.choice(sensitivity_types), "load_code": f"LC{np.random.randint(1000, 9999)}",
                 **{f"pnl_vector{v}{'[T-2]' if 'Prev' in sheet_name_base else ''}": np.random.uniform(-5e5, 5e5) for v in dvar_vectors}
             })
         df = pd.DataFrame(df_data)
-        # Create header with empty placeholders to mimic the real file structure
-        date_header_row = [np.nan] * 6 + list(dvar_dates)
+        date_header_row = [np.nan] * 6 + list(pd.to_datetime([file_date - timedelta(days=i*2) for i in range(len(dvar_vectors))]).strftime('%d-%m-%Y'))
         header_df = pd.DataFrame([date_header_row])
         header_df.to_excel(writer, sheet_name=sheet_name_base, index=False, header=False)
         df.to_excel(writer, sheet_name=sheet_name_base, index=False, startrow=1)
 
-    # --- Generate Data for SVaR sheets ---
-    svar_dates = pd.to_datetime([file_date - timedelta(days=i*3) for i in range(len(svar_vectors))]).strftime('%d-%m-%Y')
     for sheet_name_base in ["SVaR_COB", "SVaR_Prev_COB"]:
         df_data = []
         for i in range(300):
             node = np.random.choice(list(nodes.keys()))
             df_data.append({
-                "Var Type": "SVaR",
-                "Node": node,
-                "Asset class": nodes[node],
-                "currency": np.random.choice(currencies),
-                "sensitivity_type": np.random.choice(sensitivity_types),
-                "load_code": f"LC{np.random.randint(1000, 9999)}",
+                "Var Type": "SVaR", "Node": node, "Asset class": nodes[node], "currency": np.random.choice(currencies),
+                "sensitivity_type": np.random.choice(sensitivity_types), "load_code": f"LC{np.random.randint(1000, 9999)}",
                 **{f"pnl_vector{v}{'[T-2]' if 'Prev' in sheet_name_base else ''}": np.random.uniform(-1e6, 1e6) for v in svar_vectors}
             })
         df = pd.DataFrame(df_data)
-        # Create header with empty placeholders
-        date_header_row = [np.nan] * 6 + list(svar_dates)
+        date_header_row = [np.nan] * 6 + list(pd.to_datetime([file_date - timedelta(days=i*3) for i in range(len(svar_vectors))]).strftime('%d-%m-%Y'))
         header_df = pd.DataFrame([date_header_row])
         header_df.to_excel(writer, sheet_name=sheet_name_base, index=False, header=False)
         df.to_excel(writer, sheet_name=sheet_name_base, index=False, startrow=1)
@@ -142,37 +127,25 @@ def create_mock_excel_file(path, file_date):
 @st.cache_data
 def process_data_file(file_path):
     """
-    Main function to process the selected Excel file.
-    Reads all sheets, performs aggregations, and creates all final dataframes.
+    Main function to process the selected Excel file. Reads all sheets, performs
+    aggregations, and creates all final dataframes exactly as specified.
     """
-    # Helper function to read a single sheet correctly
     def read_sheet(sheet_name):
         try:
             date_map_df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=1, header=None)
             raw_df = pd.read_excel(file_path, sheet_name=sheet_name, header=1)
-            
-            # FIX: Create a direct mapping from the final column names to the values in the first row (dates)
-            # This correctly handles the offset empty cells by aligning the two series.
             date_map = dict(zip(raw_df.columns, date_map_df.iloc[0]))
-            
-            id_cols = ['Var Type', 'Node', 'Asset class', 'currency', 'sensitivity_type', 'load_code']
             pnl_cols = [col for col in raw_df.columns if 'pnl_vector' in str(col)]
-            
-            final_cols = id_cols + pnl_cols
-            raw_df = raw_df[[col for col in final_cols if col in raw_df.columns]]
-
-            return raw_df, date_map, id_cols, pnl_cols
+            return raw_df, date_map, pnl_cols
         except Exception as e:
-            st.error(f"Could not read sheet '{sheet_name}' in '{os.path.basename(file_path)}'. Error: {e}")
-            return None, None, None, None
+            st.error(f"Could not read sheet '{sheet_name}'. Error: {e}")
+            return None, None, None
 
-    # Helper function to create the summary dataframe for a sheet
     def create_summary_df(sheet_name, node_map={10: "FX", 22194: "Rates", 1373254: "EM Macro"}):
-        raw_df, date_map, id_vars, pnl_vectors = read_sheet(sheet_name)
+        raw_df, date_map, pnl_vectors = read_sheet(sheet_name)
         if raw_df is None: return None
         
         long_df = pd.melt(raw_df, id_vars=["Node"], value_vars=pnl_vectors, var_name="Pnl_Vector", value_name="Value")
-        
         long_df["Asset_Class"] = long_df["Node"].map(node_map)
         summary = long_df.groupby(["Pnl_Vector", "Asset_Class"])["Value"].sum().reset_index()
         pivot_df = summary.pivot_table(index="Pnl_Vector", columns="Asset_Class", values="Value").fillna(0)
@@ -191,36 +164,45 @@ def process_data_file(file_path):
 
     if any(df is None for df in [dvar_cob_df, dvar_prev_cob_df, svar_cob_df, svar_prev_cob_df]): return None
 
-    # Helper function to create the Top 20 Comparison dataframe
     def create_top_20_comparison_df(cob_df, prev_cob_df):
+        # Pre-calculate the internal rank for the PrevCOB data
+        prev_cob_df['Prev_Internal_Rank'] = prev_cob_df['Macro'].rank(method='first', ascending=True).astype(int)
+
         top_20_neg = cob_df.sort_values("Macro", ascending=True).head(20).copy()
         top_20_pos = cob_df.sort_values("Macro", ascending=False).head(20).copy()
         
         top_20_neg['COB Rank'] = range(1, len(top_20_neg) + 1)
         top_20_pos['COB Rank'] = range(260, 260 - len(top_20_pos), -1)
 
-        combined_top = pd.concat([top_20_neg, top_20_pos], ignore_index=True)
+        combined_top = pd.concat([top_20_neg, top_20_pos])
         comparison = pd.merge(combined_top, prev_cob_df, on="Rank", how="left", suffixes=('_COB', '_PrevCOB'))
         
-        all_asset_classes = ["Macro", "Rates", "FX", "EM Macro"]
-        for col in all_asset_classes:
+        for col in ["Macro", "Rates", "FX", "EM Macro"]:
             if f'{col}_COB' in comparison.columns and f'{col}_PrevCOB' in comparison.columns:
-                 comparison[f'{col}_Diff'] = comparison[f'{col}_COB'] - comparison[f'{col}_PrevCOB']
+                 comparison[f'Diff_{col}'] = comparison[f'{col}_COB'] - comparison[f'{col}_PrevCOB']
         
-        final_cols_map = {
-            "COB Rank": 'COB Rank', "COB P&L Vector No": 'Rank', "Date": 'Date_COB',
-            "Macro": 'Macro_COB', "Rates": 'Rates_COB', "FX": 'FX_COB', "EM Macro": 'EM Macro_COB',
-            "Prev COB P&L Vector No": 'Rank', 
-            "Prev Macro": 'Macro_PrevCOB', "Prev Rates": 'Rates_PrevCOB', "Prev FX": 'FX_PrevCOB', "Prev EM Macro": 'EM Macro_PrevCOB',
-            "Diff Macro": 'Macro_Diff', "Diff Rates": 'Rates_Diff', "Diff FX": 'FX_Diff', "Diff EM Macro": 'EM Macro_Diff'
-        }
+        # Assemble the final dataframe with exact column names and order
         final_df = pd.DataFrame()
-        for new_col, old_col in final_cols_map.items():
-            if old_col in comparison: final_df[new_col] = comparison[old_col]
-            else: final_df[new_col] = np.nan
+        final_df["COB Rank"] = comparison["COB Rank"]
+        final_df["COB P&L Vector No"] = comparison["Rank"]
+        final_df["Date"] = comparison["Date_COB"]
+        final_df["Macro"] = comparison.get("Macro_COB")
+        final_df["Rates"] = comparison.get("Rates_COB")
+        final_df["FX"] = comparison.get("FX_COB")
+        final_df["EM Macro"] = comparison.get("EM Macro_COB")
+        final_df["Prev Cob Rank"] = comparison.get("Prev_Internal_Rank")
+        final_df["Prev COB P&L Vector No"] = comparison.get("Rank")
+        final_df["Macro "] = comparison.get("Macro_PrevCOB") # Note the trailing space in user screenshot
+        final_df["Rates "] = comparison.get("Rates_PrevCOB")
+        final_df["FX "] = comparison.get("FX_PrevCOB")
+        final_df["EM Macro "] = comparison.get("EM Macro_PrevCOB")
+        final_df["Macro  "] = comparison.get("Diff_Macro") # Note the two trailing spaces
+        final_df["Rates  "] = comparison.get("Diff_Rates")
+        final_df["FX  "] = comparison.get("Diff_FX")
+        final_df["EM Macro  "] = comparison.get("Diff_EM Macro")
+
         return final_df.sort_values(by="COB Rank").reset_index(drop=True)
 
-    # Helper function to create the Top Changes dataframe
     def create_top_changes_df(cob_df, prev_cob_df):
         merged_df = pd.merge(cob_df, prev_cob_df, on="Rank", how="inner", suffixes=('_COB', '_PrevCOB'))
         if merged_df.empty: return pd.DataFrame() 
@@ -233,17 +215,20 @@ def process_data_file(file_path):
         combined_changes = pd.concat([top_20_neg_changes, top_20_pos_changes])
         if combined_changes.empty: return pd.DataFrame()
 
-        combined_changes['Rank_Final'] = list(range(1, len(top_20_neg_changes) + 1)) + list(range(1, len(top_20_pos_changes) + 1))
+        combined_changes['Final_Rank'] = list(range(1, len(top_20_neg_changes) + 1)) + list(range(1, len(top_20_pos_changes) + 1))
         
-        final_cols_map = {
-            "Rank": 'Rank_Final', "COB P&L Vector No": 'Rank', "Prev COB P&L Vector No": 'Rank', 
-            "Date": 'Date_COB', "Macro COB": 'Macro_COB', "Macro PrevCob": 'Macro_PrevCOB', "Diff": 'Diff',
-            "Rates": 'Rates_COB', "FX": 'FX_COB', "EM Macro": 'EM Macro_COB'
-        }
         final_df = pd.DataFrame()
-        for new_col, old_col in final_cols_map.items():
-             if old_col in combined_changes: final_df[new_col] = combined_changes[old_col]
-             else: final_df[new_col] = np.nan
+        final_df["Rank"] = combined_changes["Final_Rank"]
+        final_df["COB P&L Vector No"] = combined_changes["Rank"]
+        final_df["Prev COB P&L Vector No"] = combined_changes["Rank"]
+        final_df["Date"] = combined_changes["Date_COB"]
+        final_df["Macro COB"] = combined_changes["Macro_COB"]
+        final_df["Macro PrevCob"] = combined_changes["Macro_PrevCOB"]
+        final_df["Diff"] = combined_changes["Diff"]
+        final_df["Rates"] = combined_changes["Rates_COB"]
+        final_df["FX"] = combined_changes["FX_COB"]
+        final_df["EM Macro"] = combined_changes["EM Macro_COB"]
+        
         return final_df
 
     data_dict = {
@@ -260,17 +245,26 @@ def process_data_file(file_path):
 # --- UI Rendering Functions ---
 def format_df_for_display(df):
     if df is None or df.empty: return "<p>Data not available or no matching records found.</p>"
+    
+    # Create a copy with filled NaNs for display to avoid errors in formatting
     formatted_df = df.copy().fillna('N/A')
+    
     for col in formatted_df.columns:
-        is_diff_col = 'Diff' in col
-        if any(isinstance(x, (int, float)) for x in formatted_df[col] if pd.notna(x) and x != 'N/A') and col not in ["COB Rank", "COB P&L Vector No", "Prev COB P&L Vector No", "Rank"]:
-            formatted_df[col] = formatted_df[col].apply(
-                lambda x: f'<span class="positive-change">{x:,.0f}</span>' if is_diff_col and isinstance(x, (int, float)) and x > 0 else (f'<span class="negative-change">{x:,.0f}</span>' if is_diff_col and isinstance(x, (int, float)) and x < 0 else (f'{x:,.0f}' if isinstance(x, (int, float)) else x))
-            )
+        # Identify columns that represent a difference
+        is_diff_col = "Diff" in col or col.endswith("  ") 
+        
+        # Check if column contains numeric data before trying to format
+        if any(isinstance(x, (int, float)) for x in formatted_df[col] if pd.notna(x) and x != 'N/A'):
+             if col not in ["COB Rank", "COB P&L Vector No", "Prev COB P&L Vector No", "Rank", "Prev Cob Rank"]:
+                formatted_df[col] = formatted_df[col].apply(
+                    lambda x: f'<span class="positive-change">{x:,.0f}</span>' if is_diff_col and isinstance(x, (int, float)) and x > 0 
+                    else (f'<span class="negative-change">{x:,.0f}</span>' if is_diff_col and isinstance(x, (int, float)) and x < 0 
+                    else (f'{x:,.0f}' if isinstance(x, (int, float)) else x))
+                )
     return f"<div class='dataframe-container'>{formatted_df.to_html(escape=False, index=False)}</div>"
 
 def create_bokeh_chart(cob_df, prev_cob_df, title):
-    if cob_df.empty or prev_cob_df.empty:
+    if cob_df is None or prev_cob_df is None or cob_df.empty or prev_cob_df.empty:
         p = figure(height=400, title=f"{title} - No Data Available", sizing_mode="stretch_width")
         return p
     source_df = pd.merge(cob_df, prev_cob_df, on='Rank', how="inner", suffixes=('_COB', '_PrevCOB'))
