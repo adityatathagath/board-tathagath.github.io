@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timedelta
 from bokeh.plotting import figure
 from bokeh.models import HoverTool, ColumnDataSource, NumeralTickFormatter
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
 # --- Page Configuration and Styling ---
 st.set_page_config(
@@ -16,61 +17,14 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS for styling the dataframes and improving the visual appeal
+# Custom CSS for AgGrid theming and alignment
 st.markdown("""
 <style>
-    /* Main app styling */
     .stApp {
         background-color: #F0F2F6;
     }
-    /* Dataframe styling */
-    .dataframe-container {
-        border-radius: 10px;
-        overflow: hidden;
-        box-shadow: 0 4px 8px 0 rgba(0,0,0,0.1);
-        margin-bottom: 2rem;
-    }
-    .dataframe-container table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    .dataframe-container th {
-        background-color: #0068C9;
-        color: white;
-        text-align: left;
-        padding: 12px 15px;
-        font-weight: bold;
-    }
-    .dataframe-container td {
-        padding: 10px 15px;
-        border-bottom: 1px solid #ddd;
-    }
-    .dataframe-container tbody tr:nth-child(even) {
-        background-color: #f9f9f9;
-    }
-    .dataframe-container tbody tr:hover {
-        background-color: #f1f1f1;
-    }
-    /* Cell styling for numbers */
-    .positive-change {
-        color: #28a745 !important;
-        font-weight: bold;
-    }
-    .negative-change {
-        color: #dc3545 !important;
-        font-weight: bold;
-    }
-    /* Sidebar styling */
-    [data-testid="stSidebar"] {
-        background-color: #FFFFFF;
-    }
-    /* Metric cards styling */
-    [data-testid="stMetric"] {
-        background-color: #FFFFFF;
-        border-left: 5px solid #0068C9;
-        padding: 15px;
-        border-radius: 5px;
-        box-shadow: 0 2px 4px 0 rgba(0,0,0,0.1);
+    .ag-header-cell-label {
+        justify-content: center;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -152,9 +106,12 @@ def process_data_file(file_path):
         
         pivot_df["Macro"] = pivot_df.sum(axis=1)
         pivot_df["Date"] = pivot_df.index.map(date_map)
-        pivot_df["Rank"] = pivot_df.index.str.extract(r'(\d+)').astype(int)
+        pivot_df["P&L Vector No"] = pivot_df.index.str.extract(r'(\d+)').astype(int)
         
-        pivot_df.drop_duplicates(subset=['Rank'], keep='first', inplace=True)
+        # FIX: Add the requested internal rank column based on Macro value
+        pivot_df['Macro Rank'] = pivot_df['Macro'].rank(method='first', ascending=True).astype(int)
+        
+        pivot_df.drop_duplicates(subset=['P&L Vector No'], keep='first', inplace=True)
         return pivot_df.reset_index()
 
     dvar_cob_df = create_summary_df("DVaR_COB")
@@ -165,44 +122,34 @@ def process_data_file(file_path):
     if any(df is None for df in [dvar_cob_df, dvar_prev_cob_df, svar_cob_df, svar_prev_cob_df]): return None
 
     def create_top_20_comparison_df(cob_df, prev_cob_df):
-        # Pre-calculate the internal rank for the PrevCOB data based on its own Macro values
-        prev_cob_df['Prev_Internal_Rank'] = prev_cob_df['Macro'].rank(method='first', ascending=True).astype(int)
-
-        # 1. Select top 20 positive and negative events from the COB data
         top_20_neg = cob_df.sort_values("Macro", ascending=True).head(20).copy()
         top_20_pos = cob_df.sort_values("Macro", ascending=False).head(20).copy()
         
-        # 2. Assign the final "COB Rank" as specified
         top_20_neg['COB Rank'] = range(1, len(top_20_neg) + 1)
         top_20_pos['COB Rank'] = range(260, 260 - len(top_20_pos), -1)
 
-        # 3. Combine the selections
         combined_top = pd.concat([top_20_neg, top_20_pos])
-
-        # 4. Merge with PrevCOB data. Use a 'left' merge to keep all 40 COB events.
-        comparison = pd.merge(combined_top, prev_cob_df, on="Rank", how="left", suffixes=('_COB', '_PrevCOB'))
+        comparison = pd.merge(combined_top, prev_cob_df, on="P&L Vector No", how="left", suffixes=('_COB', '_PrevCOB'))
         
-        # 5. Calculate the difference columns
         for col in ["Macro", "Rates", "FX", "EM Macro"]:
             if f'{col}_COB' in comparison.columns and f'{col}_PrevCOB' in comparison.columns:
                  comparison[f'Diff_{col}'] = comparison[f'{col}_COB'] - comparison[f'{col}_PrevCOB']
         
-        # 6. Assemble the final dataframe with exact column names and order from screenshot
         final_df = pd.DataFrame()
         final_df["COB Rank"] = comparison["COB Rank"]
-        final_df["COB P&L Vector No"] = comparison["Rank"]
+        final_df["COB P&L Vector No"] = comparison["P&L Vector No"]
         final_df["Date"] = comparison["Date_COB"]
         final_df["Macro"] = comparison.get("Macro_COB")
         final_df["Rates"] = comparison.get("Rates_COB")
         final_df["FX"] = comparison.get("FX_COB")
         final_df["EM Macro"] = comparison.get("EM Macro_COB")
-        final_df["Prev Cob Rank"] = comparison.get("Prev_Internal_Rank")
-        final_df["Prev COB P&L Vector No"] = comparison.get("Rank")
-        final_df["Macro "] = comparison.get("Macro_PrevCOB") # Note the trailing space
+        final_df["Prev Cob Rank"] = comparison.get("Macro Rank_PrevCOB")
+        final_df["Prev COB P&L Vector No"] = comparison.get("P&L Vector No")
+        final_df["Macro "] = comparison.get("Macro_PrevCOB")
         final_df["Rates "] = comparison.get("Rates_PrevCOB")
         final_df["FX "] = comparison.get("FX_PrevCOB")
         final_df["EM Macro "] = comparison.get("EM Macro_PrevCOB")
-        final_df["Macro  "] = comparison.get("Diff_Macro") # Note the two trailing spaces
+        final_df["Macro  "] = comparison.get("Diff_Macro")
         final_df["Rates  "] = comparison.get("Diff_Rates")
         final_df["FX  "] = comparison.get("Diff_FX")
         final_df["EM Macro  "] = comparison.get("Diff_EM Macro")
@@ -210,8 +157,7 @@ def process_data_file(file_path):
         return final_df.sort_values(by="COB Rank").reset_index(drop=True)
 
     def create_top_changes_df(cob_df, prev_cob_df):
-        # An 'inner' merge is correct here because a change requires both values to exist.
-        merged_df = pd.merge(cob_df, prev_cob_df, on="Rank", how="inner", suffixes=('_COB', '_PrevCOB'))
+        merged_df = pd.merge(cob_df, prev_cob_df, on="P&L Vector No", how="inner", suffixes=('_COB', '_PrevCOB'))
         if merged_df.empty: return pd.DataFrame() 
         
         merged_df['Diff'] = merged_df['Macro_COB'] - merged_df['Macro_PrevCOB']
@@ -222,14 +168,12 @@ def process_data_file(file_path):
         combined_changes = pd.concat([top_20_neg_changes, top_20_pos_changes])
         if combined_changes.empty: return pd.DataFrame()
 
-        # Assign the final rank (1-20 for neg, 1-20 for pos)
         combined_changes['Final_Rank'] = list(range(1, len(top_20_neg_changes) + 1)) + list(range(1, len(top_20_pos_changes) + 1))
         
-        # Assemble the final dataframe with exact column names
         final_df = pd.DataFrame()
         final_df["Rank"] = combined_changes["Final_Rank"]
-        final_df["COB P&L Vector No"] = combined_changes["Rank"]
-        final_df["Prev COB P&L Vector No"] = combined_changes["Rank"]
+        final_df["COB P&L Vector No"] = combined_changes["P&L Vector No"]
+        final_df["Prev COB P&L Vector No"] = combined_changes["P&L Vector No"]
         final_df["Date"] = combined_changes["Date_COB"]
         final_df["Macro COB"] = combined_changes["Macro_COB"]
         final_df["Macro PrevCob"] = combined_changes["Macro_PrevCOB"]
@@ -240,7 +184,6 @@ def process_data_file(file_path):
         
         return final_df
 
-    # --- Generate all data dictionaries ---
     data_dict = {
         "dvar_cob": dvar_cob_df, "svar_cob": svar_cob_df,
         "dvar_prev_cob": dvar_prev_cob_df, "svar_prev_cob": svar_prev_cob_df
@@ -253,29 +196,70 @@ def process_data_file(file_path):
     return data_dict
 
 # --- UI Rendering Functions ---
-def format_df_for_display(df):
-    if df is None or df.empty: return "<p>Data not available or no matching records found.</p>"
+def display_aggrid(df):
+    """Configures and displays a dataframe with Streamlit AgGrid."""
+    if df is None or df.empty:
+        st.warning("Data not available or no matching records found.")
+        return
+
+    gb = GridOptionsBuilder.from_dataframe(df)
     
-    formatted_df = df.copy().fillna('N/A')
+    # Enable sorting, filtering, and resizable columns
+    gb.configure_default_column(
+        resizable=True,
+        filterable=True,
+        sortable=True,
+        enableValue=True,
+        enableRowGroup=False,
+        enablePivot=False,
+    )
     
-    for col in formatted_df.columns:
-        is_diff_col = "Diff" in col or col.strip() != col
-        
-        if any(isinstance(x, (int, float)) for x in formatted_df[col] if pd.notna(x) and x != 'N/A'):
-             if col not in ["COB Rank", "COB P&L Vector No", "Prev COB P&L Vector No", "Rank", "Prev Cob Rank"]:
-                formatted_df[col] = formatted_df[col].apply(
-                    lambda x: f'<span class="positive-change">{x:,.0f}</span>' if is_diff_col and isinstance(x, (int, float)) and x > 0 
-                    else (f'<span class="negative-change">{x:,.0f}</span>' if is_diff_col and isinstance(x, (int, float)) and x < 0 
-                    else (f'{x:,.0f}' if isinstance(x, (int, float)) else x))
-                )
-    return f"<div class='dataframe-container'>{formatted_df.to_html(escape=False, index=False)}</div>"
+    # Custom JS for cell styling (red for negative, green for positive)
+    cells_renderer = JsCode("""
+    class GreenRedCellRenderer {
+        init(params) {
+            this.eGui = document.createElement('div');
+            if (params.value < 0) {
+                this.eGui.innerHTML = `<span style="color: red; font-weight: bold;">${params.value.toLocaleString()}</span>`;
+            } else if (params.value > 0) {
+                this.eGui.innerHTML = `<span style="color: green; font-weight: bold;">${params.value.toLocaleString()}</span>`;
+            } else {
+                 this.eGui.innerHTML = params.value.toLocaleString();
+            }
+        }
+        getGui() {
+            return this.eGui;
+        }
+    }
+    """)
+
+    # Apply formatting and styling
+    for col in df.columns:
+        if "Diff" in col or col.strip() != col: # Identify difference columns
+             gb.configure_column(col, cellRenderer=cells_renderer, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
+        elif df[col].dtype == 'float64' or df[col].dtype == 'int64':
+             if col not in ["COB Rank", "COB P&L Vector No", "Prev COB P&L Vector No", "Rank", "Prev Cob Rank", "Macro Rank"]:
+                gb.configure_column(col, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
+
+    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=40)
+    gb.configure_grid_options(domLayout='normal')
+    gridOptions = gb.build()
+
+    AgGrid(
+        df,
+        gridOptions=gridOptions,
+        height=600,
+        width='100%',
+        theme='streamlit',
+        allow_unsafe_jscode=True,
+        fit_columns_on_grid_load=True
+    )
 
 def create_bokeh_chart(cob_df, prev_cob_df, title):
     if cob_df is None or prev_cob_df is None or cob_df.empty or prev_cob_df.empty:
         p = figure(height=400, title=f"{title} - No Data Available", sizing_mode="stretch_width")
         return p
-    # An inner merge is correct for the chart to compare only matching vectors
-    source_df = pd.merge(cob_df, prev_cob_df, on='Rank', how="inner", suffixes=('_COB', '_PrevCOB'))
+    source_df = pd.merge(cob_df, prev_cob_df, on='P&L Vector No', how="inner", suffixes=('_COB', '_PrevCOB'))
     if source_df.empty:
         p = figure(height=400, title=f"{title} - No Matching P&L Vectors to Compare", sizing_mode="stretch_width")
         return p
@@ -283,10 +267,10 @@ def create_bokeh_chart(cob_df, prev_cob_df, title):
     source = ColumnDataSource(source_df)
     p = figure(height=400, x_axis_label="P&L Vector No", y_axis_label="Value", title=title, sizing_mode="stretch_width", tools="pan,wheel_zoom,box_zoom,reset,save")
     p.yaxis.formatter = NumeralTickFormatter(format="0,0.00a")
-    p.line(x='Rank', y='Macro_COB', source=source, legend_label="Macro COB", color="dodgerblue", width=2.5, alpha=0.8)
-    p.circle(x='Rank', y='Macro_COB', source=source, legend_label="Macro COB", color="dodgerblue", size=5)
-    p.line(x='Rank', y='Macro_PrevCOB', source=source, legend_label="Macro PrevCOB", color="gray", width=2, line_dash="dashed")
-    hover = HoverTool(tooltips=[("P&L Vector", "@Rank"), ("Date", "@Date_COB_dt{%F}"), ("Macro COB", "@Macro_COB{0,0}"), ("Macro PrevCOB", "@Macro_PrevCOB{0,0}")], formatters={'@Date_COB_dt': 'datetime'})
+    p.line(x='P&L Vector No', y='Macro_COB', source=source, legend_label="Macro COB", color="dodgerblue", width=2.5, alpha=0.8)
+    p.circle(x='P&L Vector No', y='Macro_COB', source=source, legend_label="Macro COB", color="dodgerblue", size=5)
+    p.line(x='P&L Vector No', y='Macro_PrevCOB', source=source, legend_label="Macro PrevCOB", color="gray", width=2, line_dash="dashed")
+    hover = HoverTool(tooltips=[("P&L Vector", "@{P&L Vector No}"), ("Date", "@Date_COB_dt{%F}"), ("Macro COB", "@Macro_COB{0,0}"), ("Macro PrevCOB", "@Macro_PrevCOB{0,0}")], formatters={'@Date_COB_dt': 'datetime'})
     p.add_tools(hover)
     p.legend.location = "top_left"
     p.legend.click_policy = "hide"
@@ -295,7 +279,10 @@ def create_bokeh_chart(cob_df, prev_cob_df, title):
 # --- MAIN APP ---
 def main():
     st.title("📊 Tail Analysis Dashboard")
-    st.write("An interactive web application to analyze daily DVaR and SVaR tail events.")
+    st.write("""
+    An interactive web application to analyze daily DVaR and SVaR tail events.
+    **Installation Note:** This app requires `streamlit-aggrid`. Please install it using: `pip install streamlit-aggrid`
+    """)
     DATA_FOLDER_PATH = r"C:\Top tails daily run data"
     
     st.sidebar.title("Controls")
@@ -339,14 +326,14 @@ def main():
                 st.header("DVaR Analysis")
                 chart_tab, comparison_tab, changes_tab = st.tabs(["📈 Time Series Chart", "🏆 Top 20 Comparison", "🔄 Top Changes"])
                 with chart_tab: st.bokeh_chart(create_bokeh_chart(data["dvar_cob"], data["dvar_prev_cob"], "DVaR: Macro COB vs. Macro PrevCOB"), use_container_width=True)
-                with comparison_tab: st.subheader("Top 20 Positive & Negative DVaR Macro Values"); st.markdown(format_df_for_display(data['dvar_comparison']), unsafe_allow_html=True)
-                with changes_tab: st.subheader("Top 20 Largest DVaR Macro Changes (COB vs PrevCOB)"); st.markdown(format_df_for_display(data['dvar_changes']), unsafe_allow_html=True)
+                with comparison_tab: st.subheader("Top 20 Positive & Negative DVaR Macro Values"); display_aggrid(data['dvar_comparison'])
+                with changes_tab: st.subheader("Top 20 Largest DVaR Macro Changes (COB vs PrevCOB)"); display_aggrid(data['dvar_changes'])
             with svar_tab:
                 st.header("SVaR Analysis")
                 chart_tab, comparison_tab, changes_tab = st.tabs(["📈 Time Series Chart", "🏆 Top 20 Comparison", "🔄 Top Changes"])
                 with chart_tab: st.bokeh_chart(create_bokeh_chart(data["svar_cob"], data["svar_prev_cob"], "SVaR: Macro COB vs. Macro PrevCOB"), use_container_width=True)
-                with comparison_tab: st.subheader("Top 20 Positive & Negative SVaR Macro Values"); st.markdown(format_df_for_display(data['svar_comparison']), unsafe_allow_html=True)
-                with changes_tab: st.subheader("Top 20 Largest SVaR Macro Changes (COB vs PrevCOB)"); st.markdown(format_df_for_display(data['svar_changes']), unsafe_allow_html=True)
+                with comparison_tab: st.subheader("Top 20 Positive & Negative SVaR Macro Values"); display_aggrid(data['svar_comparison'])
+                with changes_tab: st.subheader("Top 20 Largest SVaR Macro Changes (COB vs PrevCOB)"); display_aggrid(data['svar_changes'])
     else: st.error("No data files could be found or created. Please check the folder path.")
 
 if __name__ == "__main__":
