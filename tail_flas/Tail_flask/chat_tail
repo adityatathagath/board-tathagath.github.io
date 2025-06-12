@@ -99,32 +99,26 @@ def process_data_file(file_path):
         raw_df, date_map, pnl_vectors = read_sheet(sheet_name)
         if raw_df is None: return None
         
-        # FIX: Implement a direct, explicit loop to prevent aggregation errors.
         all_results = []
         for pnl_col in pnl_vectors:
-            # For each pnl_vector column, calculate the sums for each asset class
             fx_sum = raw_df.loc[raw_df['Node'] == 10, pnl_col].sum()
             rates_sum = raw_df.loc[raw_df['Node'] == 22194, pnl_col].sum()
             em_macro_sum = raw_df.loc[raw_df['Node'] == 1373254, pnl_col].sum()
-
-            # Create a dictionary for the new row
             result_row = {
-                'Pnl_Vector': pnl_col,
-                'FX': fx_sum,
-                'Rates': rates_sum,
-                'EM Macro': em_macro_sum,
-                'Macro': fx_sum + rates_sum + em_macro_sum,
+                'Pnl_Vector': pnl_col, 'FX': fx_sum, 'Rates': rates_sum,
+                'EM Macro': em_macro_sum, 'Macro': fx_sum + rates_sum + em_macro_sum,
                 'Date': date_map.get(pnl_col)
             }
             all_results.append(result_row)
 
-        if not all_results:
-            return pd.DataFrame()
-            
+        if not all_results: return pd.DataFrame()
         final_df = pd.DataFrame(all_results)
-
+        
+        # FIX: The P&L Vector No is the rank, as requested.
         final_df["P&L Vector No"] = final_df["Pnl_Vector"].str.extract(r'(\d+)').astype(int)
-        final_df['Macro Rank'] = final_df['Macro'].rank(method='first', ascending=True).astype(int)
+        
+        # This is the rank based on the Macro value, used for the "Prev Cob Rank" column
+        final_df['Value Rank'] = final_df['Macro'].rank(method='first', ascending=True).astype(int)
         
         final_df.drop_duplicates(subset=['P&L Vector No'], keep='first', inplace=True)
         return final_df
@@ -144,7 +138,10 @@ def process_data_file(file_path):
         top_20_pos['COB Rank'] = range(260, 260 - len(top_20_pos), -1)
 
         combined_top = pd.concat([top_20_neg, top_20_pos])
-        comparison = pd.merge(combined_top, prev_cob_df, on="P&L Vector No", how="left", suffixes=('_COB', '_PrevCOB'))
+        
+        # FIX: Merge on 'Date' to correctly find the corresponding PrevCOB event.
+        # This will create suffixed columns for all non-key columns, including 'P&L Vector No'.
+        comparison = pd.merge(combined_top, prev_cob_df, on="Date", how="left", suffixes=('_COB', '_PrevCOB'))
         
         for col in ["Macro", "Rates", "FX", "EM Macro"]:
             if f'{col}_COB' in comparison.columns and f'{col}_PrevCOB' in comparison.columns:
@@ -152,14 +149,14 @@ def process_data_file(file_path):
         
         final_df = pd.DataFrame()
         final_df["COB Rank"] = comparison["COB Rank"]
-        final_df["COB P&L Vector No"] = comparison["P&L Vector No"]
-        final_df["Date"] = comparison["Date_COB"]
+        final_df["COB P&L Vector No"] = comparison["P&L Vector No_COB"]
+        final_df["Date"] = comparison["Date"] # The merge key
         final_df["Macro"] = comparison.get("Macro_COB")
         final_df["Rates"] = comparison.get("Rates_COB")
         final_df["FX"] = comparison.get("FX_COB")
         final_df["EM Macro"] = comparison.get("EM Macro_COB")
-        final_df["Prev Cob Rank"] = comparison.get("Macro Rank_PrevCOB")
-        final_df["Prev COB P&L Vector No"] = comparison.get("P&L Vector No")
+        final_df["Prev Cob Rank"] = comparison.get("Value Rank_PrevCOB")
+        final_df["Prev COB P&L Vector No"] = comparison.get("P&L Vector No_PrevCOB")
         final_df["Macro "] = comparison.get("Macro_PrevCOB")
         final_df["Rates "] = comparison.get("Rates_PrevCOB")
         final_df["FX "] = comparison.get("FX_PrevCOB")
@@ -244,7 +241,7 @@ def display_aggrid(df):
         if "Diff" in col or col.strip() != col:
              gb.configure_column(col, cellRenderer=cells_renderer, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
         elif df[col].dtype in ['float64', 'int64']:
-             if col not in ["COB Rank", "COB P&L Vector No", "Prev COB P&L Vector No", "Rank", "Prev Cob Rank", "Macro Rank"]:
+             if col not in ["COB Rank", "COB P&L Vector No", "Prev COB P&L Vector No", "Rank", "Prev Cob Rank", "Value Rank"]:
                 gb.configure_column(col, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
 
     gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=40)
