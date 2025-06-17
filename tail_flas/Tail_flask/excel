@@ -1,24 +1,24 @@
-Sub ProcessRiskFactorReturns()
+Sub Run_Full_RiskFactor_Processing()
 
-    Dim wbTarget As Workbook
-    Dim wbMarket As Workbook
-    Dim wbTemplate As Workbook
+    Dim wbTarget As Workbook, wbMarket As Workbook, wbTemplate As Workbook
     Dim wsReturns As Worksheet, wsMFF As Worksheet, wsTS As Worksheet
     Dim wsMarketReturns As Worksheet, wsMarketMFF As Worksheet, wsMarketTS As Worksheet
     Dim wsTemplate As Worksheet, wsRiskReturns As Worksheet
     Dim lastRow As Long, lastCol As Long
     Dim rfDict As Object
-    Dim fileMarket As String, fileTemplate As String
+    Dim fileTarget As String, fileMarket As String, fileTemplate As String
+    Dim i As Long
 
-    ' === Set paths ===
+    ' === Set file paths ===
+    fileTarget = "C:\path\to\target_file.xlsx"
     fileMarket = "C:\path\to\marketwatch.xlsb"
     fileTemplate = "C:\path\to\risk_factors_returns_template.xlsx"
 
-    Set wbTarget = ThisWorkbook  ' Assumes you're running macro from target file
-
+    ' === Open target file ===
+    Set wbTarget = Workbooks.Open(fileTarget)
+    
     ' === Create required sheets if missing ===
     Dim sheetNames As Variant: sheetNames = Array("Returns", "MFF", "Time Series", "DVaR - Chart-Returns", "Risk Factor Returns")
-    Dim i As Long
     For i = LBound(sheetNames) To UBound(sheetNames)
         On Error Resume Next
         Set ws = wbTarget.Sheets(sheetNames(i))
@@ -50,24 +50,23 @@ Sub ProcessRiskFactorReturns()
     wsMFF.Cells.Clear
     wsMarketMFF.UsedRange.Copy wsMFF.Range("A1")
 
-    ' === Open Template ===
+    ' === Open template ===
     Set wbTemplate = Workbooks.Open(fileTemplate, ReadOnly:=True)
     Set wsTemplate = wbTemplate.Sheets(1) ' Assuming only 1 sheet
 
-    ' === Fill Dates in Template A6 down ===
+    ' === Copy Dates to Template ===
     lastRow = wsReturns.Cells(wsReturns.Rows.Count, 1).End(xlUp).Row
     wsTemplate.Range("A6").Resize(lastRow - 1).Value = wsReturns.Range("A2:A" & lastRow).Value
 
-    ' === Create Dictionary for risk factor headers ===
+    ' === Create header dictionary ===
     Set rfDict = CreateObject("Scripting.Dictionary")
     lastCol = wsReturns.Cells(1, wsReturns.Columns.Count).End(xlToLeft).Column
     For i = 2 To lastCol
         rfDict(wsReturns.Cells(1, i).Value) = i
     Next i
 
-    ' === Fill B6:... from Returns into Template ===
-    Dim rfName As String
-    Dim rfColTemplate As Long
+    ' === Fill matrix B6:... in Template ===
+    Dim rfName As String, rfColTemplate As Long
     Dim rowOffset As Long, colOffset As Long
     Dim dateCount As Long
 
@@ -82,7 +81,7 @@ Sub ProcessRiskFactorReturns()
         End If
     Next colOffset
 
-    ' === Copy B6:... with formatting to Risk Factor Returns ===
+    ' === Copy matrix to Risk Factor Returns with formatting ===
     wsTemplate.Range("B6").CurrentRegion.Copy
     wsRiskReturns.Range("B6").PasteSpecial Paste:=xlPasteAllUsingSourceTheme
 
@@ -91,7 +90,8 @@ Sub ProcessRiskFactorReturns()
     wbTarget.Save
     wbMarket.Close SaveChanges:=False
     wbTemplate.Close SaveChanges:=False
+    wbTarget.Close
 
-    MsgBox "All done!"
+    MsgBox "Macro completed successfully!", vbInformation
 
 End Sub
