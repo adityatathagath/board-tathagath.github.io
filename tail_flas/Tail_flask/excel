@@ -1,48 +1,75 @@
 import xlwings as xw
 from pathlib import Path
 
-# Paths to the files
-target_path = Path(r"C:\path\to\your\target_file.xlsx")  # your main Excel file
-marketwatch_path = Path(r"C:\path\to\marketwatch.xlsb")  # marketwatch file
+# === Define File Paths ===
+target_path = Path(r"C:\path\to\target_file.xlsx")  # <- Update this
+marketwatch_path = Path(r"C:\path\to\marketwatch.xlsb")  # <- Update this
+template_path = Path(r"C:\path\to\risk_factors_returns_template.xlsx")  # <- Update this
 
-# Step 1: Open the target file
-app = xw.App(visible=False)  # Keep Excel hidden during operation
+# === Launch Excel ===
+app = xw.App(visible=False)
+app.display_alerts = False
+app.screen_updating = False
+
+# === Open Files ===
 target_wb = app.books.open(str(target_path))
-
-# Step 2: Create required sheets if they don't already exist
-sheet_names = ['Returns', 'MFF', 'Time Series', 'DVaR - Chart-Returns']
-for name in sheet_names:
-    if name not in [s.name for s in target_wb.sheets]:
-        target_wb.sheets.add(name)
-
-# Step 3: Open marketwatch.xlsb
 market_wb = app.books.open(str(marketwatch_path))
+template_wb = app.books.open(str(template_path))
 
-# Mapping of sheet names to be copied
-copy_map = {
-    "TimeSeries": "Time Series",
-    "Returns": "Returns",
-    "MFF Scalar": "MFF"
+# === Step 1: Create Required Sheets in Target ===
+required_sheets = ['Returns', 'MFF', 'Time Series', 'DVaR - Chart-Returns', 'Risk Factor Returns']
+existing_sheets = [s.name for s in target_wb.sheets]
+
+for sheet_name in required_sheets:
+    if sheet_name not in existing_sheets:
+        target_wb.sheets.add(name=sheet_name)
+
+# === Step 2: Copy Data from marketwatch.xlsb ===
+sheet_map = {
+    'TimeSeries': 'Time Series',
+    'Returns': 'Returns',
+    'MFF Scalar': 'MFF'
 }
 
-# Step 4: Copy data from marketwatch → target
-for src_sheet, dest_sheet in copy_map.items():
-    market_sht = market_wb.sheets[src_sheet]
-    target_sht = target_wb.sheets[dest_sheet]
-    
-    # Clear previous data in destination sheet
-    target_sht.clear()
-    
-    # Copy the used range
-    used_range = market_sht.used_range
-    used_range.copy(target_sht.range("A1"))
+for src, dest in sheet_map.items():
+    src_sheet = market_wb.sheets[src]
+    dest_sheet = target_wb.sheets[dest]
+    dest_sheet.clear()
+    src_sheet.used_range.copy(dest_sheet.range("A1"))
 
-# Step 5: Create a new sheet "Risk Factor Returns"
-if "Risk Factor Returns" not in [s.name for s in target_wb.sheets]:
-    target_wb.sheets.add("Risk Factor Returns")
+# === Step 3: Fill Template with Returns Data ===
+returns_sheet = target_wb.sheets["Returns"]
+template_sheet = template_wb.sheets[0]  # First sheet in template
+risk_factor_returns_sheet = target_wb.sheets["Risk Factor Returns"]
 
-# Save and close
+# Get Dates from Returns sheet
+dates = returns_sheet.range("A2").expand('down').value  # Skips header
+template_sheet.range("A6").options(transpose=True).value = dates
+
+# Get risk factor headers from template
+risk_factors = template_sheet.range("B1").expand('right').value
+
+# Get data from Returns sheet
+returns_header = returns_sheet.range("B1").expand('right').value
+returns_data = returns_sheet.range("B2").expand('table').value
+
+# Create column index map
+header_index_map = {rf: i for i, rf in enumerate(returns_header)}
+
+# Fill B6:AM265 with corresponding values
+for row_i, date in enumerate(dates):
+    for col_j, rf in enumerate(risk_factors):
+        if rf in header_index_map:
+            val = returns_data[row_i][header_index_map[rf]]
+            template_sheet.range((6 + row_i, 2 + col_j)).value = val
+
+# === Step 4: Copy from Template to Risk Factor Returns with formatting ===
+filled_range = template_sheet.range("B6").expand()
+filled_range.copy(risk_factor_returns_sheet.range("B6"), paste='all')
+
+# === Step 5: Save Target and Close All Files ===
 target_wb.save()
 market_wb.close()
+template_wb.close(save_changes=False)
 target_wb.close()
 app.quit()
