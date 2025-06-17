@@ -1,75 +1,97 @@
-import xlwings as xw
-from pathlib import Path
+Sub ProcessRiskFactorReturns()
 
-# === Define File Paths ===
-target_path = Path(r"C:\path\to\target_file.xlsx")  # <- Update this
-marketwatch_path = Path(r"C:\path\to\marketwatch.xlsb")  # <- Update this
-template_path = Path(r"C:\path\to\risk_factors_returns_template.xlsx")  # <- Update this
+    Dim wbTarget As Workbook
+    Dim wbMarket As Workbook
+    Dim wbTemplate As Workbook
+    Dim wsReturns As Worksheet, wsMFF As Worksheet, wsTS As Worksheet
+    Dim wsMarketReturns As Worksheet, wsMarketMFF As Worksheet, wsMarketTS As Worksheet
+    Dim wsTemplate As Worksheet, wsRiskReturns As Worksheet
+    Dim lastRow As Long, lastCol As Long
+    Dim rfDict As Object
+    Dim fileMarket As String, fileTemplate As String
 
-# === Launch Excel ===
-app = xw.App(visible=False)
-app.display_alerts = False
-app.screen_updating = False
+    ' === Set paths ===
+    fileMarket = "C:\path\to\marketwatch.xlsb"
+    fileTemplate = "C:\path\to\risk_factors_returns_template.xlsx"
 
-# === Open Files ===
-target_wb = app.books.open(str(target_path))
-market_wb = app.books.open(str(marketwatch_path))
-template_wb = app.books.open(str(template_path))
+    Set wbTarget = ThisWorkbook  ' Assumes you're running macro from target file
 
-# === Step 1: Create Required Sheets in Target ===
-required_sheets = ['Returns', 'MFF', 'Time Series', 'DVaR - Chart-Returns', 'Risk Factor Returns']
-existing_sheets = [s.name for s in target_wb.sheets]
+    ' === Create required sheets if missing ===
+    Dim sheetNames As Variant: sheetNames = Array("Returns", "MFF", "Time Series", "DVaR - Chart-Returns", "Risk Factor Returns")
+    Dim i As Long
+    For i = LBound(sheetNames) To UBound(sheetNames)
+        On Error Resume Next
+        Set ws = wbTarget.Sheets(sheetNames(i))
+        On Error GoTo 0
+        If ws Is Nothing Then
+            wbTarget.Sheets.Add(After:=wbTarget.Sheets(wbTarget.Sheets.Count)).Name = sheetNames(i)
+        End If
+        Set ws = Nothing
+    Next i
 
-for sheet_name in required_sheets:
-    if sheet_name not in existing_sheets:
-        target_wb.sheets.add(name=sheet_name)
+    Set wsReturns = wbTarget.Sheets("Returns")
+    Set wsMFF = wbTarget.Sheets("MFF")
+    Set wsTS = wbTarget.Sheets("Time Series")
+    Set wsRiskReturns = wbTarget.Sheets("Risk Factor Returns")
 
-# === Step 2: Copy Data from marketwatch.xlsb ===
-sheet_map = {
-    'TimeSeries': 'Time Series',
-    'Returns': 'Returns',
-    'MFF Scalar': 'MFF'
-}
+    ' === Open marketwatch.xlsb ===
+    Set wbMarket = Workbooks.Open(fileMarket, ReadOnly:=True)
+    Set wsMarketReturns = wbMarket.Sheets("Returns")
+    Set wsMarketTS = wbMarket.Sheets("TimeSeries")
+    Set wsMarketMFF = wbMarket.Sheets("MFF Scalar")
 
-for src, dest in sheet_map.items():
-    src_sheet = market_wb.sheets[src]
-    dest_sheet = target_wb.sheets[dest]
-    dest_sheet.clear()
-    src_sheet.used_range.copy(dest_sheet.range("A1"))
+    ' === Copy data from marketwatch → target ===
+    wsTS.Cells.Clear
+    wsMarketTS.UsedRange.Copy wsTS.Range("A1")
 
-# === Step 3: Fill Template with Returns Data ===
-returns_sheet = target_wb.sheets["Returns"]
-template_sheet = template_wb.sheets[0]  # First sheet in template
-risk_factor_returns_sheet = target_wb.sheets["Risk Factor Returns"]
+    wsReturns.Cells.Clear
+    wsMarketReturns.UsedRange.Copy wsReturns.Range("A1")
 
-# Get Dates from Returns sheet
-dates = returns_sheet.range("A2").expand('down').value  # Skips header
-template_sheet.range("A6").options(transpose=True).value = dates
+    wsMFF.Cells.Clear
+    wsMarketMFF.UsedRange.Copy wsMFF.Range("A1")
 
-# Get risk factor headers from template
-risk_factors = template_sheet.range("B1").expand('right').value
+    ' === Open Template ===
+    Set wbTemplate = Workbooks.Open(fileTemplate, ReadOnly:=True)
+    Set wsTemplate = wbTemplate.Sheets(1) ' Assuming only 1 sheet
 
-# Get data from Returns sheet
-returns_header = returns_sheet.range("B1").expand('right').value
-returns_data = returns_sheet.range("B2").expand('table').value
+    ' === Fill Dates in Template A6 down ===
+    lastRow = wsReturns.Cells(wsReturns.Rows.Count, 1).End(xlUp).Row
+    wsTemplate.Range("A6").Resize(lastRow - 1).Value = wsReturns.Range("A2:A" & lastRow).Value
 
-# Create column index map
-header_index_map = {rf: i for i, rf in enumerate(returns_header)}
+    ' === Create Dictionary for risk factor headers ===
+    Set rfDict = CreateObject("Scripting.Dictionary")
+    lastCol = wsReturns.Cells(1, wsReturns.Columns.Count).End(xlToLeft).Column
+    For i = 2 To lastCol
+        rfDict(wsReturns.Cells(1, i).Value) = i
+    Next i
 
-# Fill B6:AM265 with corresponding values
-for row_i, date in enumerate(dates):
-    for col_j, rf in enumerate(risk_factors):
-        if rf in header_index_map:
-            val = returns_data[row_i][header_index_map[rf]]
-            template_sheet.range((6 + row_i, 2 + col_j)).value = val
+    ' === Fill B6:... from Returns into Template ===
+    Dim rfName As String
+    Dim rfColTemplate As Long
+    Dim rowOffset As Long, colOffset As Long
+    Dim dateCount As Long
 
-# === Step 4: Copy from Template to Risk Factor Returns with formatting ===
-filled_range = template_sheet.range("B6").expand()
-filled_range.copy(risk_factor_returns_sheet.range("B6"), paste='all')
+    dateCount = lastRow - 1
+    rfColTemplate = wsTemplate.Cells(1, wsTemplate.Columns.Count).End(xlToLeft).Column
 
-# === Step 5: Save Target and Close All Files ===
-target_wb.save()
-market_wb.close()
-template_wb.close(save_changes=False)
-target_wb.close()
-app.quit()
+    For colOffset = 2 To rfColTemplate
+        rfName = wsTemplate.Cells(1, colOffset).Value
+        If rfDict.exists(rfName) Then
+            wsTemplate.Cells(6, colOffset).Resize(dateCount).Value = _
+                wsReturns.Cells(2, rfDict(rfName)).Resize(dateCount).Value
+        End If
+    Next colOffset
+
+    ' === Copy B6:... with formatting to Risk Factor Returns ===
+    wsTemplate.Range("B6").CurrentRegion.Copy
+    wsRiskReturns.Range("B6").PasteSpecial Paste:=xlPasteAllUsingSourceTheme
+
+    ' === Cleanup ===
+    Application.CutCopyMode = False
+    wbTarget.Save
+    wbMarket.Close SaveChanges:=False
+    wbTemplate.Close SaveChanges:=False
+
+    MsgBox "All done!"
+
+End Sub
