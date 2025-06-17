@@ -1,0 +1,48 @@
+import xlwings as xw
+from pathlib import Path
+
+# Paths to the files
+target_path = Path(r"C:\path\to\your\target_file.xlsx")  # your main Excel file
+marketwatch_path = Path(r"C:\path\to\marketwatch.xlsb")  # marketwatch file
+
+# Step 1: Open the target file
+app = xw.App(visible=False)  # Keep Excel hidden during operation
+target_wb = app.books.open(str(target_path))
+
+# Step 2: Create required sheets if they don't already exist
+sheet_names = ['Returns', 'MFF', 'Time Series', 'DVaR - Chart-Returns']
+for name in sheet_names:
+    if name not in [s.name for s in target_wb.sheets]:
+        target_wb.sheets.add(name)
+
+# Step 3: Open marketwatch.xlsb
+market_wb = app.books.open(str(marketwatch_path))
+
+# Mapping of sheet names to be copied
+copy_map = {
+    "TimeSeries": "Time Series",
+    "Returns": "Returns",
+    "MFF Scalar": "MFF"
+}
+
+# Step 4: Copy data from marketwatch → target
+for src_sheet, dest_sheet in copy_map.items():
+    market_sht = market_wb.sheets[src_sheet]
+    target_sht = target_wb.sheets[dest_sheet]
+    
+    # Clear previous data in destination sheet
+    target_sht.clear()
+    
+    # Copy the used range
+    used_range = market_sht.used_range
+    used_range.copy(target_sht.range("A1"))
+
+# Step 5: Create a new sheet "Risk Factor Returns"
+if "Risk Factor Returns" not in [s.name for s in target_wb.sheets]:
+    target_wb.sheets.add("Risk Factor Returns")
+
+# Save and close
+target_wb.save()
+market_wb.close()
+target_wb.close()
+app.quit()
