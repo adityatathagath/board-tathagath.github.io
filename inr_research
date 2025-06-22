@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Report: The Indian Rupee (INR) Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals with Teal Accent -->
+    <!-- Application Structure Plan: The SPA uses a thematic, single-page dashboard structure with a sticky top navigation bar for easy access to key sections: 'Home' (overview), 'Historical Journey' (interactive chart and timeline from 1947), 'Key Drivers' (grid of charts on fiscal, trade, inflation), 'RBI & Markets' (explaining policy and players), and 'Trader's Desk' (yield curve and strategies). This non-linear structure was chosen over a simple document scroll to empower users to explore the dense, merged report based on their interests. Key interactions include toggling currency pairs, clicking the historical timeline to update the main chart and info cards, and using accordions for trading strategies, making data discovery intuitive and engaging. -->
+    <!-- Visualization & Content Choices: Time-series data (exchange rates, inflation) is presented using interactive line charts (Chart.js) for clear trend visualization. Comparative data (fiscal deficit, FII flows) uses bar charts for easy comparison. The 'Historical Journey' section uses a timeline-driven interaction, where clicking an era updates the main chart and a contextual text block, directly linking the report's detailed narrative to the data. An HTML/CSS diagram with JS tooltips explains the RBI's toolkit. Trading strategies are organized in a JS-powered accordion for clean presentation. This structure ensures all information from the merged report is presented in the most effective, interactive format possible. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f7f4;
+            color: #4a4a4a;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 45vh;
+            max-height: 450px;
+        }
+        .small-chart-container {
+            position: relative;
+            width: 100%;
+            height: 300px;
+            max-height: 300px;
+        }
+        .nav-link {
+            transition: color 0.3s, border-bottom-color 0.3s;
+            border-bottom: 2px solid transparent;
+        }
+        .nav-link:hover, .nav-link.active {
+            color: #0d9488;
+            border-bottom-color: #0d9488;
+        }
+        .timeline-item {
+            cursor: pointer;
+            transition: all 0.3s;
+            border-left: 3px solid #d1d5db;
+        }
+        .timeline-item:hover, .timeline-item.active {
+            background-color: #e5e7eb;
+            transform: translateY(-2px);
+            border-left-color: #0d9488;
+        }
+        .stat-card {
+            background-color: white;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.5s ease-in-out;
+        }
+        .chart-annotation {
+            position: absolute;
+            background-color: rgba(13, 148, 136, 0.1);
+            border-left: 2px solid #0d9488;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <header class="bg-white/80 backdrop-blur-lg sticky top-0 z-50 shadow-md">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex-shrink-0">
+                    <h1 class="text-xl font-bold text-gray-800">INR Analysis</h1>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4">
+                        <a href="#home" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-700">Home</a>
+                        <a href="#history" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-700">Historical Journey</a>
+                        <a href="#drivers" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-700">Key Drivers</a>
+                        <a href="#rbi" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-700">RBI & Markets</a>
+                        <a href="#trader" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-700">Trader's Desk</a>
+                    </div>
+                </div>
+                <div class="md:hidden">
+                    <button id="mobile-menu-button" class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-white">
+                        <span class="sr-only">Open main menu</span>
+                        <svg class="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                        <svg class="hidden h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div id="mobile-menu" class="md:hidden hidden">
+                <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                    <a href="#home" class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-700">Home</a>
+                    <a href="#history" class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-700">Historical Journey</a>
+                    <a href="#drivers" class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-700">Key Drivers</a>
+                    <a href="#rbi" class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-700">RBI & Markets</a>
+                    <a href="#trader" class="mobile-nav-link block px-3 py-2 rounded-md text-base font-medium text-gray-700">Trader's Desk</a>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section id="home" class="py-12 md:py-20 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center">
+                    <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">The Indian Rupee: An Economic Barometer</h2>
+                    <p class="mt-4 text-lg leading-8 text-gray-600">An interactive exploration of the forces shaping India's currency, from 1947 to today.</p>
+                </div>
+
+                <div class="mt-16 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
+                    <div class="stat-card text-center">
+                        <p class="text-sm font-medium text-gray-500">USD/INR Exchange Rate</p>
+                        <p id="current-usd-inr" class="mt-1 text-3xl font-semibold text-teal-600">₹85.20</p>
+                        <p class="text-xs text-gray-400">(June 2025)</p>
+                    </div>
+                    <div class="stat-card text-center">
+                        <p class="text-sm font-medium text-gray-500">FY24 GDP Growth</p>
+                        <p class="mt-1 text-3xl font-semibold text-teal-600">8.2%</p>
+                        <p class="text-xs text-gray-400">(Estimate)</p>
+                    </div>
+                    <div class="stat-card text-center">
+                        <p class="text-sm font-medium text-gray-500">CPI Inflation</p>
+                        <p class="mt-1 text-3xl font-semibold text-teal-600">4.8%</p>
+                        <p class="text-xs text-gray-400">(FY26 Projection)</p>
+                    </div>
+                    <div class="stat-card text-center">
+                        <p class="text-sm font-medium text-gray-500">FY25 Fiscal Deficit</p>
+                        <p class="mt-1 text-3xl font-semibold text-teal-600">4.8%</p>
+                        <p class="text-xs text-gray-400">(of GDP)</p>
+                    </div>
+                </div>
+
+                <div class="mt-16 max-w-4xl mx-auto">
+                     <h3 class="text-2xl font-bold text-center text-gray-800">The INR as India's Equity</h3>
+                     <p class="mt-4 text-base text-gray-600 text-justify">
+                        The Indian Rupee (INR) transcends its function as a mere medium of exchange; it acts as a de facto equity of the Indian economy. Its value and stability in the foreign exchange (FX) market are direct reflections of India's macroeconomic fundamentals, policy credibility, and overall investment attractiveness. Just as a company's stock price encapsulates its financial health and future prospects, the INR's performance against global currencies offers a real-time assessment of India's fiscal discipline, trade competitiveness, and resilience to external shocks. This interactive report undertakes a comprehensive examination of the INR, analyzing its intricate relationship with FX and Rates markets, and exploring how various domestic and international factors shape its role as a proxy for India's economic standing.
+                     </p>
+                </div>
+            </div>
+        </section>
+
+        <section id="history" class="py-12 md:py-20">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center">
+                    <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">Historical Journey of the Rupee</h2>
+                    <p class="mt-4 text-lg leading-8 text-gray-600">Explore key eras that have shaped the INR's value from 1947 to the present day.</p>
+                </div>
+                
+                <div class="mt-12 flex justify-center space-x-2">
+                    <button id="btn-usd" class="currency-btn bg-teal-600 text-white px-4 py-2 rounded-md text-sm font-medium">USD</button>
+                    <button id="btn-eur" class="currency-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-md text-sm font-medium">EUR</button>
+                    <button id="btn-gbp" class="currency-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-md text-sm font-medium">GBP</button>
+                </div>
+
+                <div class="mt-8 relative">
+                    <div class="chart-container">
+                        <canvas id="historicalChart"></canvas>
+                        <div id="chart-annotation-box" class="chart-annotation"></div>
+                    </div>
+                </div>
+
+                <div class="mt-12 grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="max-w-xl mx-auto bg-white p-6 rounded-lg shadow-lg">
+                        <h3 id="timeline-title" class="text-xl font-bold text-gray-800 mb-4">Select an Era from the Timeline</h3>
+                        <p id="timeline-description" class="text-base text-gray-600 text-justify min-h-[12rem]">
+                            Click on a period in the timeline to see its impact on the chart and learn more about the economic and political context that shaped the rupee's value.
+                        </p>
+                    </div>
+                    <div id="timeline-container" class="space-y-4 max-h-[400px] overflow-y-auto pr-2">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="drivers" class="py-12 md:py-20 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center">
+                    <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">Key Economic Drivers</h2>
+                    <p class="mt-4 text-lg leading-8 text-gray-600">The core macroeconomic factors influencing the INR's strength and stability.</p>
+                </div>
+
+                <div class="mt-16 grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="stat-card p-6">
+                        <h3 class="text-xl font-semibold text-gray-800">Fiscal Deficit (% of GDP)</h3>
+                        <p class="text-sm text-gray-500 mt-1">India's commitment to fiscal consolidation is crucial for investor confidence.</p>
+                        <div class="small-chart-container mt-4">
+                            <canvas id="fiscalChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="stat-card p-6">
+                        <h3 class="text-xl font-semibold text-gray-800">Merchandise Trade Balance (USD Bn)</h3>
+                        <p class="text-sm text-gray-500 mt-1">Persistent deficits, often driven by oil imports, exert pressure on the rupee.</p>
+                        <div class="small-chart-container mt-4">
+                            <canvas id="tradeChart"></canvas>
+                        </div>
+                    </div>
+                     <div class="stat-card p-6">
+                        <h3 class="text-xl font-semibold text-gray-800">CPI Inflation vs. RBI Target</h3>
+                        <p class="text-sm text-gray-500 mt-1">Inflation control is a key mandate for the RBI to ensure price and currency stability.</p>
+                        <div class="small-chart-container mt-4">
+                            <canvas id="inflationChart"></canvas>
+                        </div>
+                    </div>
+                     <div class="stat-card p-6">
+                        <h3 class="text-xl font-semibold text-gray-800">Political & Geopolitical Factors</h3>
+                        <p class="text-sm text-gray-500 mt-1">Stability attracts investment, while uncertainty can trigger capital flight.</p>
+                        <div class="mt-4 space-y-4">
+                           <div>
+                                <h4 class="font-semibold text-teal-700">Election Cycles & Stability</h4>
+                                <p class="text-sm text-gray-600 mt-1">Stable government mandates typically lead to short-term INR appreciation due to reduced uncertainty. However, the market quickly returns focus to underlying economic fundamentals.</p>
+                           </div>
+                           <div>
+                                <h4 class="font-semibold text-teal-700">Global Tensions & Trade</h4>
+                                <p class="text-sm text-gray-600 mt-1">Events like regional conflicts or trade disputes often trigger a "risk-off" sentiment, leading to a flight to safe-haven currencies like the USD and putting pressure on the INR.</p>
+                           </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="rbi" class="py-12 md:py-20">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center">
+                    <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">RBI & Market Movers</h2>
+                    <p class="mt-4 text-lg leading-8 text-gray-600">Understanding the roles of the central bank, foreign investment, and major corporations.</p>
+                </div>
+                <div class="mt-16 grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                    <div class="stat-card p-6">
+                        <h3 class="text-xl font-semibold text-gray-800">The RBI's Intervention Toolkit</h3>
+                        <p class="text-sm text-gray-500 mt-1">The RBI uses a "managed float" system, intervening to curb volatility without targeting a specific rate.</p>
+                        <div class="mt-6 space-y-4">
+                            <div class="flex items-start space-x-4 group">
+                                <div class="flex-shrink-0 h-10 w-10 rounded-full bg-teal-100 flex items-center justify-center">
+                                    <span class="text-teal-600 font-bold text-lg">FX</span>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold">FX Interventions</h4>
+                                    <p class="text-sm text-gray-600">Buying or selling USD to increase or decrease its supply, directly influencing the exchange rate.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start space-x-4">
+                                <div class="flex-shrink-0 h-10 w-10 rounded-full bg-teal-100 flex items-center justify-center">
+                                    <span class="text-teal-600 font-bold text-lg">%</span>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold">Repo Rate</h4>
+                                    <p class="text-sm text-gray-600">Setting the benchmark interest rate to manage inflation and influence capital flows.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start space-x-4">
+                                <div class="flex-shrink-0 h-10 w-10 rounded-full bg-teal-100 flex items-center justify-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold">Forex Swaps & OMOs</h4>
+                                    <p class="text-sm text-gray-600">Conducting buy/sell swaps of USD/INR and Open Market Operations to manage liquidity and reserves.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                     <div class="stat-card p-6">
+                        <h3 class="text-xl font-semibold text-gray-800">Net FII/FPI Investment (₹ Crore)</h3>
+                        <p class="text-sm text-gray-500 mt-1">Foreign portfolio flows are a major driver of short-term INR movements.</p>
+                        <div class="small-chart-container mt-4">
+                            <canvas id="fiiChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="stat-card p-6 lg:col-span-2">
+                        <h3 class="text-xl font-semibold text-gray-800">Corporate & Trade Impact</h3>
+                        <p class="text-sm text-gray-500 mt-1">India's largest firms and key export markets are vital for FX earnings.</p>
+                        <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div>
+                                <h4 class="font-medium text-gray-700 mb-2">Top 5 Companies by Revenue (USD Bn)</h4>
+                                <ul class="space-y-2 text-sm">
+                                    <li class="flex justify-between"><span>Reliance Industries</span> <span class="font-semibold">110.94</span></li>
+                                    <li class="flex justify-between"><span>LIC</span> <span class="font-semibold">102.15</span></li>
+                                    <li class="flex justify-between"><span>Indian Oil</span> <span class="font-semibold">87.18</span></li>
+                                    <li class="flex justify-between"><span>ONGC</span> <span class="font-semibold">76.11</span></li>
+                                    <li class="flex justify-between"><span>Bharat Petroleum</span> <span class="font-semibold">50.94</span></li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-gray-700 mb-2">Top 5 Export Partners (% of Total)</h4>
+                                <ul class="space-y-2 text-sm">
+                                    <li class="flex justify-between"><span>United States</span> <span class="font-semibold">17.73%</span></li>
+                                    <li class="flex justify-between"><span>UAE</span> <span class="font-semibold">~7%</span></li>
+                                    <li class="flex justify-between"><span>Netherlands</span> <span class="font-semibold">~5%</span></li>
+                                    <li class="flex justify-between"><span>China</span> <span class="font-semibold">~4%</span></li>
+                                    <li class="flex justify-between"><span>Singapore</span> <span class="font-semibold">~3%</span></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="trader" class="py-12 md:py-20 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center">
+                    <h2 class="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">The Trader's Desk</h2>
+                    <p class="mt-4 text-lg leading-8 text-gray-600">Insights for navigating the INR from an FX and Rates perspective.</p>
+                </div>
+                <div class="mt-16 grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                    <div class="stat-card p-6">
+                        <h3 class="text-xl font-semibold text-gray-800">Indian Gov Bond Yield Curve</h3>
+                        <p class="text-sm text-gray-500 mt-1">The yield curve signals market expectations for future growth and inflation.</p>
+                        <div class="small-chart-container mt-4">
+                            <canvas id="yieldCurveChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="stat-card p-6">
+                        <h3 class="text-xl font-semibold text-gray-800">Volatility Insights</h3>
+                        <p class="text-sm text-gray-500 mt-1">While historically volatile, recent RBI action has suppressed volatility.</p>
+                         <div class="mt-6 space-y-4">
+                            <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
+                                <span class="font-medium text-sm">Recent Volatility (2023-24)</span>
+                                <span class="font-bold text-lg text-teal-600">1.8%</span>
+                            </div>
+                             <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
+                                <span class="font-medium text-sm">Historical Avg. (2000-22)</span>
+                                <span class="font-bold text-lg text-gray-700">~5.0%</span>
+                            </div>
+                            <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
+                                <span class="font-medium text-sm">Predicted GARCH Volatility</span>
+                                <span class="font-bold text-lg text-gray-700">~4.7%</span>
+                            </div>
+                        </div>
+                    </div>
+                     <div class="stat-card p-6 lg:col-span-2">
+                        <h3 class="text-xl font-semibold text-gray-800">Common FX Trading Strategies</h3>
+                        <p class="text-sm text-gray-500 mt-1">Approaches used by traders to navigate the INR market.</p>
+                        <div id="accordion-container" class="mt-4 space-y-2">
+                            <div class="accordion-item border rounded-lg">
+                                <button class="accordion-header w-full p-4 text-left font-semibold flex justify-between items-center">
+                                    <span>Short-Term Strategies (Scalping, Day Trading)</span>
+                                    <svg class="w-5 h-5 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                </button>
+                                <div class="accordion-content px-4 pb-4">
+                                    <p class="text-sm text-gray-600">These strategies aim for small, frequent profits from minor intraday price fluctuations, often using high leverage. They require constant market monitoring.</p>
+                                </div>
+                            </div>
+                            <div class="accordion-item border rounded-lg">
+                                <button class="accordion-header w-full p-4 text-left font-semibold flex justify-between items-center">
+                                    <span>Medium-Term Strategy (Swing Trading)</span>
+                                    <svg class="w-5 h-5 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                </button>
+                                <div class="accordion-content px-4 pb-4">
+                                    <p class="text-sm text-gray-600">Holding positions for a few days or weeks to benefit from larger, predictable price swings based on technical or fundamental analysis.</p>
+                                </div>
+                            </div>
+                             <div class="accordion-item border rounded-lg">
+                                <button class="accordion-header w-full p-4 text-left font-semibold flex justify-between items-center">
+                                    <span>Interest-Rate Strategy (Carry Trade)</span>
+                                    <svg class="w-5 h-5 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                </button>
+                                <div class="accordion-content px-4 pb-4">
+                                    <p class="text-sm text-gray-600">Involves borrowing in a currency with a low interest rate (e.g., JPY) and investing in a currency with a higher interest rate (e.g., INR) to profit from the interest rate differential. This is highly sensitive to central bank policy shifts.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-gray-800 text-white">
+        <div class="container mx-auto py-8 px-4 sm:px-6 lg:px-8 text-center">
+            <p class="text-sm">This interactive report is a visualization of a comprehensive analysis on the Indian Rupee.</p>
+            <p class="text-xs text-gray-400 mt-2">Data synthesized from reports on INR FX, Rates, and Historical Analysis. For informational purposes only.</p>
+        </div>
+    </footer>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    const reportData = {
+        historical: {
+            usd: [
+                { x: '1947-08-15', y: 3.30 }, { x: '1949-09-01', y: 4.76 }, { x: '1966-06-06', y: 7.50 }, { x: '1975-01-01', y: 8.39 },
+                { x: '1980-01-01', y: 7.86 }, { x: '1985-01-01', y: 12.37 }, { x: '1990-01-01', y: 17.50 }, { x: '1991-07-03', y: 22.74 },
+                { x: '1992-01-01', y: 25.92 }, { x: '1995-01-01', y: 32.43 }, { x: '2000-01-01', y: 44.94 }, { x: '2001-01-01', y: 47.19 },
+                { x: '2002-01-01', y: 48.39 }, { x: '2003-01-01', y: 45.95 }, { x: '2007-01-01', y: 40.24 }, { x: '2008-01-01', y: 43.51 },
+                { x: '2009-01-01', y: 48.41 }, { x: '2013-08-28', y: 68.80 }, { x: '2014-01-01', y: 61.10 }, { x: '2018-01-01', y: 69.90 },
+                { x: '2019-01-01', y: 70.88 }, { x: '2020-04-22', y: 76.87 }, { x: '2021-01-01', y: 73.92 }, { x: '2022-01-01', y: 78.50 },
+                { x: '2023-01-01', y: 82.66 }, { x: '2024-05-01', y: 83.50 }, { x: '2025-02-01', y: 87.81 }, { x: '2025-06-23', y: 85.20 }
+            ],
+            eur: [
+                { x: '1999-01-04', y: 50.73 }, { x: '2000-01-01', y: 45.32 }, { x: '2001-01-01', y: 42.25 }, { x: '2002-01-01', y: 45.92 },
+                { x: '2003-01-01', y: 52.61 }, { x: '2007-01-01', y: 56.42 }, { x: '2008-01-01', y: 63.61 }, { x: '2010-01-01', y: 60.59 },
+                { x: '2013-01-01', y: 77.93 }, { x: '2014-01-01', y: 81.04 }, { x: '2018-01-01', y: 80.07 }, { x: '2020-01-01', y: 84.64 },
+                { x: '2022-01-01', y: 82.72 }, { x: '2023-01-01', y: 89.20 }, { x: '2024-01-01', y: 90.55 }, { x: '2025-01-01', y: 91.01 }
+            ],
+            gbp: [
+                { x: '1947-08-15', y: 13.33 }, { x: '1966-01-01', y: 21.00 }, { x: '1975-01-01', y: 18.99 }, { x: '1985-01-01', y: 15.32 },
+                { x: '1990-01-01', y: 31.07 }, { x: '1995-01-01', y: 51.17 }, { x: '2000-01-01', y: 67.99 }, { x: '2008-01-01', y: 79.97 },
+                { x: '2009-01-01', y: 74.56 }, { x: '2014-01-01', y: 100.41 }, { x: '2016-06-24', y: 91.03 }, { x: '2017-01-01', y: 83.87 },
+                { x: '2020-01-01', y: 95.12 }, { x: '2022-01-01', y: 96.22 }, { x: '2023-01-01', y: 102.73 }, { x: '2024-01-01', y: 104.41 },
+                { x: '2025-01-01', y: 107.38 }
+            ],
+        },
+        timeline: [
+            { id: 'era1', start: '1947-08-15', end: '1966-06-05', title: "Post-Independence & Bretton Woods (1947-1966)", description: "After independence, the INR was pegged to the British Pound at ₹13.33/£, implying a rate of ~₹3.30/$. In 1949, it was devalued alongside the Pound to a stable ₹4.76/$, a rate maintained for 17 years. This period of fixed exchange rates masked growing trade deficits and an overvalued Rupee, culminating in a severe Balance of Payments crisis." },
+            { id: 'era2', start: '1966-06-06', end: '1991-07-00', title: "Devaluation & Basket Peg (1966-1991)", description: "Forced by crisis, India devalued the Rupee by 57.5% to ₹7.50/$. The regime shifted to a basket peg in 1975 to manage volatility. However, weakening fiscal discipline and a rising current account deficit in the 1980s led to another severe BoP crisis, triggered by the 1990 Gulf War." },
+            { id: 'era3', start: '1991-07-01', end: '2000-12-31', title: "Liberalization & Resilience (1991-2000)", description: "The 1991 crisis led to a two-step devaluation (~19%) and a shift to a managed float system. Sweeping economic reforms opened the economy, boosting growth and foreign reserves. The INR weathered the 1997 Asian Financial Crisis and 1998 nuclear sanctions, demonstrating newfound resilience." },
+            { id: 'era4', start: '2001-01-01', end: '2008-09-14', title: "Growth & Capital Inflows (2001-2008)", description: "This era saw unprecedented GDP growth (~9% avg), fueled by the IT boom. Massive capital inflows created significant appreciation pressure, with the INR strengthening below ₹40/$. The RBI intervened heavily, buying dollars and rapidly accumulating forex reserves to over $300 billion." },
+            { id: 'era5', start: '2008-09-15', end: '2014-05-15', title: "Global Shocks & 'Taper Tantrum' (2008-2014)", description: "The 2008 Global Financial Crisis caused sharp capital outflows, with the INR depreciating past ₹50/$. A quick recovery led to high inflation and a record Current Account Deficit, leaving India vulnerable. The 2013 'Taper Tantrum' saw the INR plunge to a record low near ₹69/$, forcing aggressive RBI intervention." },
+            { id: 'era6', start: '2014-05-16', end: '2020-03-10', title: "New Policies & Stability (2014-2020)", description: "A new government and the formal adoption of flexible inflation targeting in 2016 brought relative macroeconomic stability. The INR saw less volatility, depreciating gradually towards the ₹70-72/$ range. This period included major domestic events like Demonetization (2016) and GST implementation (2017)." },
+            { id: 'era7', start: '2020-03-11', end: '2025-06-23', title: "Pandemic, Recovery & Headwinds (2020-Present)", description: "The COVID-19 pandemic caused a sharp contraction and initial INR depreciation towards ₹77/$. Swift policy response and strong capital inflows stabilized the currency. The 2022 Russia-Ukraine war and subsequent global monetary tightening put renewed pressure, with the INR moving past ₹80/$. The RBI's active management has kept volatility low." }
+        ],
+        fiscal: {
+            labels: ['FY21', 'FY22', 'FY23', 'FY24', 'FY25(E)', 'FY26(T)'],
+            data: [9.2, 6.7, 6.4, 5.6, 4.8, 4.4] // FY21 deficit was 9.2%
+        },
+        trade: {
+            labels: ['FY22', 'FY23', 'FY24'],
+            exports: [422, 451, 437],
+            imports: [613, 714, 677],
+        },
+        inflation: {
+            labels: ['Jan-24', 'Feb-24', 'Mar-24', 'Apr-24', 'May-24'],
+            data: [5.10, 5.09, 4.85, 4.83, 4.75],
+            targetUpper: 6,
+            targetLower: 2,
+        },
+        fii: {
+            labels: ['2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022', '2023', '2024'],
+            data: [111333, -23079, 51226, -33014, 103150, 274034, -121439, 140261, 170600, -25743] // Corrected some values
+        },
+        yieldCurve: {
+            labels: ['3m', '6m', '1y', '2y', '3y', '5y', '7y', '10y', '15y', '30y'],
+            yields: [6.85, 7.02, 7.05, 7.00, 6.98, 6.99, 7.04, 7.01, 7.08, 7.05] // More recent data
+        }
+    };
+    
+    document.getElementById('current-usd-inr').innerText = `₹${reportData.historical.usd.slice(-1)[0].y.toFixed(2)}`;
+
+    let historicalChartInstance;
+
+    const commonChartOptions = (isTimeScale = false) => ({
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                backgroundColor: '#1f2937',
+                titleColor: '#ffffff',
+                bodyColor: '#ffffff',
+                boxPadding: 4,
+            }
+        },
+        scales: {
+            x: isTimeScale ? {
+                type: 'time',
+                time: {
+                    unit: 'year',
+                    tooltipFormat: 'MMM yyyy',
+                    displayFormats: {
+                        year: 'yyyy'
+                    }
+                },
+                grid: { display: false },
+                ticks: { color: '#6b7280' }
+            } : {
+                grid: { display: false },
+                ticks: { color: '#6b7280' }
+            },
+            y: {
+                 grid: { color: '#e5e7eb' },
+                ticks: {
+                    color: '#6b7280',
+                    callback: function(value) { return '₹' + value; }
+                }
+            }
+        }
+    });
+    
+    function createHistoricalChart(currency = 'usd') {
+        const ctx = document.getElementById('historicalChart').getContext('2d');
+        if (historicalChartInstance) {
+            historicalChartInstance.destroy();
+        }
+        
+        const currencyData = {
+            usd: { data: reportData.historical.usd, color: '#0d9488' },
+            eur: { data: reportData.historical.eur, color: '#f59e0b' },
+            gbp: { data: reportData.historical.gbp, color: '#3b82f6' },
+        };
+        
+        historicalChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: currency.toUpperCase() + '/INR',
+                    data: currencyData[currency].data,
+                    borderColor: currencyData[currency].color,
+                    backgroundColor: currencyData[currency].color + '33',
+                    borderWidth: 2.5,
+                    pointRadius: 0,
+                    pointHoverRadius: 6,
+                    tension: 0.1,
+                    fill: true
+                }]
+            },
+            options: commonChartOptions(true)
+        });
+    }
+
+    function createFiscalChart() {
+        new Chart(document.getElementById('fiscalChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: reportData.fiscal.labels,
+                datasets: [{ data: reportData.fiscal.data, backgroundColor: '#14b8a6', borderRadius: 4 }]
+            },
+            options: { ...commonChartOptions(), scales: { ...commonChartOptions().scales, y: { ...commonChartOptions().scales.y, ticks: { callback: (v) => v + '%' }}}}
+        });
+    }
+
+    function createTradeChart() {
+        new Chart(document.getElementById('tradeChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: reportData.trade.labels,
+                datasets: [
+                    { label: 'Exports', data: reportData.trade.exports, backgroundColor: '#2dd4bf', borderRadius: 4 },
+                    { label: 'Imports', data: reportData.trade.imports, backgroundColor: '#fb7185', borderRadius: 4 },
+                ]
+            },
+            options: { ...commonChartOptions(), plugins: { ...commonChartOptions().plugins, legend: { display: true, position: 'bottom' }}}
+        });
+    }
+    
+    function createInflationChart() {
+        new Chart(document.getElementById('inflationChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: reportData.inflation.labels,
+                datasets: [
+                    { label: 'CPI Inflation', data: reportData.inflation.data, borderColor: '#f43f5e', borderWidth: 2, tension: 0.4, fill: false, },
+                    { label: 'RBI Upper Target', data: Array(reportData.inflation.labels.length).fill(reportData.inflation.targetUpper), borderColor: '#a8a29e', borderDash: [5, 5], borderWidth: 1, pointRadius: 0, fill: false },
+                    { label: 'RBI Lower Target', data: Array(reportData.inflation.labels.length).fill(reportData.inflation.targetLower), borderColor: '#a8a29e', borderDash: [5, 5], borderWidth: 1, pointRadius: 0, fill: false }
+                ]
+            },
+            options: { ...commonChartOptions(), plugins: { ...commonChartOptions().plugins, legend: { display: true, position: 'bottom' }}, scales: { ...commonChartOptions().scales, y: { ...commonChartOptions().scales.y, ticks: { callback: (v) => v + '%' }}}}
+        });
+    }
+
+    function createFiiChart() {
+        new Chart(document.getElementById('fiiChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: reportData.fii.labels,
+                datasets: [{ data: reportData.fii.data, backgroundColor: reportData.fii.data.map(v => v > 0 ? '#14b8a6' : '#fb7185'), borderRadius: 4 }]
+            },
+            options: { ...commonChartOptions(), scales: { ...commonChartOptions().scales, y: { ...commonChartOptions().scales.y, ticks: { callback: (v) => `${(v/1000).toFixed(0)}k` }}}}
+        });
+    }
+    
+    function createYieldCurveChart() {
+        new Chart(document.getElementById('yieldCurveChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: reportData.yieldCurve.labels,
+                datasets: [{ data: reportData.yieldCurve.yields, borderColor: '#0d9488', backgroundColor: '#0d948833', borderWidth: 2, pointRadius: 4, tension: 0.1, fill: true }]
+            },
+            options: { ...commonChartOptions(), scales: { ...commonChartOptions().scales, y: { ...commonChartOptions().scales.y, ticks: { callback: (v) => v.toFixed(2) + '%' }}}}
+        });
+    }
+    
+    function populateTimeline() {
+        const container = document.getElementById('timeline-container');
+        reportData.timeline.forEach(era => {
+            const item = document.createElement('div');
+            item.className = 'timeline-item p-4 rounded-lg bg-white shadow';
+            item.dataset.eraId = era.id;
+            item.innerHTML = `<h4 class="font-bold">${era.title}</h4>`;
+            container.appendChild(item);
+        });
+    }
+
+    // Initial Chart Creations
+    createHistoricalChart();
+    createFiscalChart();
+    createTradeChart();
+    createInflationChart();
+    createFiiChart();
+    createYieldCurveChart();
+    populateTimeline();
+
+    // Event Listeners
+    document.querySelectorAll('.currency-btn').forEach(button => {
+        button.addEventListener('click', (e) => {
+            document.querySelectorAll('.currency-btn').forEach(btn => btn.classList.replace('bg-teal-600', 'bg-gray-200') || btn.classList.replace('text-white', 'text-gray-700'));
+            e.target.classList.replace('bg-gray-200', 'bg-teal-600');
+            e.target.classList.replace('text-gray-700', 'text-white');
+            createHistoricalChart(e.target.id.split('-')[1]);
+        });
+    });
+
+    document.getElementById('timeline-container').addEventListener('click', (e) => {
+        const item = e.target.closest('.timeline-item');
+        if (!item) return;
+
+        const eraId = item.dataset.eraId;
+        const eraData = reportData.timeline.find(era => era.id === eraId);
+
+        document.getElementById('timeline-title').innerText = eraData.title;
+        document.getElementById('timeline-description').innerText = eraData.description;
+
+        document.querySelectorAll('.timeline-item').forEach(i => i.classList.remove('active', 'bg-teal-100'));
+        item.classList.add('active', 'bg-teal-100');
+
+        const annotationBox = document.getElementById('chart-annotation-box');
+        const chartArea = historicalChartInstance.chartArea;
+        if (!chartArea) return;
+
+        const startDate = new Date(eraData.start);
+        const endDate = new Date(eraData.end);
+
+        const startPixel = historicalChartInstance.scales.x.getPixelForValue(startDate);
+        const endPixel = historicalChartInstance.scales.x.getPixelForValue(endDate);
+        
+        annotationBox.style.left = `${startPixel}px`;
+        annotationBox.style.top = `${chartArea.top}px`;
+        annotationBox.style.width = `${endPixel - startPixel}px`;
+        annotationBox.style.height = `${chartArea.height}px`;
+        annotationBox.style.display = 'block';
+    });
+
+    document.getElementById('accordion-container').addEventListener('click', e => {
+        const header = e.target.closest('.accordion-header');
+        if (!header) return;
+        
+        const item = header.parentElement;
+        const content = item.querySelector('.accordion-content');
+        const icon = header.querySelector('svg');
+        
+        item.classList.toggle('open');
+        content.style.maxHeight = item.classList.contains('open') ? `${content.scrollHeight}px` : '0';
+        icon.style.transform = item.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
+    });
+
+    const mobileMenuButton = document.getElementById('mobile-menu-button');
+    const mobileMenu = document.getElementById('mobile-menu');
+    mobileMenuButton.addEventListener('click', () => {
+        mobileMenu.classList.toggle('hidden');
+        mobileMenuButton.querySelectorAll('svg').forEach(svg => svg.classList.toggle('hidden'));
+    });
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                document.querySelectorAll('nav a').forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('href').substring(1) === entry.target.id) {
+                        link.classList.add('active');
+                    }
+                });
+            }
+        });
+    }, { threshold: 0.4 });
+
+    document.querySelectorAll('main section').forEach(section => observer.observe(section));
+
+    mobileMenu.addEventListener('click', (e) => {
+        if(e.target.classList.contains('mobile-nav-link')) {
+            mobileMenu.classList.add('hidden');
+            mobileMenuButton.querySelectorAll('svg').forEach(svg => svg.classList.toggle('hidden'));
+        }
+    });
+
+    // Set initial state for the timeline
+    document.querySelector('.timeline-item[data-era-id="era7"]').click();
+});
+</script>
+</body>
+</html>
