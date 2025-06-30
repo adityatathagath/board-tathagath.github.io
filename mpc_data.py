@@ -1,10 +1,12 @@
 import pandas as pd
 import os
+import re # Import the regular expression module
 from pathlib import Path
 
 def parse_risk_excel(file_path):
     """
     Parses a single risk data Excel file and extracts DV01 and Change DV01 data.
+    It robustly handles filenames with extra text after the date.
 
     Args:
         file_path (Path): The path to the Excel file.
@@ -14,8 +16,14 @@ def parse_risk_excel(file_path):
               Returns an empty list if the file or sheet is invalid.
     """
     try:
-        # Extract date from the filename
-        date_str = file_path.stem.split('_')[-1]
+        # --- Robust Date Extraction using Regular Expressions ---
+        # Search for a pattern like YYYY.MM.DD in the filename.
+        date_match = re.search(r'(\d{4}\.\d{2}\.\d{2})', file_path.name)
+        if not date_match:
+            print(f"Warning: Could not find a date in the expected format (YYYY.MM.DD) in filename: {file_path.name}")
+            return []
+        
+        date_str = date_match.group(1)
         cob_date = pd.to_datetime(date_str, format='%Y.%m.%d')
 
         # Read the specific sheet
@@ -130,5 +138,5 @@ def main():
 
 
 if __name__ == "__main__":
-    
+
     main()
