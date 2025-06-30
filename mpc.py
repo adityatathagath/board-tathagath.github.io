@@ -118,13 +118,14 @@ df_dv01 = df_full[df_full['Metric'] == 'DV01'].copy()
 tenor_order = ['<=1Y', '2Y', '3Y', '4Y', '5Y', '7Y', '10Y', '>=15Y']
 available_tenors = [t for t in tenor_order if t in df_dv01['Tenor'].unique()]
 
-# --- Sidebar and Main Page Filters ---
-st.sidebar.header("View Options")
-comparison_mode = st.sidebar.toggle("Show Day-on-Day Comparison", value=False)
+# --- Main Navigation Tabs ---
+tab1, tab2 = st.tabs(["Time Series Analysis", "Day-on-Day Comparison"])
 
-# --- Main Dashboard Layout ---
-if not comparison_mode:
+with tab1:
     st.header("Time Series Analysis: DV01 Risk Profile")
+    
+    with st.expander("Show MPC Meeting Dates for Reference"):
+        st.dataframe(MPC_DATA[['Date', 'Meeting']].rename(columns={'Date': 'MPC Date'}).set_index('Meeting'))
     
     selected_tenors = st.multiselect(
         "Select Tenors to Display:",
@@ -134,125 +135,112 @@ if not comparison_mode:
 
     if not selected_tenors:
         st.warning("Please select at least one tenor to display the charts.")
-        st.stop()
-
-    st.subheader("Portfolio Net Exposure (NET)")
-    net_df = df_dv01[df_dv01['Asset Class'] == 'NET']
-    if not net_df.empty:
-        fig_net = create_timeseries_chart(net_df, "NET DV01 Across Selected Tenors", selected_tenors)
-        st.plotly_chart(fig_net, use_container_width=True)
     else:
-        st.warning("No data found for Asset Class 'NET'.")
+        st.subheader("Portfolio Net Exposure (NET)")
+        net_df = df_dv01[df_dv01['Asset Class'] == 'NET']
+        if not net_df.empty:
+            fig_net = create_timeseries_chart(net_df, "NET DV01 Across Selected Tenors", selected_tenors)
+            st.plotly_chart(fig_net, use_container_width=True)
+        else:
+            st.warning("No data found for Asset Class 'NET'.")
 
-    st.markdown("---")
-    st.subheader("Asset Class Deep Dive")
-    other_assets = sorted([a for a in df_dv01['Asset Class'].unique() if a != 'NET'])
+        st.markdown("---")
+        st.subheader("Asset Class Deep Dive")
+        other_assets = sorted([a for a in df_dv01['Asset Class'].unique() if a != 'NET'])
+        
+        for asset in other_assets:
+            asset_df = df_dv01[df_dv01['Asset Class'] == asset]
+            if not asset_df.empty:
+                fig_asset = create_timeseries_chart(asset_df, f"{asset} DV01 Across Selected Tenors", selected_tenors)
+                st.plotly_chart(fig_asset, use_container_width=True)
+
+with tab2:
+    st.header("Day-on-Day Comparison")
     
-    for asset in other_assets:
-        asset_df = df_dv01[df_dv01['Asset Class'] == asset]
-        if not asset_df.empty:
-            fig_asset = create_timeseries_chart(asset_df, f"{asset} DV01 Across Selected Tenors", selected_tenors)
-            st.plotly_chart(fig_asset, use_container_width=True)
-
-else: # Day-on-Day Comparison View
     unique_dates = sorted(df_dv01['Date'].unique(), reverse=True)
     if len(unique_dates) < 2:
         st.error("Cannot perform comparison. The dataset contains data for only one day.")
-        st.stop()
-    
-    with st.expander("Show MPC Meeting Dates for Reference"):
-        st.dataframe(MPC_DATA[['Date', 'Meeting']].rename(columns={'Date': 'MPC Date'}).set_index('Meeting'))
+    else:
+        with st.expander("Show MPC Meeting Dates for Reference"):
+            st.dataframe(MPC_DATA[['Date', 'Meeting']].rename(columns={'Date': 'MPC Date'}).set_index('Meeting'))
 
-    col1, col2 = st.columns(2)
-    with col1:
-        date_1 = st.selectbox("Select First Date:", options=unique_dates, format_func=lambda d: pd.to_datetime(d).strftime('%d-%b-%Y'), index=1)
-    with col2:
-        date_2 = st.selectbox("Select Second Date:", options=unique_dates, format_func=lambda d: pd.to_datetime(d).strftime('%d-%b-%Y'), index=0)
-    
-    if date_1 == date_2:
-        st.warning("Please select two different dates for a meaningful comparison.")
-        st.stop()
+        col1, col2 = st.columns(2)
+        with col1:
+            date_1 = st.selectbox("Select First Date:", options=unique_dates, format_func=lambda d: pd.to_datetime(d).strftime('%d-%b-%Y'), index=1)
+        with col2:
+            date_2 = st.selectbox("Select Second Date:", options=unique_dates, format_func=lambda d: pd.to_datetime(d).strftime('%d-%b-%Y'), index=0)
         
-    st.header(f"Day-on-Day Comparison: {pd.to_datetime(date_1).strftime('%d-%b-%Y')} vs {pd.to_datetime(date_2).strftime('%d-%b-%Y')}")
-    
-    comparison_df = df_dv01[df_dv01['Date'].isin([date_1, date_2])].copy()
-    comparison_df = comparison_df[comparison_df['Tenor'] != 'Total']
-    
-    all_assets = sorted(comparison_df['Asset Class'].unique())
-    
-    for asset in all_assets:
-        st.subheader(f"{asset} DV01 Comparison")
-        asset_comp_df = comparison_df[comparison_df['Asset Class'] == asset]
-        
-        if not asset_comp_df.empty:
-            # --- Create Grouped Bar Chart ---
-            asset_comp_df['Date'] = asset_comp_df['Date'].dt.strftime('%d-%b-%Y')
-            asset_comp_df['Tenor'] = pd.Categorical(asset_comp_df['Tenor'], categories=tenor_order, ordered=True)
-            asset_comp_df = asset_comp_df.sort_values('Tenor')
+        if date_1 == date_2:
+            st.warning("Please select two different dates for a meaningful comparison.")
+        else:
+            st.subheader(f"Comparison: {pd.to_datetime(date_1).strftime('%d-%b-%Y')} vs {pd.to_datetime(date_2).strftime('%d-%b-%Y')}")
             
-            fig_comp = px.bar(
-                asset_comp_df, x='Tenor', y='Value', color='Date', barmode='group',
-                title=f"DV01 for {asset}",
-                labels={'Value': 'DV01 Value (£k)'},
-                color_discrete_map={
-                    pd.to_datetime(date_1).strftime('%d-%b-%Y'): PRIMARY_BLUE,
-                    pd.to_datetime(date_2).strftime('%d-%b-%Y'): ACCENT_BLUE
-                }
-            )
-            fig_comp.update_layout(
-                template='plotly_white', paper_bgcolor=CHART_BG_COLOR, plot_bgcolor=CHART_BG_COLOR,
-                font=dict(color=TEXT_COLOR)
-            )
-            st.plotly_chart(fig_comp, use_container_width=True)
+            comparison_df = df_dv01[df_dv01['Date'].isin([date_1, date_2])].copy()
+            comparison_df = comparison_df[comparison_df['Tenor'] != 'Total']
+            
+            all_assets = sorted(comparison_df['Asset Class'].unique())
+            
+            for asset in all_assets:
+                st.subheader(f"{asset} DV01 Comparison")
+                asset_comp_df = comparison_df[comparison_df['Asset Class'] == asset]
+                
+                if not asset_comp_df.empty:
+                    asset_comp_df['Date'] = asset_comp_df['Date'].dt.strftime('%d-%b-%Y')
+                    asset_comp_df['Tenor'] = pd.Categorical(asset_comp_df['Tenor'], categories=tenor_order, ordered=True)
+                    asset_comp_df = asset_comp_df.sort_values('Tenor')
+                    
+                    fig_comp = px.bar(
+                        asset_comp_df, x='Tenor', y='Value', color='Date', barmode='group',
+                        title=f"DV01 for {asset}",
+                        labels={'Value': 'DV01 Value (£k)'},
+                        color_discrete_map={
+                            pd.to_datetime(date_1).strftime('%d-%b-%Y'): PRIMARY_BLUE,
+                            pd.to_datetime(date_2).strftime('%d-%b-%Y'): ACCENT_BLUE
+                        }
+                    )
+                    fig_comp.update_layout(
+                        template='plotly_white', paper_bgcolor=CHART_BG_COLOR, plot_bgcolor=CHART_BG_COLOR,
+                        font=dict(color=TEXT_COLOR)
+                    )
+                    st.plotly_chart(fig_comp, use_container_width=True)
 
-            # --- Create and Display AG Grid Table ---
-            with st.expander("Show/Hide Detailed Data"):
-                pivot_df = asset_comp_df.pivot_table(index='Tenor', columns='Date', values='Value').reset_index()
-                date1_col_name = pd.to_datetime(date_1).strftime('%d-%b-%Y')
-                date2_col_name = pd.to_datetime(date_2).strftime('%d-%b-%Y')
-                
-                pivot_df = pivot_df.rename(columns={date1_col_name: 'Date 1 Value', date2_col_name: 'Date 2 Value'})
-                pivot_df = pivot_df.fillna(0)
-                pivot_df['Change'] = pivot_df['Date 2 Value'] - pivot_df['Date 1 Value']
+                    with st.expander("Show/Hide Detailed Data"):
+                        pivot_df = asset_comp_df.pivot_table(index='Tenor', columns='Date', values='Value').reset_index()
+                        date1_col_name = pd.to_datetime(date_1).strftime('%d-%b-%Y')
+                        date2_col_name = pd.to_datetime(date_2).strftime('%d-%b-%Y')
+                        
+                        pivot_df = pivot_df.rename(columns={date1_col_name: 'Date 1 Value', date2_col_name: 'Date 2 Value'})
+                        pivot_df = pivot_df.fillna(0)
+                        pivot_df['Change'] = pivot_df['Date 2 Value'] - pivot_df['Date 1 Value']
 
-                gb = GridOptionsBuilder.from_dataframe(pivot_df)
-                
-                # JS code to format numbers to 2 decimal places
-                jscode_formatter = JsCode("""
-                function(params) {
-                    if (params.value === null || params.value === undefined) {
-                        return '';
-                    }
-                    return params.value.toFixed(2);
-                }
-                """)
-                
-                # JS code for conditional color styling
-                jscode_style = JsCode("""
-                function(params) {
-                    if (params.value < 0) {
-                        return { 'color': '#C0392B' }; // Red
-                    }
-                    if (params.value > 0) {
-                        return { 'color': '#27AE60' }; // Green
-                    }
-                    return null; // Default color
-                }
-                """)
-                
-                gb.configure_column("Tenor", headerName="Tenor")
-                gb.configure_column("Date 1 Value", headerName=date1_col_name, valueFormatter=jscode_formatter, cellStyle=jscode_style)
-                gb.configure_column("Date 2 Value", headerName=date2_col_name, valueFormatter=jscode_formatter, cellStyle=jscode_style)
-                gb.configure_column("Change", headerName="Change (£k)", valueFormatter=jscode_formatter, cellStyle=jscode_style)
-                
-                gridOptions = gb.build()
+                        gb = GridOptionsBuilder.from_dataframe(pivot_df)
+                        
+                        jscode_formatter = JsCode("""
+                        function(params) {
+                            if (params.value === null || params.value === undefined) { return ''; }
+                            return params.value.toFixed(2);
+                        }""")
+                        
+                        jscode_style = JsCode("""
+                        function(params) {
+                            if (params.value < 0) { return { 'color': '#C0392B' }; } // Red
+                            if (params.value > 0) { return { 'color': '#27AE60' }; } // Green
+                            return null;
+                        }""")
+                        
+                        gb.configure_column("Tenor", headerName="Tenor")
+                        gb.configure_column("Date 1 Value", headerName=date1_col_name, valueFormatter=jscode_formatter, cellStyle=jscode_style)
+                        gb.configure_column("Date 2 Value", headerName=date2_col_name, valueFormatter=jscode_formatter, cellStyle=jscode_style)
+                        gb.configure_column("Change", headerName="Change (£k)", valueFormatter=jscode_formatter, cellStyle=jscode_style)
+                        
+                        gridOptions = gb.build()
 
-                AgGrid(
-                    pivot_df,
-                    gridOptions=gridOptions,
-                    theme='balham', # A compact, professional theme
-                    allow_unsafe_jscode=True,
-                    height=300,
-                    fit_columns_on_grid_load=True # Auto-size columns
-                )
-            st.markdown("---")
+                        AgGrid(
+                            pivot_df,
+                            gridOptions=gridOptions,
+                            theme='balham',
+                            allow_unsafe_jscode=True,
+                            height=300,
+                            fit_columns_on_grid_load=True
+                        )
+                    st.markdown("---")
