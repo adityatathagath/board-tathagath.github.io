@@ -103,6 +103,12 @@ def create_timeseries_chart(df, title, selected_tenors):
     )
     return fig
 
+def color_negative_red(val):
+    """Takes a scalar and returns a string with the css property."""
+    color = 'red' if val < 0 else 'green' if val > 0 else TEXT_COLOR
+    return f'color: {color}'
+
+
 # --- Main Application UI ---
 st.title("Macro Risk Manager Dashboard")
 
@@ -185,14 +191,20 @@ else: # Day-on-Day Comparison View
         
         if not asset_comp_df.empty:
             pivot_df = asset_comp_df.pivot_table(index='Tenor', columns='Date', values='Value').reset_index()
-            pivot_df = pivot_df.rename(columns={pd.to_datetime(date_1): 'Date 1 Value', pd.to_datetime(date_2): 'Date 2 Value'})
+            # Rename columns to be more descriptive and stable
+            date1_col_name = f"Value on {pd.to_datetime(date_1).strftime('%d-%b')}"
+            date2_col_name = f"Value on {pd.to_datetime(date_2).strftime('%d-%b')}"
+            pivot_df = pivot_df.rename(columns={pd.to_datetime(date_1): date1_col_name, pd.to_datetime(date_2): date2_col_name})
             pivot_df = pivot_df.fillna(0)
 
-            pivot_df['Change'] = pivot_df['Date 2 Value'] - pivot_df['Date 1 Value']
+            pivot_df['Change'] = pivot_df[date2_col_name] - pivot_df[date1_col_name]
+            # Safely calculate percentage change
+            pivot_df['% Change'] = (pivot_df['Change'] / pivot_df[date1_col_name].replace(0, pd.NA)) * 100
 
             pivot_df['Tenor'] = pd.Categorical(pivot_df['Tenor'], categories=tenor_order, ordered=True)
             pivot_df = pivot_df.sort_values('Tenor')
 
+            # Bar chart of the absolute change
             fig_change = px.bar(
                 pivot_df, x='Tenor', y='Change', title=f"Change in DV01 for {asset}",
                 labels={'Change': 'Change in DV01 (£k)'}, color='Change', color_continuous_scale='RdBu'
@@ -203,17 +215,16 @@ else: # Day-on-Day Comparison View
             )
             st.plotly_chart(fig_change, use_container_width=True)
 
-            # --- Simplified and Safe Dataframe Display ---
-            # Rename columns for clarity in the table
-            display_df = pivot_df.rename(columns={
-                'Date 1 Value': f"Value on {pd.to_datetime(date_1).strftime('%d-%b')}",
-                'Date 2 Value': f"Value on {pd.to_datetime(date_2).strftime('%d-%b')}",
-                'Change': "Change (£k)"
-            })
+            # --- Simplified and Safe Dataframe Display with Styling ---
+            display_df = pivot_df.set_index('Tenor')
             
-            # Use a simple st.dataframe without complex styling to avoid recursion
-            st.dataframe(
-                display_df.set_index('Tenor'),
-                use_container_width=True
-            )
+            # Apply styling for colors and formatting
+            styled_df = display_df.style.format({
+                date1_col_name: '{:,.2f}',
+                date2_col_name: '{:,.2f}',
+                'Change': '{:,.2f}',
+                '% Change': '{:,.2f}%'
+            }).apply(lambda x: x.map(color_negative_red), subset=['Change', '% Change'])
+            
+            st.dataframe(styled_df, use_container_width=True)
             st.markdown("---")
