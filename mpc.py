@@ -88,7 +88,6 @@ def create_timeseries_chart(df, title, selected_tenors):
         tenor_df = plot_df[plot_df['Tenor'] == tenor]
         fig.add_trace(go.Scatter(x=tenor_df['Date'], y=tenor_df['Value'], mode='lines', name=tenor))
 
-    # Add a separate, stable trace for MPC meeting markers
     y_pos = plot_df['Value'].max() * 1.05 if not plot_df.empty else 1
     fig.add_trace(go.Scatter(
         x=MPC_DATA['Date'], y=[y_pos] * len(MPC_DATA), mode='markers',
@@ -205,13 +204,27 @@ else: # Day-on-Day Comparison View
             )
             st.plotly_chart(fig_change, use_container_width=True)
 
-            # --- Simplified and Safe Dataframe Display ---
-            # Create a clean copy for display and format it
-            display_df = pivot_df.copy()
-            display_df['Date 1 Value'] = display_df['Date 1 Value'].map('{:,.2f}'.format)
-            display_df['Date 2 Value'] = display_df['Date 2 Value'].map('{:,.2f}'.format)
-            display_df['Change'] = display_df['Change'].map('{:,.2f}'.format)
-            display_df['% Change'] = display_df['% Change'].map('{:,.2f}%'.format)
-            
-            st.dataframe(display_df.set_index('Tenor'))
+            # --- Robust Dataframe Display using st.column_config ---
+            st.dataframe(
+                pivot_df.set_index('Tenor'),
+                column_config={
+                    "Date 1 Value": st.column_config.NumberColumn(
+                        f"Value on {pd.to_datetime(date_1).strftime('%d-%b')}",
+                        format="%.2f",
+                    ),
+                    "Date 2 Value": st.column_config.NumberColumn(
+                        f"Value on {pd.to_datetime(date_2).strftime('%d-%b')}",
+                        format="%.2f",
+                    ),
+                    "Change": st.column_config.NumberColumn(
+                        "Change (£k)",
+                        format="%.2f",
+                    ),
+                    "% Change": st.column_config.NumberColumn(
+                        "Change (%)",
+                        format="%.2f%%",
+                    ),
+                },
+                use_container_width=True
+            )
             st.markdown("---")
