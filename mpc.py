@@ -169,6 +169,10 @@ else: # Day-on-Day Comparison View
         st.error("Cannot perform comparison. The dataset contains data for only one day.")
         st.stop()
     
+    # --- MPC Date Reference ---
+    with st.expander("Show MPC Meeting Dates for Reference"):
+        st.dataframe(MPC_DATA[['Date', 'Meeting']].rename(columns={'Date': 'MPC Date'}).set_index('Meeting'))
+
     # --- Date Selection for Comparison ---
     col1, col2 = st.columns(2)
     with col1:
