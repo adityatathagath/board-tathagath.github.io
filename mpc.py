@@ -218,28 +218,41 @@ else: # Day-on-Day Comparison View
                 gb = GridOptionsBuilder.from_dataframe(pivot_df)
                 
                 # JS code to format numbers to 2 decimal places
-                jscode = JsCode("""
+                jscode_formatter = JsCode("""
                 function(params) {
                     if (params.value === null || params.value === undefined) {
                         return '';
                     }
-                    return '£' + params.value.toFixed(2);
+                    return params.value.toFixed(2);
+                }
+                """)
+                
+                # JS code for conditional color styling
+                jscode_style = JsCode("""
+                function(params) {
+                    if (params.value < 0) {
+                        return { 'color': '#C0392B' }; // Red
+                    }
+                    if (params.value > 0) {
+                        return { 'color': '#27AE60' }; // Green
+                    }
+                    return null; // Default color
                 }
                 """)
                 
                 gb.configure_column("Tenor", headerName="Tenor")
-                gb.configure_column("Date 1 Value", headerName=date1_col_name, valueFormatter=jscode)
-                gb.configure_column("Date 2 Value", headerName=date2_col_name, valueFormatter=jscode)
-                gb.configure_column("Change", headerName="Change (£k)", valueFormatter=jscode)
+                gb.configure_column("Date 1 Value", headerName=date1_col_name, valueFormatter=jscode_formatter, cellStyle=jscode_style)
+                gb.configure_column("Date 2 Value", headerName=date2_col_name, valueFormatter=jscode_formatter, cellStyle=jscode_style)
+                gb.configure_column("Change", headerName="Change (£k)", valueFormatter=jscode_formatter, cellStyle=jscode_style)
                 
-                gb.configure_default_column(flex=1)
                 gridOptions = gb.build()
 
                 AgGrid(
                     pivot_df,
                     gridOptions=gridOptions,
-                    theme='alpine',
+                    theme='balham', # A compact, professional theme
                     allow_unsafe_jscode=True,
-                    height=300
+                    height=300,
+                    fit_columns_on_grid_load=True # Auto-size columns
                 )
             st.markdown("---")
