@@ -1,6 +1,6 @@
 import pandas as pd
+import re
 import os
-import re # Import the regular expression module
 from pathlib import Path
 
 def parse_risk_excel(file_path):
@@ -17,7 +17,6 @@ def parse_risk_excel(file_path):
     """
     try:
         # --- Robust Date Extraction using Regular Expressions ---
-        # Search for a pattern like YYYY.MM.DD in the filename.
         date_match = re.search(r'(\d{4}\.\d{2}\.\d{2})', file_path.name)
         if not date_match:
             print(f"Warning: Could not find a date in the expected format (YYYY.MM.DD) in filename: {file_path.name}")
@@ -26,8 +25,7 @@ def parse_risk_excel(file_path):
         date_str = date_match.group(1)
         cob_date = pd.to_datetime(date_str, format='%Y.%m.%d')
 
-        # Read the specific sheet
-        # Using openpyxl engine is recommended for .xlsx files
+        # Read the specific sheet using openpyxl engine
         xls = pd.ExcelFile(file_path, engine='openpyxl')
         if 'Trade_Desk_Data' not in xls.sheet_names:
             print(f"Warning: 'Trade_Desk_Data' sheet not found in {file_path.name}")
@@ -36,14 +34,9 @@ def parse_risk_excel(file_path):
         df = pd.read_excel(xls, sheet_name='Trade_Desk_Data', header=None)
 
         # --- Data Extraction ---
-        # Asset classes are in row 6 (index 5), from column D to N (index 3 to 13)
         asset_classes = df.iloc[5, 3:14].tolist()
-        
-        # Tenors are in column C (index 2)
-        
         all_records = []
 
-        # Function to process a single table (DV01 or Change DV01)
         def process_table(start_row, metric_name):
             records = []
             # Data is from start_row to start_row + 8 (9 rows total, excluding 'Total')
@@ -63,10 +56,8 @@ def parse_risk_excel(file_path):
                     records.append(record)
             return records
 
-        # Process "Today's Risk" (DV01) table from C7:N15 (starts at row index 6)
+        # Process "Today's Risk" (DV01) and "Change in Risk" tables
         all_records.extend(process_table(6, 'DV01'))
-        
-        # Process "Change in Risk" (Change DV01) table from C17:N25 (starts at row index 16)
         all_records.extend(process_table(16, 'Change DV01'))
 
         return all_records
@@ -77,27 +68,31 @@ def parse_risk_excel(file_path):
 
 def main():
     """
-    Main function to find all risk files, process them, and save to a single Excel file.
+    Main function to prompt for a path, find all risk files directly in that folder, 
+    process them, and save the consolidated data to a single Excel file on the Desktop.
     """
     # --- Configuration ---
-    # Assumes the script is placed on the Desktop, next to the 'Risk_data' folder.
-    # If not, change 'base_path' to the absolute path of your 'Risk_data' folder.
-    desktop_path = Path.home() / 'Desktop'
-    base_path = desktop_path / 'Risk_data'
+    # Prompt the user for the path to the directory containing the risk files.
+    input_path_str = input("Please enter the full path to the 'risk_data' folder: ").strip()
     
-    # Check if the base directory exists
-    if not base_path.exists():
-        print(f"Error: The directory '{base_path}' was not found.")
-        print("Please make sure the 'Risk_data' folder is on your Desktop, or update the 'base_path' in the script.")
+    # Convert the user's input string to a Path object
+    base_path = Path(input_path_str)
+    
+    # Check if the provided path exists and is a directory
+    if not base_path.is_dir():
+        print(f"\nError: The path you provided is not a valid directory.")
+        print(f"Path provided: '{base_path}'")
         return
 
-    print(f"Starting data consolidation from: {base_path}")
+    print(f"\nStarting data consolidation from: {base_path}")
 
-    # Find all relevant excel files in the subdirectories (2023, 2024, 2025, etc.)
-    all_files = list(base_path.glob('**/risk_data_In_*.xlsx'))
+    # --- Find all relevant Excel files directly in the provided folder ---
+    # The .glob() method will find all matching files in this directory.
+    all_files = list(base_path.glob('risk_data_In_*.xlsx'))
     
     if not all_files:
-        print("No 'risk_data_In_*.xlsx' files were found. Please check the folder structure.")
+        print(f"No 'risk_data_In_*.xlsx' files were found directly in '{base_path}'.")
+        print("Please check the path and ensure the files are inside it.")
         return
 
     print(f"Found {len(all_files)} files to process.")
@@ -109,22 +104,20 @@ def main():
         master_data_list.extend(parse_risk_excel(file))
 
     if not master_data_list:
-        print("No data was extracted. Aborting.")
+        print("\nNo data was successfully extracted. Aborting.")
         return
         
     # Convert the list of dictionaries to a pandas DataFrame
     final_df = pd.DataFrame(master_data_list)
 
-    # --- Data Cleaning (Optional but Recommended) ---
-    # Convert 'Value' to numeric, coercing errors to NaN (Not a Number)
+    # --- Data Cleaning ---
     final_df['Value'] = pd.to_numeric(final_df['Value'], errors='coerce')
-    # Remove rows where the value could not be parsed (e.g., if it was '-')
     final_df.dropna(subset=['Value'], inplace=True)
-    
-    # Sort the data for better readability
     final_df.sort_values(by=['Date', 'Metric', 'Tenor', 'Asset Class'], inplace=True)
 
     # --- Save to Excel ---
+    # The output file will be saved to the user's Desktop for easy access.
+    desktop_path = Path.home() / 'Desktop'
     output_filename = desktop_path / 'consolidated_risk_timeseries.xlsx'
     try:
         final_df.to_excel(output_filename, index=False, engine='openpyxl')
@@ -134,9 +127,16 @@ def main():
         print(f"Total records created: {len(final_df)}")
         print("-" * 50)
     except Exception as e:
-        print(f"Error saving the final Excel file: {e}")
+        print(f"\nError saving the final Excel file: {e}")
 
 
 if __name__ == "__main__":
-
+    # --- Instructions for Use ---
+    # 1. Make sure you have Python installed on your system.
+    # 2. Install the required libraries by running these commands in your terminal:
+    #    pip install pandas
+    #    pip install openpyxl
+    # 3. Save this script as a Python file (e.g., `consolidate_data.py`).
+    # 4. Run the script from your terminal: python consolidate_data.py
+    # 5. When prompted, paste the full path to the folder that contains all your risk excel files.
     main()
