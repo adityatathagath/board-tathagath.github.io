@@ -39,6 +39,19 @@ def load_data(file):
     df['Date'] = pd.to_datetime(df['Date'])
     return df
 
+@st.cache_data
+def get_data_with_totals(_df):
+    """
+    Takes a dataframe and returns a new one with a calculated 'Total' tenor.
+    This prevents modifying dataframes during the render pass.
+    """
+    # Calculate totals for each Asset Class across all tenors for each day
+    total_df = _df.groupby(['Date', 'Metric', 'Asset Class'])['Value'].sum().reset_index()
+    total_df['Tenor'] = 'Total'
+    
+    # Combine the original data with the new total rows
+    return pd.concat([_df, total_df], ignore_index=True)
+
 def format_k(value):
     """Formats a number into a string like '£64k' or '-£22k'."""
     if pd.isna(value):
@@ -62,8 +75,10 @@ if uploaded_file is None:
     st.info("Awaiting data file to begin analysis...")
     st.stop()
 
-# Load the data
-df = load_data(uploaded_file)
+# Load the base data and create the enhanced dataframe with totals
+df_base = load_data(uploaded_file)
+df = get_data_with_totals(df_base)
+
 latest_date = df['Date'].max()
 latest_df = df[(df['Date'] == latest_date) & (df['Metric'] == 'DV01')]
 
@@ -71,10 +86,10 @@ latest_df = df[(df['Date'] == latest_date) & (df['Metric'] == 'DV01')]
 st.subheader(f"Risk Manager's View: Key Exposures for {latest_date.strftime('%d-%b-%Y')}")
 
 # Calculate key metrics for the summary
-net_dv01 = latest_df[latest_df['Asset Class'] == 'NET']['Value'].sum()
-gov_dv01 = latest_df[latest_df['Asset Class'] == 'GOV']['Value'].sum()
-corp_dv01 = latest_df[latest_df['Asset Class'] == 'CORP']['Value'].sum()
-ois_dv01 = latest_df[latest_df['Asset Class'] == 'OIS']['Value'].sum()
+net_dv01 = latest_df[(latest_df['Asset Class'] == 'NET') & (latest_df['Tenor'] != 'Total')]['Value'].sum()
+gov_dv01 = latest_df[(latest_df['Asset Class'] == 'GOV') & (latest_df['Tenor'] != 'Total')]['Value'].sum()
+corp_dv01 = latest_df[(latest_df['Asset Class'] == 'CORP') & (latest_df['Tenor'] != 'Total')]['Value'].sum()
+ois_dv01 = latest_df[(latest_df['Asset Class'] == 'OIS') & (latest_df['Tenor'] != 'Total')]['Value'].sum()
 
 # Display key metrics in columns
 col1, col2, col3, col4 = st.columns(4)
@@ -112,7 +127,7 @@ with tab1:
     st.sidebar.header("Analysis Filters")
     metrics = sorted(df['Metric'].unique())
     asset_classes = sorted(df['Asset Class'].unique())
-    tenor_order = ['<=1Y', '2Y', '3Y', '4Y', '5Y', '7Y', '10Y', '>=15Y']
+    tenor_order = ['<=1Y', '2Y', '3Y', '4Y', '5Y', '7Y', '10Y', '>=15Y', 'Total']
     tenors = sorted(df['Tenor'].unique(), key=lambda x: tenor_order.index(x) if x in tenor_order else len(tenor_order))
 
     # Pre-configure filters based on selected analysis
@@ -124,17 +139,10 @@ with tab1:
         sel_metric, sel_assets, sel_tenor = 'DV01', ['GOV'], '10Y'
     elif selected_analysis == analysis_options[2]:
         st.sidebar.info("This view shows the overall portfolio direction. Look for major shifts in the trend.")
-        sel_metric, sel_assets, sel_tenor = 'DV01', ['NET'], 'Total' # Assuming 'Total' tenor exists
-        if 'Total' not in tenors:
-             # Fallback if 'Total' is not a tenor, though it should be calculated
-             total_df = df.groupby(['Date', 'Metric', 'Asset Class'])['Value'].sum().reset_index()
-             total_df['Tenor'] = 'Total'
-             df = pd.concat([df, total_df], ignore_index=True)
-             tenors.append('Total')
+        sel_metric, sel_assets, sel_tenor = 'DV01', ['NET'], 'Total'
     else: # Correlate Trading
         st.sidebar.info("Look for jumps in credit risk (CORP) and see if they align with positive GDP forecasts from the MPC.")
         sel_metric, sel_assets, sel_tenor = 'DV01', ['CORP'], '5Y'
-
 
     selected_metric = st.sidebar.selectbox("Metric", metrics, index=metrics.index(sel_metric))
     selected_asset_classes = st.sidebar.multiselect("Asset Classes", asset_classes, default=sel_assets)
@@ -164,9 +172,9 @@ with tab1:
 with tab2:
     st.header(f"Risk Position Details for {latest_date.strftime('%d-%b-%Y')}")
     
-    latest_pivot = latest_df.pivot_table(
+    latest_pivot = latest_df[latest_df.Tenor != 'Total'].pivot_table(
         index='Tenor', columns='Asset Class', values='Value'
-    ).reindex(tenor_order).fillna(0)
+    ).reindex(tenor_order[:-1]).fillna(0) # Exclude 'Total' from pivot display
     
     st.dataframe(latest_pivot.style.format("{:,.0f}").background_gradient(cmap='RdYlGn', axis=None))
     
@@ -185,7 +193,7 @@ with tab3:
 
 with tab4:
     st.header("Raw Data Explorer")
-    st.markdown("The complete, consolidated time-series dataset.")
+    st.markdown("The complete, consolidated time-series dataset, including calculated 'Total' tenors.")
     st.dataframe(df)
 
 # Sidebar footer
