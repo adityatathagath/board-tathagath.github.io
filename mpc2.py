@@ -100,23 +100,26 @@ if uploaded_file is None:
 df_base = load_data(uploaded_file)
 df = get_data_with_totals(df_base)
 
-# --- Initialize Session State for Persistent Filters ---
-if 'metric' not in st.session_state:
-    st.session_state.metric = 'DV01'
-if 'asset_classes' not in st.session_state:
-    st.session_state.asset_classes = ['NET']
-if 'tenor' not in st.session_state:
-    st.session_state.tenor = 'Total'
-
-
-# --- Sidebar for Global Filters ---
-st.sidebar.header("Global Dashboard Filters")
+# --- Define available filter options from the uploaded data ---
 available_metrics = sorted(df['Metric'].unique())
 available_asset_classes = sorted(df['Asset Class'].unique())
 tenor_order = ['<=1Y', '2Y', '3Y', '4Y', '5Y', '7Y', '10Y', '>=15Y', 'Total']
 available_tenors = sorted(df['Tenor'].unique(), key=lambda x: tenor_order.index(x) if x in tenor_order else len(tenor_order))
 
-# These widgets are now the single source of truth for filters
+
+# --- Initialize Session State with SAFE DEFAULTS ---
+# This block now runs AFTER we know what options are available.
+if 'metric' not in st.session_state:
+    st.session_state.metric = 'DV01' if 'DV01' in available_metrics else available_metrics[0]
+if 'asset_classes' not in st.session_state:
+    st.session_state.asset_classes = ['NET'] if 'NET' in available_asset_classes else [available_asset_classes[0]]
+if 'tenor' not in st.session_state:
+    st.session_state.tenor = 'Total' if 'Total' in available_tenors else available_tenors[0]
+
+
+# --- Sidebar for Global Filters ---
+st.sidebar.header("Global Dashboard Filters")
+# These widgets use session_state keys, which are now guaranteed to be valid.
 st.sidebar.selectbox("Metric", available_metrics, key='metric')
 st.sidebar.multiselect("Asset Classes", available_asset_classes, key='asset_classes')
 st.sidebar.selectbox("Tenor", available_tenors, key='tenor')
