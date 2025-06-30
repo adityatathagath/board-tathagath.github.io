@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -155,21 +156,44 @@ with tab1:
     if chart_df.empty:
         st.warning("No data available for the selected filter combination.")
     else:
-        fig = px.line(
-            chart_df, x='Date', y='Value', color='Asset Class',
-            title=f"{selected_metric}: {', '.join(selected_asset_classes)} ({selected_tenor})",
-            labels={'Value': f'{selected_metric} Value (£k)', 'Date': 'Date'},
-            template='plotly_dark'
-        )
-        for _, row in MPC_DATA.iterrows():
-            fig.add_vline(x=row['Date'], line_width=1, line_dash="dash", line_color="orange", annotation_text=row['Meeting'], annotation_position="top left")
-        
-        # Manually set the x-axis range to bypass the internal calculation error
-        min_date = chart_df['Date'].min() - pd.Timedelta(days=10)
-        max_date = chart_df['Date'].max() + pd.Timedelta(days=10)
-        fig.update_xaxes(range=[min_date, max_date])
+        # --- New, More Robust Plotting Logic ---
+        # Initialize a graph objects figure
+        fig = go.Figure()
 
+        # Add a trace for each selected asset class
+        for asset in selected_asset_classes:
+            asset_df = chart_df[chart_df['Asset Class'] == asset]
+            fig.add_trace(go.Scatter(
+                x=asset_df['Date'],
+                y=asset_df['Value'],
+                mode='lines+markers',
+                name=asset
+            ))
+
+        # Add a separate trace for MPC meeting markers
+        # This avoids the buggy add_vline function
+        y_pos = chart_df['Value'].max() * 1.05 if not chart_df.empty else 1
+        fig.add_trace(go.Scatter(
+            x=MPC_DATA['Date'],
+            y=[y_pos] * len(MPC_DATA), # Place markers just above the max value
+            mode='markers',
+            marker=dict(symbol='diamond-tall', color='orange', size=10),
+            name='MPC Meeting',
+            hovertext=MPC_DATA['Meeting'],
+            hoverinfo='text'
+        ))
+
+        # Update layout
+        fig.update_layout(
+            title=f"{selected_metric}: {', '.join(selected_asset_classes)} ({selected_tenor})",
+            template='plotly_dark',
+            xaxis_title='Date',
+            yaxis_title=f'{selected_metric} Value (£k)',
+            legend_title_text='Asset Class'
+        )
+        
         st.plotly_chart(fig, use_container_width=True)
+
 
 with tab2:
     st.header(f"Risk Position Details for {latest_date.strftime('%d-%b-%Y')}")
