@@ -140,10 +140,9 @@ with col2:
     AgGrid(
         df,
         gridOptions=gridOptions,
-        theme='streamlit', # Use a theme that matches Streamlit's dark mode
+        theme='alpine-dark', # Use a standard dark theme that is more compatible
         height=400,
         width='100%',
         fit_columns_on_grid_load=True,
         allow_unsafe_jscode=True, # Set to True to allow jsfunction to be injected
     )
-
