@@ -108,20 +108,38 @@ with tab1:
     selected_analysis = st.selectbox("Select an Analysis Scenario:", analysis_options)
     
     st.sidebar.header("Analysis Filters")
-    metrics = sorted(df['Metric'].unique())
-    asset_classes = sorted(df['Asset Class'].unique())
+    # Get available options from the dataframe
+    available_metrics = sorted(df['Metric'].unique())
+    available_asset_classes = sorted(df['Asset Class'].unique())
     tenor_order = ['<=1Y', '2Y', '3Y', '4Y', '5Y', '7Y', '10Y', '>=15Y', 'Total']
-    tenors = sorted(df['Tenor'].unique(), key=lambda x: tenor_order.index(x) if x in tenor_order else len(tenor_order))
+    available_tenors = sorted(df['Tenor'].unique(), key=lambda x: tenor_order.index(x) if x in tenor_order else len(tenor_order))
 
-    if selected_analysis == analysis_options[0]: sel_metric, sel_assets, sel_tenor = 'DV01', ['OIS'], '2Y'
-    elif selected_analysis == analysis_options[1]: sel_metric, sel_assets, sel_tenor = 'DV01', ['GOV'], '10Y'
-    elif selected_analysis == analysis_options[2]: sel_metric, sel_assets, sel_tenor = 'DV01', ['NET'], 'Total'
-    else: sel_metric, sel_assets, sel_tenor = 'DV01', ['CORP'], '5Y'
+    # Determine desired defaults based on scenario
+    if selected_analysis == analysis_options[0]: 
+        st.sidebar.info("This view tracks the desk's conviction on a core policy bet (OIS 2Y) around MPC meetings.")
+        sel_metric, sel_assets, sel_tenor = 'DV01', ['OIS'], '2Y'
+    elif selected_analysis == analysis_options[1]: 
+        st.sidebar.info("This view isolates the long-end of a yield curve steepener trade to check its performance.")
+        sel_metric, sel_assets, sel_tenor = 'DV01', ['GOV'], '10Y'
+    elif selected_analysis == analysis_options[2]: 
+        st.sidebar.info("This view shows the overall portfolio direction. Look for major shifts in the trend.")
+        sel_metric, sel_assets, sel_tenor = 'DV01', ['NET'], 'Total'
+    else: # Correlate Trading
+        st.sidebar.info("Look for jumps in credit risk (CORP) and see if they align with positive GDP forecasts from the MPC.")
+        sel_metric, sel_assets, sel_tenor = 'DV01', ['CORP'], '5Y'
 
-    selected_metric = st.sidebar.selectbox("Metric", metrics, index=metrics.index(sel_metric))
-    selected_asset_classes = st.sidebar.multiselect("Asset Classes", asset_classes, default=sel_assets)
-    selected_tenor = st.sidebar.selectbox("Tenor", tenors, index=tenors.index(sel_tenor))
+    # --- ROBUST FILTER DEFAULTS ---
+    # Check if the desired default values exist in the available options from the file.
+    safe_default_assets = [asset for asset in sel_assets if asset in available_asset_classes]
+    safe_default_tenor = sel_tenor if sel_tenor in available_tenors else available_tenors[0]
+    safe_default_metric = sel_metric if sel_metric in available_metrics else available_metrics[0]
 
+    # Use the safe defaults in the widgets
+    selected_metric = st.sidebar.selectbox("Metric", available_metrics, index=available_metrics.index(safe_default_metric))
+    selected_asset_classes = st.sidebar.multiselect("Asset Classes", available_asset_classes, default=safe_default_assets)
+    selected_tenor = st.sidebar.selectbox("Tenor", available_tenors, index=available_tenors.index(safe_default_tenor))
+    
+    # Filter data for the chart using the final selected values
     chart_df = df[(df['Metric'] == selected_metric) & (df['Asset Class'].isin(selected_asset_classes)) & (df['Tenor'] == selected_tenor)]
 
     if chart_df.empty:
