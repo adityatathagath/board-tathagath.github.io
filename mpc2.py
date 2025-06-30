@@ -36,18 +36,37 @@ MPC_DATA['Date'] = pd.to_datetime(MPC_DATA['Date'])
 MPC_DATA['Meeting'] = MPC_DATA['Date'].dt.strftime('%B %Y')
 
 
-# --- Barclays Theming ---
-BARCLAYS_DARK_BLUE = "#002A5D"
-BARCLAYS_LIGHT_BLUE = "#00AEEF"
-BACKGROUND_COLOR = "#0E1117"
-TEXT_COLOR = "#FAFAFA"
-st.markdown(f"""<style>
-    .reportview-container, .main {{ background-color: {BACKGROUND_COLOR}; }}
-    .sidebar .sidebar-content {{ background-color: {BARCLAYS_DARK_BLUE}; }}
-    h1, h2, h3 {{ color: {BARCLAYS_LIGHT_BLUE}; }}
-    .stMetric {{ background-color: #262730; border-radius: 0.5rem; padding: 1rem; }}
-    .stMetric > label {{ color: {BARCLAYS_LIGHT_BLUE}; }}
-</style>""", unsafe_allow_html=True)
+# --- Professional Theming & Colors ---
+PRIMARY_BLUE = "#3982B7"
+ACCENT_ORANGE = "#FF8C00"
+BACKGROUND_COLOR = "#F0F2F6"
+CHART_BG_COLOR = "#FFFFFF"
+TEXT_COLOR = "#262730"
+GRID_COLOR = "#D3D3D3"
+
+st.markdown(f"""
+<style>
+    .reportview-container, .main {{
+        background-color: {BACKGROUND_COLOR};
+    }}
+    .st-emotion-cache-16txtl3 {{
+        padding-top: 2rem;
+    }}
+    h1, h2, h3 {{
+        color: {PRIMARY_BLUE};
+    }}
+    .stMetric {{
+        background-color: {CHART_BG_COLOR};
+        border: 1px solid {GRID_COLOR};
+        border-radius: 0.5rem;
+        padding: 1rem;
+    }}
+    .stMetric > label {{
+        color: {PRIMARY_BLUE};
+        font-weight: bold;
+    }}
+</style>
+""", unsafe_allow_html=True)
 
 
 # --- Helper Functions ---
@@ -70,7 +89,7 @@ def format_k(value):
 
 # --- Main Application UI ---
 st.title("Macro Risk Manager Dashboard")
-st.markdown(f"##### A strategic overview of portfolio risk, themed for <span style='color:{BARCLAYS_LIGHT_BLUE};'>professional analysis</span>.", unsafe_allow_html=True)
+st.markdown(f"##### A strategic overview of portfolio risk, themed for <span style='color:{PRIMARY_BLUE};'>professional analysis</span>.", unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("Upload `consolidated_risk_timeseries.xlsx`", type="xlsx")
 
@@ -80,94 +99,99 @@ if uploaded_file is None:
 
 df_base = load_data(uploaded_file)
 df = get_data_with_totals(df_base)
-latest_date = df['Date'].max()
-latest_df = df[(df['Date'] == latest_date) & (df['Metric'] == 'DV01')]
+
+# --- Initialize Session State for Persistent Filters ---
+if 'metric' not in st.session_state:
+    st.session_state.metric = 'DV01'
+if 'asset_classes' not in st.session_state:
+    st.session_state.asset_classes = ['NET']
+if 'tenor' not in st.session_state:
+    st.session_state.tenor = 'Total'
+
+
+# --- Sidebar for Global Filters ---
+st.sidebar.header("Global Dashboard Filters")
+available_metrics = sorted(df['Metric'].unique())
+available_asset_classes = sorted(df['Asset Class'].unique())
+tenor_order = ['<=1Y', '2Y', '3Y', '4Y', '5Y', '7Y', '10Y', '>=15Y', 'Total']
+available_tenors = sorted(df['Tenor'].unique(), key=lambda x: tenor_order.index(x) if x in tenor_order else len(tenor_order))
+
+# These widgets are now the single source of truth for filters
+st.sidebar.selectbox("Metric", available_metrics, key='metric')
+st.sidebar.multiselect("Asset Classes", available_asset_classes, key='asset_classes')
+st.sidebar.selectbox("Tenor", available_tenors, key='tenor')
+
 
 # --- Risk Manager's Summary View ---
+latest_date = df['Date'].max()
 st.subheader(f"Key Exposures: {latest_date.strftime('%d-%b-%Y')}")
-latest_positions = latest_df[latest_df['Tenor'] != 'Total']
+latest_positions = df[(df['Date'] == latest_date) & (df['Metric'] == 'DV01') & (df['Tenor'] != 'Total')]
 gov_dv01 = latest_positions[latest_positions['Asset Class'] == 'GOV']['Value'].sum()
 corp_dv01 = latest_positions[latest_positions['Asset Class'] == 'CORP']['Value'].sum()
 ois_dv01 = latest_positions[latest_positions['Asset Class'] == 'OIS']['Value'].sum()
 net_dv01 = latest_positions[latest_positions['Asset Class'] == 'NET']['Value'].sum()
 
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Net DV01 (Portfolio)", format_k(net_dv01), help="Overall sensitivity. Positive = bet on rates falling.")
-col2.metric("GOV DV01 (Rates Direction)", format_k(gov_dv01), help="Govt bond exposure. Negative = bet on yields rising.")
-col3.metric("CORP DV01 (Credit View)", format_k(corp_dv01), help="Corporate bond exposure. Positive = bullish on credit.")
-col4.metric("OIS DV01 (Policy Bet)", format_k(ois_dv01), help="Direct bet on the central bank's policy rate path.")
+col1.metric("Net DV01 (Portfolio)", format_k(net_dv01))
+col2.metric("GOV DV01 (Rates Direction)", format_k(gov_dv01))
+col3.metric("CORP DV01 (Credit View)", format_k(corp_dv01))
+col4.metric("OIS DV01 (Policy Bet)", format_k(ois_dv01))
 
 # --- Detailed Analysis Tabs ---
 st.markdown("---")
-tab1, tab2, tab3, tab4 = st.tabs(["🎯 Strategic Analysis", "🔎 Risk Position Details", "🏦 MPC Decisions", "🗃️ Raw Data Explorer"])
+tab1, tab2, tab3 = st.tabs(["🎯 Strategic Analysis", "🔎 Risk Position Details", "🏦 MPC Decisions"])
 
 with tab1:
     st.header("Strategic Analysis Workbench")
-    st.markdown("Use the filters to investigate key risk themes and validate trading theses against market events.")
-    analysis_options = ["Track Conviction vs. Events (e.g., OIS - 2Y)", "Analyze Performance of Curve Trades (e.g., GOV - 10Y)", "Identify Changes in Strategy (e.g., NET DV01)", "Correlate Trading with MPC Commentary (e.g., CORP DV01)"]
-    selected_analysis = st.selectbox("Select an Analysis Scenario:", analysis_options)
     
-    st.sidebar.header("Analysis Filters")
-    # Get available options from the dataframe
-    available_metrics = sorted(df['Metric'].unique())
-    available_asset_classes = sorted(df['Asset Class'].unique())
-    tenor_order = ['<=1Y', '2Y', '3Y', '4Y', '5Y', '7Y', '10Y', '>=15Y', 'Total']
-    available_tenors = sorted(df['Tenor'].unique(), key=lambda x: tenor_order.index(x) if x in tenor_order else len(tenor_order))
+    # Filter data for the chart using the persistent session state filters
+    chart_df = df[
+        (df['Metric'] == st.session_state.metric) &
+        (df['Asset Class'].isin(st.session_state.asset_classes)) &
+        (df['Tenor'] == st.session_state.tenor)
+    ]
 
-    # Determine desired defaults based on scenario
-    if selected_analysis == analysis_options[0]: 
-        st.sidebar.info("This view tracks the desk's conviction on a core policy bet (OIS 2Y) around MPC meetings.")
-        sel_metric, sel_assets, sel_tenor = 'DV01', ['OIS'], '2Y'
-    elif selected_analysis == analysis_options[1]: 
-        st.sidebar.info("This view isolates the long-end of a yield curve steepener trade to check its performance.")
-        sel_metric, sel_assets, sel_tenor = 'DV01', ['GOV'], '10Y'
-    elif selected_analysis == analysis_options[2]: 
-        st.sidebar.info("This view shows the overall portfolio direction. Look for major shifts in the trend.")
-        sel_metric, sel_assets, sel_tenor = 'DV01', ['NET'], 'Total'
-    else: # Correlate Trading
-        st.sidebar.info("Look for jumps in credit risk (CORP) and see if they align with positive GDP forecasts from the MPC.")
-        sel_metric, sel_assets, sel_tenor = 'DV01', ['CORP'], '5Y'
-
-    # --- ROBUST FILTER DEFAULTS ---
-    # Check if the desired default values exist in the available options from the file.
-    safe_default_assets = [asset for asset in sel_assets if asset in available_asset_classes]
-    safe_default_tenor = sel_tenor if sel_tenor in available_tenors else available_tenors[0]
-    safe_default_metric = sel_metric if sel_metric in available_metrics else available_metrics[0]
-
-    # Use the safe defaults in the widgets
-    selected_metric = st.sidebar.selectbox("Metric", available_metrics, index=available_metrics.index(safe_default_metric))
-    selected_asset_classes = st.sidebar.multiselect("Asset Classes", available_asset_classes, default=safe_default_assets)
-    selected_tenor = st.sidebar.selectbox("Tenor", available_tenors, index=available_tenors.index(safe_default_tenor))
-    
-    # Filter data for the chart using the final selected values
-    chart_df = df[(df['Metric'] == selected_metric) & (df['Asset Class'].isin(selected_asset_classes)) & (df['Tenor'] == selected_tenor)]
-
-    if chart_df.empty:
-        st.warning("No data available for the selected filter combination.")
+    if chart_df.empty or not st.session_state.asset_classes:
+        st.warning("No data available for the selected filter combination. Please select at least one Asset Class in the sidebar.")
     else:
         fig = go.Figure()
-        for asset in selected_asset_classes:
+        color_sequence = px.colors.qualitative.Plotly
+        for i, asset in enumerate(st.session_state.asset_classes):
             asset_df = chart_df[chart_df['Asset Class'] == asset]
-            fig.add_trace(go.Scatter(x=asset_df['Date'], y=asset_df['Value'], mode='lines+markers', name=asset))
+            fig.add_trace(go.Scatter(
+                x=asset_df['Date'], 
+                y=asset_df['Value'], 
+                mode='lines+markers', 
+                name=asset,
+                line=dict(color=color_sequence[i % len(color_sequence)])
+            ))
 
-        y_pos = chart_df['Value'].max() * 1.05 if not chart_df.empty else 1
+        y_pos = chart_df['Value'].max() * 1.1 if not chart_df.empty else 1
         fig.add_trace(go.Scatter(
             x=MPC_DATA['Date'], y=[y_pos] * len(MPC_DATA), mode='markers',
-            marker=dict(symbol='diamond-tall', color=BARCLAYS_LIGHT_BLUE, size=10, line=dict(width=1, color=TEXT_COLOR)),
+            marker=dict(symbol='diamond-tall', color=ACCENT_ORANGE, size=10, line=dict(width=1, color=TEXT_COLOR)),
             name='MPC Meeting', hovertext=MPC_DATA['Meeting'], hoverinfo='text'
         ))
 
         fig.update_layout(
-            title_text=f"{selected_metric}: {', '.join(selected_asset_classes)} ({selected_tenor})",
-            template='plotly_dark', xaxis_title='Date', yaxis_title=f'{selected_metric} Value (£k)',
-            legend_title_text='Asset Class', paper_bgcolor=BACKGROUND_COLOR, plot_bgcolor="#262730",
-            font=dict(color=TEXT_COLOR)
+            title_text=f"{st.session_state.metric}: {', '.join(st.session_state.asset_classes)} ({st.session_state.tenor})",
+            template='plotly_white', 
+            xaxis_title='Date', 
+            yaxis_title=f'{st.session_state.metric} Value (£k)',
+            legend_title_text='Asset Class', 
+            paper_bgcolor=CHART_BG_COLOR, 
+            plot_bgcolor=CHART_BG_COLOR,
+            font=dict(color=TEXT_COLOR),
+            xaxis=dict(gridcolor=GRID_COLOR),
+            yaxis=dict(gridcolor=GRID_COLOR)
         )
         st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
     st.header(f"Risk Position Details: {latest_date.strftime('%d-%b-%Y')}")
-    latest_pivot = latest_df[latest_df.Tenor != 'Total'].pivot_table(index='Tenor', columns='Asset Class', values='Value').reindex(tenor_order[:-1]).fillna(0)
+    latest_pivot = latest_df[latest_df.Tenor != 'Total'].pivot_table(
+        index='Tenor', columns='Asset Class', values='Value'
+    ).reindex(tenor_order[:-1]).fillna(0)
     st.dataframe(latest_pivot.style.format("{:,.0f}").background_gradient(cmap='RdYlGn', axis=None))
 
 with tab3:
@@ -175,9 +199,6 @@ with tab3:
     st.markdown("Official data from RBI press releases. Use this table to correlate trading activity with specific central bank commentary.")
     st.dataframe(MPC_DATA.set_index('Meeting'))
 
-with tab4:
-    st.header("Raw Data Explorer")
-    st.dataframe(df)
-
+# --- Sidebar Footer ---
 st.sidebar.markdown("---")
 st.sidebar.info("Dashboard developed for strategic risk analysis.")
