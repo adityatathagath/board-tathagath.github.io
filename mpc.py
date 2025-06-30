@@ -124,8 +124,8 @@ tab1, tab2 = st.tabs(["Time Series Analysis", "Day-on-Day Comparison"])
 with tab1:
     st.header("Time Series Analysis: DV01 Risk Profile")
     
-    with st.expander("Show MPC Meeting Dates for Reference"):
-        st.dataframe(MPC_DATA[['Date', 'Meeting']].rename(columns={'Date': 'MPC Date'}).set_index('Meeting'))
+    with st.expander("Show Full MPC Decisions for Reference"):
+        st.dataframe(MPC_DATA.set_index('Meeting'))
     
     selected_tenors = st.multiselect(
         "Select Tenors to Display:",
@@ -161,14 +161,14 @@ with tab2:
     if len(unique_dates) < 2:
         st.error("Cannot perform comparison. The dataset contains data for only one day.")
     else:
-        with st.expander("Show MPC Meeting Dates for Reference"):
-            st.dataframe(MPC_DATA[['Date', 'Meeting']].rename(columns={'Date': 'MPC Date'}).set_index('Meeting'))
+        with st.expander("Show Full MPC Decisions for Reference"):
+            st.dataframe(MPC_DATA.set_index('Meeting'))
 
         col1, col2 = st.columns(2)
         with col1:
-            date_1 = st.selectbox("Select First Date:", options=unique_dates, format_func=lambda d: pd.to_datetime(d).strftime('%d-%b-%Y'), index=1)
+            date_1 = st.selectbox("Select First Date:", options=unique_dates, format_func=lambda d: pd.to_datetime(d).strftime('%d-%b-%Y'), index=1, key="date1_selector")
         with col2:
-            date_2 = st.selectbox("Select Second Date:", options=unique_dates, format_func=lambda d: pd.to_datetime(d).strftime('%d-%b-%Y'), index=0)
+            date_2 = st.selectbox("Select Second Date:", options=unique_dates, format_func=lambda d: pd.to_datetime(d).strftime('%d-%b-%Y'), index=0, key="date2_selector")
         
         if date_1 == date_2:
             st.warning("Please select two different dates for a meaningful comparison.")
@@ -241,6 +241,7 @@ with tab2:
                             theme='balham',
                             allow_unsafe_jscode=True,
                             height=300,
-                            fit_columns_on_grid_load=True
+                            fit_columns_on_grid_load=True,
+                            key=f"aggrid_comp_{asset}" # Assign a unique key
                         )
                     st.markdown("---")
