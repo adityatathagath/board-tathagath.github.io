@@ -189,7 +189,6 @@ else: # Day-on-Day Comparison View
             pivot_df = pivot_df.fillna(0)
 
             pivot_df['Change'] = pivot_df['Date 2 Value'] - pivot_df['Date 1 Value']
-            pivot_df['% Change'] = (pivot_df['Change'] / pivot_df['Date 1 Value'].replace(0, pd.NA)) * 100
 
             pivot_df['Tenor'] = pd.Categorical(pivot_df['Tenor'], categories=tenor_order, ordered=True)
             pivot_df = pivot_df.sort_values('Tenor')
@@ -204,27 +203,17 @@ else: # Day-on-Day Comparison View
             )
             st.plotly_chart(fig_change, use_container_width=True)
 
-            # --- Robust Dataframe Display using st.column_config ---
+            # --- Simplified and Safe Dataframe Display ---
+            # Rename columns for clarity in the table
+            display_df = pivot_df.rename(columns={
+                'Date 1 Value': f"Value on {pd.to_datetime(date_1).strftime('%d-%b')}",
+                'Date 2 Value': f"Value on {pd.to_datetime(date_2).strftime('%d-%b')}",
+                'Change': "Change (£k)"
+            })
+            
+            # Use a simple st.dataframe without complex styling to avoid recursion
             st.dataframe(
-                pivot_df.set_index('Tenor'),
-                column_config={
-                    "Date 1 Value": st.column_config.NumberColumn(
-                        f"Value on {pd.to_datetime(date_1).strftime('%d-%b')}",
-                        format="%.2f",
-                    ),
-                    "Date 2 Value": st.column_config.NumberColumn(
-                        f"Value on {pd.to_datetime(date_2).strftime('%d-%b')}",
-                        format="%.2f",
-                    ),
-                    "Change": st.column_config.NumberColumn(
-                        "Change (£k)",
-                        format="%.2f",
-                    ),
-                    "% Change": st.column_config.NumberColumn(
-                        "Change (%)",
-                        format="%.2f%%",
-                    ),
-                },
+                display_df.set_index('Tenor'),
                 use_container_width=True
             )
             st.markdown("---")
