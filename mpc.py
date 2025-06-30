@@ -99,20 +99,6 @@ def create_timeseries_chart(df, title, selected_tenors):
     )
     return fig
 
-def create_comparison_barchart(df, title, date1_str, date2_str):
-    """Creates a Plotly grouped bar chart for day-on-day comparison."""
-    df['Date'] = df['Date'].dt.strftime('%d-%b-%Y')
-    fig = px.bar(
-        df, x='Tenor', y='Value', color='Date', barmode='group',
-        title=title, labels={'Value': 'DV01 Value (£k)'},
-        color_discrete_map={date1_str: PRIMARY_BLUE, date2_str: ACCENT_BLUE}
-    )
-    fig.update_layout(
-        template='plotly_white', paper_bgcolor=CHART_BG_COLOR, plot_bgcolor=CHART_BG_COLOR,
-        font=dict(color=TEXT_COLOR), xaxis=dict(gridcolor=GRID_COLOR), yaxis=dict(gridcolor=GRID_COLOR)
-    )
-    return fig
-
 # --- Main Application UI ---
 st.title("Macro Risk Manager Dashboard")
 
@@ -169,26 +155,14 @@ else: # Day-on-Day Comparison View
         st.error("Cannot perform comparison. The dataset contains data for only one day.")
         st.stop()
     
-    # --- MPC Date Reference ---
     with st.expander("Show MPC Meeting Dates for Reference"):
         st.dataframe(MPC_DATA[['Date', 'Meeting']].rename(columns={'Date': 'MPC Date'}).set_index('Meeting'))
 
-    # --- Date Selection for Comparison ---
     col1, col2 = st.columns(2)
     with col1:
-        date_1 = st.selectbox(
-            "Select First Date:",
-            options=unique_dates,
-            format_func=lambda date: pd.to_datetime(date).strftime('%d-%b-%Y'),
-            index=1 # Default to the second latest date
-        )
+        date_1 = st.selectbox("Select First Date:", options=unique_dates, format_func=lambda d: pd.to_datetime(d).strftime('%d-%b-%Y'), index=1)
     with col2:
-        date_2 = st.selectbox(
-            "Select Second Date:",
-            options=unique_dates,
-            format_func=lambda date: pd.to_datetime(date).strftime('%d-%b-%Y'),
-            index=0 # Default to the latest date
-        )
+        date_2 = st.selectbox("Select Second Date:", options=unique_dates, format_func=lambda d: pd.to_datetime(d).strftime('%d-%b-%Y'), index=0)
     
     if date_1 == date_2:
         st.warning("Please select two different dates for a meaningful comparison.")
@@ -201,14 +175,51 @@ else: # Day-on-Day Comparison View
     
     all_assets = sorted(comparison_df['Asset Class'].unique())
     
-    date1_str = pd.to_datetime(date_1).strftime('%d-%b-%Y')
-    date2_str = pd.to_datetime(date_2).strftime('%d-%b-%Y')
-    
     for asset in all_assets:
+        st.subheader(f"{asset} DV01 Comparison")
         asset_comp_df = comparison_df[comparison_df['Asset Class'] == asset]
-        asset_comp_df['Tenor'] = pd.Categorical(asset_comp_df['Tenor'], categories=tenor_order, ordered=True)
-        asset_comp_df = asset_comp_df.sort_values('Tenor')
         
         if not asset_comp_df.empty:
-            fig_comp = create_comparison_barchart(asset_comp_df, f"{asset} DV01 Comparison", date1_str, date2_str)
-            st.plotly_chart(fig_comp, use_container_width=True)
+            # Pivot data to calculate changes
+            pivot_df = asset_comp_df.pivot_table(index='Tenor', columns='Date', values='Value').reset_index()
+            # Ensure columns are named correctly after pivot
+            pivot_df = pivot_df.rename(columns={pd.to_datetime(date_1): 'Date 1 Value', pd.to_datetime(date_2): 'Date 2 Value'})
+            
+            # Fill missing values that can occur if a tenor exists on one date but not the other
+            pivot_df = pivot_df.fillna(0)
+
+            # Calculate absolute and percentage change
+            pivot_df['Change'] = pivot_df['Date 2 Value'] - pivot_df['Date 1 Value']
+            # Safely calculate percentage change, handling division by zero
+            pivot_df['% Change'] = (pivot_df['Change'] / pivot_df['Date 1 Value'].replace(0, pd.NA)) * 100
+
+            # Sort by predefined tenor order
+            pivot_df['Tenor'] = pd.Categorical(pivot_df['Tenor'], categories=tenor_order, ordered=True)
+            pivot_df = pivot_df.sort_values('Tenor')
+
+            # --- Create Bar Chart of the Change ---
+            fig_change = px.bar(
+                pivot_df,
+                x='Tenor',
+                y='Change',
+                title=f"Change in DV01 for {asset}",
+                labels={'Change': 'Change in DV01 (£k)'},
+                color='Change',
+                color_continuous_scale='RdBu'
+            )
+            fig_change.update_layout(
+                template='plotly_white', paper_bgcolor=CHART_BG_COLOR, plot_bgcolor=CHART_BG_COLOR,
+                font=dict(color=TEXT_COLOR)
+            )
+            st.plotly_chart(fig_change, use_container_width=True)
+
+            # --- Display Detailed Summary Table ---
+            st.dataframe(
+                pivot_df.style.format({
+                    'Date 1 Value': '{:,.2f}',
+                    'Date 2 Value': '{:,.2f}',
+                    'Change': '{:,.2f}',
+                    '% Change': '{:,.2f}%'
+                }).hide(axis='index')
+            )
+            st.markdown("---")
