@@ -1,6 +1,5 @@
 import pandas as pd
 import re
-import os
 from pathlib import Path
 
 def parse_risk_excel(file_path):
@@ -68,30 +67,39 @@ def parse_risk_excel(file_path):
 
 def main():
     """
-    Main function to prompt for a path, find all risk files directly in that folder, 
-    process them, and save the consolidated data to a single Excel file on the Desktop.
+    Main function to prompt for an input path and an output path, find all risk files, 
+    process them, and save the consolidated data to the specified output file.
     """
     # --- Configuration ---
-    # Prompt the user for the path to the directory containing the risk files.
-    input_path_str = input("Please enter the full path to the 'risk_data' folder: ").strip()
+    # Prompt the user for the source directory path.
+    input_path_str = input("Please enter the full path to the folder containing the risk Excel files: ").strip()
     
-    # Convert the user's input string to a Path object
-    base_path = Path(input_path_str)
+    # Prompt the user for the full output file path.
+    output_path_str = input("Please enter the full path for the output Excel file (e.g., C:\\data\\consolidated.xlsx): ").strip()
+
+    # Convert the user's input strings to Path objects
+    source_path = Path(input_path_str)
+    output_filename = Path(output_path_str)
     
-    # Check if the provided path exists and is a directory
-    if not base_path.is_dir():
-        print(f"\nError: The path you provided is not a valid directory.")
-        print(f"Path provided: '{base_path}'")
+    # Check if the source path exists and is a directory
+    if not source_path.is_dir():
+        print(f"\nError: The source path you provided is not a valid directory.")
+        print(f"Path provided: '{source_path}'")
         return
 
-    print(f"\nStarting data consolidation from: {base_path}")
+    # Check if the output path's parent directory exists
+    if not output_filename.parent.is_dir():
+        print(f"\nError: The directory for the output file does not exist.")
+        print(f"Please make sure this folder exists: '{output_filename.parent}'")
+        return
+
+    print(f"\nStarting data consolidation from: {source_path}")
 
     # --- Find all relevant Excel files directly in the provided folder ---
-    # The .glob() method will find all matching files in this directory.
-    all_files = list(base_path.glob('risk_data_In_*.xlsx'))
+    all_files = list(source_path.glob('risk_data_In_*.xlsx'))
     
     if not all_files:
-        print(f"No 'risk_data_In_*.xlsx' files were found directly in '{base_path}'.")
+        print(f"No 'risk_data_In_*.xlsx' files were found directly in '{source_path}'.")
         print("Please check the path and ensure the files are inside it.")
         return
 
@@ -116,9 +124,6 @@ def main():
     final_df.sort_values(by=['Date', 'Metric', 'Tenor', 'Asset Class'], inplace=True)
 
     # --- Save to Excel ---
-    # The output file will be saved to the user's Desktop for easy access.
-    desktop_path = Path.home() / 'Desktop'
-    output_filename = desktop_path / 'consolidated_risk_timeseries.xlsx'
     try:
         final_df.to_excel(output_filename, index=False, engine='openpyxl')
         print("-" * 50)
@@ -138,5 +143,6 @@ if __name__ == "__main__":
     #    pip install openpyxl
     # 3. Save this script as a Python file (e.g., `consolidate_data.py`).
     # 4. Run the script from your terminal: python consolidate_data.py
-    # 5. When prompted, paste the full path to the folder that contains all your risk excel files.
+    # 5. When prompted, provide the full path to the source folder.
+    # 6. When prompted again, provide the full path for the output file, including the filename (e.g., C:\MyData\output.xlsx).
     main()
