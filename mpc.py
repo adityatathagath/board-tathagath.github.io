@@ -34,9 +34,15 @@ MPC_DATA['Date'] = pd.to_datetime(MPC_DATA['Date'])
 
 @st.cache_data
 def load_data(file):
-    """Loads and preprocesses the data from the uploaded Excel file."""
+    """
+    Loads and preprocesses the data from the uploaded Excel file.
+    Includes a robust cleaning step for the 'Value' column.
+    """
     df = pd.read_excel(file, engine='openpyxl')
     df['Date'] = pd.to_datetime(df['Date'])
+    # Force 'Value' column to be numeric, converting errors to NaN and then filling with 0.
+    # This is a key step to prevent data type errors.
+    df['Value'] = pd.to_numeric(df['Value'], errors='coerce').fillna(0)
     return df
 
 @st.cache_data
@@ -82,11 +88,15 @@ latest_df = df[(df['Date'] == latest_date) & (df['Metric'] == 'DV01')]
 # --- Risk Manager's Summary View ---
 st.subheader(f"Risk Manager's View: Key Exposures for {latest_date.strftime('%d-%b-%Y')}")
 
-# Calculate key metrics for the summary
-net_dv01 = latest_df[(latest_df['Asset Class'] == 'NET') & (latest_df['Tenor'] != 'Total')]['Value'].sum()
-gov_dv01 = latest_df[(latest_df['Asset Class'] == 'GOV') & (latest_df['Tenor'] != 'Total')]['Value'].sum()
-corp_dv01 = latest_df[(latest_df['Asset Class'] == 'CORP') & (latest_df['Tenor'] != 'Total')]['Value'].sum()
-ois_dv01 = latest_df[(latest_df['Asset Class'] == 'OIS') & (latest_df['Tenor'] != 'Total')]['Value'].sum()
+# Filter to the latest day's data, for the DV01 metric, and exclude the calculated 'Total' tenor
+latest_positions = latest_df[latest_df['Tenor'] != 'Total']
+
+# Calculate the total DV01 for each primary asset class by summing up all its tenors
+gov_dv01 = latest_positions[latest_positions['Asset Class'] == 'GOV']['Value'].sum()
+corp_dv01 = latest_positions[latest_positions['Asset Class'] == 'CORP']['Value'].sum()
+ois_dv01 = latest_positions[latest_positions['Asset Class'] == 'OIS']['Value'].sum()
+net_dv01 = latest_positions[latest_positions['Asset Class'] == 'NET']['Value'].sum()
+
 
 # Display key metrics in columns
 col1, col2, col3, col4 = st.columns(4)
