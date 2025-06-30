@@ -14,23 +14,29 @@ st.set_page_config(
 
 # MPC data with more detail for correlation analysis
 MPC_DATA = pd.DataFrame([
-    {'Date': '2025-06-06', 'Meeting': 'June 2025', 'Repo Rate': '6.50% (Unchanged)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '4.5% (26)', 'GDP Forecast (FY)': '7.2% (26)'},
-    {'Date': '2025-04-04', 'Meeting': 'April 2025', 'Repo Rate': '6.50% (Unchanged)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '4.5% (26)', 'GDP Forecast (FY)': '7.0% (26)'},
-    {'Date': '2025-02-07', 'Meeting': 'February 2025', 'Repo Rate': '6.50% (Unchanged)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '4.5% (25)', 'GDP Forecast (FY)': '7.0% (25)'},
-    {'Date': '2024-12-06', 'Meeting': 'December 2024', 'Repo Rate': '6.50% (Unchanged)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '4.5% (25)', 'GDP Forecast (FY)': '7.0% (25)'},
-    {'Date': '2024-10-09', 'Meeting': 'October 2024', 'Repo Rate': '6.50% (Unchanged)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '4.5% (25)', 'GDP Forecast (FY)': '7.0% (25)'},
-    {'Date': '2024-08-08', 'Meeting': 'August 2024', 'Repo Rate': '6.50% (Unchanged)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '4.5% (25)', 'GDP Forecast (FY)': '7.0% (25)'},
-    {'Date': '2024-06-07', 'Meeting': 'June 2024', 'Repo Rate': '6.50% (Unchanged)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '4.5% (25)', 'GDP Forecast (FY)': '7.2% (25)'},
-    {'Date': '2024-04-05', 'Meeting': 'April 2024', 'Repo Rate': '6.50% (Unchanged)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '4.5% (25)', 'GDP Forecast (FY)': '7.0% (25)'},
-    {'Date': '2024-02-08', 'Meeting': 'February 2024', 'Repo Rate': '6.50% (Unchanged)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '5.4% (24)', 'GDP Forecast (FY)': '7.3% (24)'},
-    {'Date': '2023-12-08', 'Meeting': 'December 2023', 'Repo Rate': '6.50% (Unchanged)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '5.4% (24)', 'GDP Forecast (FY)': '7.0% (24)'},
-    {'Date': '2023-10-06', 'Meeting': 'October 2023', 'Repo Rate': '6.50% (Unchanged)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '5.4% (24)', 'GDP Forecast (FY)': '6.5% (24)'},
-    {'Date': '2023-08-10', 'Meeting': 'August 2023', 'Repo Rate': '6.50% (Unchanged)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '5.4% (24)', 'GDP Forecast (FY)': '6.5% (24)'},
-    {'Date': '2023-06-08', 'Meeting': 'June 2023', 'Repo Rate': '6.50% (Unchanged)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '5.1% (24)', 'GDP Forecast (FY)': '6.5% (24)'},
-    {'Date': '2023-04-06', 'Meeting': 'April 2023', 'Repo Rate': '6.50% (Unchanged)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '5.2% (24)', 'GDP Forecast (FY)': '6.5% (24)'},
-    {'Date': '2023-02-08', 'Meeting': 'February 2023', 'Repo Rate': '6.50% (+25bps)', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast (FY)': '6.5% (23)', 'GDP Forecast (FY)': '7.0% (23)'},
+    # 2023 — 6 Meetings
+    {'Date': '2023-02-08', 'Repo Rate': '6.50%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast': '6.5% (FY23)', 'GDP Forecast': '7.2% (FY23)', 'MSF Rate': '6.75%', 'SDF Rate': '6.25%', 'Bank Rate': '6.75%'},
+    {'Date': '2023-04-06', 'Repo Rate': '6.50%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast': '5.7% (FY23)', 'GDP Forecast': '7.2% (FY23)', 'MSF Rate': '6.75%', 'SDF Rate': '6.25%', 'Bank Rate': '6.75%'},
+    {'Date': '2023-06-08', 'Repo Rate': '6.50%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast': '5.7% (FY23)', 'GDP Forecast': '7.2% (FY23)', 'MSF Rate': '6.75%', 'SDF Rate': '6.25%', 'Bank Rate': '6.75%'},
+    {'Date': '2023-08-10', 'Repo Rate': '6.50%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast': '—', 'GDP Forecast': '—', 'MSF Rate': '6.75%', 'SDF Rate': '6.25%', 'Bank Rate': '6.75%'},
+    {'Date': '2023-10-06', 'Repo Rate': '6.50%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast': '—', 'GDP Forecast': '—', 'MSF Rate': '6.75%', 'SDF Rate': '6.25%', 'Bank Rate': '6.75%'},
+    {'Date': '2023-12-08', 'Repo Rate': '6.50%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast': '—', 'GDP Forecast': '—', 'MSF Rate': '6.75%', 'SDF Rate': '6.25%', 'Bank Rate': '6.75%'},
+
+    # 2024 — 6 Meetings
+    {'Date': '2024-02-08', 'Repo Rate': '6.50%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast': '—', 'GDP Forecast': '—', 'MSF Rate': '6.75%', 'SDF Rate': '6.25%', 'Bank Rate': '6.75%'},
+    {'Date': '2024-04-05', 'Repo Rate': '6.50%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast': '—', 'GDP Forecast': '—', 'MSF Rate': '6.75%', 'SDF Rate': '6.25%', 'Bank Rate': '6.75%'},
+    {'Date': '2024-06-07', 'Repo Rate': '6.50%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast': '4.5% (FY25)', 'GDP Forecast': '7.2% (FY25)', 'MSF Rate': '6.75%', 'SDF Rate': '6.25%', 'Bank Rate': '6.75%'},
+    {'Date': '2024-08-08', 'Repo Rate': '6.50%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast': '4.5% (FY25)', 'GDP Forecast': '7.2% (FY25)', 'MSF Rate': '6.75%', 'SDF Rate': '6.25%', 'Bank Rate': '6.75%'},
+    {'Date': '2024-10-09', 'Repo Rate': '6.50%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast': '4.5% (FY25)', 'GDP Forecast': '7.2% (FY25)', 'MSF Rate': '6.75%', 'SDF Rate': '6.25%', 'Bank Rate': '6.75%'},
+    {'Date': '2024-12-06', 'Repo Rate': '6.50%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Withdrawal of accommodation', 'CPI Forecast': '4.5% (FY25)', 'GDP Forecast': '7.0% (FY25)', 'MSF Rate': '6.75%', 'SDF Rate': '6.25%', 'Bank Rate': '6.75%'},
+
+    # 2025 — 3 Meetings till June
+    {'Date': '2025-02-07', 'Repo Rate': '6.25%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Neutral', 'CPI Forecast': '4.2% (FY26)', 'GDP Forecast': '6.7% (FY26)', 'MSF Rate': '6.50%', 'SDF Rate': '6.00%', 'Bank Rate': '6.50%'},
+    {'Date': '2025-04-09', 'Repo Rate': '6.00%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Accommodative', 'CPI Forecast': '—', 'GDP Forecast': '6.5% (FY26)', 'MSF Rate': '6.25%', 'SDF Rate': '5.75%', 'Bank Rate': '6.25%'},
+    {'Date': '2025-06-06', 'Repo Rate': '5.50%', 'Reverse Repo Rate': '3.35%', 'Stance': 'Neutral', 'CPI Forecast': '3.7% (FY26)', 'GDP Forecast': '6.5% (FY26)', 'MSF Rate': '5.75%', 'SDF Rate': '5.25%', 'Bank Rate': '5.75%'}
 ])
 MPC_DATA['Date'] = pd.to_datetime(MPC_DATA['Date'])
+MPC_DATA['Meeting'] = MPC_DATA['Date'].dt.strftime('%B %Y')
 
 
 @st.cache_data
