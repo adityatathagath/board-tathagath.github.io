@@ -45,11 +45,8 @@ def get_data_with_totals(_df):
     Takes a dataframe and returns a new one with a calculated 'Total' tenor.
     This prevents modifying dataframes during the render pass.
     """
-    # Calculate totals for each Asset Class across all tenors for each day
     total_df = _df.groupby(['Date', 'Metric', 'Asset Class'])['Value'].sum().reset_index()
     total_df['Tenor'] = 'Total'
-    
-    # Combine the original data with the new total rows
     return pd.concat([_df, total_df], ignore_index=True)
 
 def format_k(value):
@@ -158,14 +155,19 @@ with tab1:
     if chart_df.empty:
         st.warning("No data available for the selected filter combination.")
     else:
+        # Create a copy to avoid modifying the cached dataframe
+        plot_df = chart_df.copy()
+        # Convert Date to string for robust plotting
+        plot_df['Date'] = plot_df['Date'].dt.strftime('%Y-%m-%d')
+        
         fig = px.line(
-            chart_df, x='Date', y='Value', color='Asset Class',
+            plot_df, x='Date', y='Value', color='Asset Class',
             title=f"{selected_metric}: {', '.join(selected_asset_classes)} ({selected_tenor})",
             labels={'Value': f'{selected_metric} Value (£k)', 'Date': 'Date'},
             template='plotly_dark'
         )
         for _, row in MPC_DATA.iterrows():
-            fig.add_vline(x=row['Date'], line_width=1, line_dash="dash", line_color="orange", annotation_text=row['Meeting'], annotation_position="top left")
+            fig.add_vline(x=row['Date'].strftime('%Y-%m-%d'), line_width=1, line_dash="dash", line_color="orange", annotation_text=row['Meeting'], annotation_position="top left")
         
         st.plotly_chart(fig, use_container_width=True)
 
