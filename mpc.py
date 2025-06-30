@@ -41,7 +41,6 @@ def load_data(file):
     df = pd.read_excel(file, engine='openpyxl')
     df['Date'] = pd.to_datetime(df['Date'])
     # Force 'Value' column to be numeric, converting errors to NaN and then filling with 0.
-    # This is a key step to prevent data type errors.
     df['Value'] = pd.to_numeric(df['Value'], errors='coerce').fillna(0)
     return df
 
@@ -49,7 +48,6 @@ def load_data(file):
 def get_data_with_totals(_df):
     """
     Takes a dataframe and returns a new one with a calculated 'Total' tenor.
-    This prevents modifying dataframes during the render pass.
     """
     total_df = _df.groupby(['Date', 'Metric', 'Asset Class'])['Value'].sum().reset_index()
     total_df['Tenor'] = 'Total'
@@ -88,17 +86,12 @@ latest_df = df[(df['Date'] == latest_date) & (df['Metric'] == 'DV01')]
 # --- Risk Manager's Summary View ---
 st.subheader(f"Risk Manager's View: Key Exposures for {latest_date.strftime('%d-%b-%Y')}")
 
-# Filter to the latest day's data, for the DV01 metric, and exclude the calculated 'Total' tenor
 latest_positions = latest_df[latest_df['Tenor'] != 'Total']
-
-# Calculate the total DV01 for each primary asset class by summing up all its tenors
 gov_dv01 = latest_positions[latest_positions['Asset Class'] == 'GOV']['Value'].sum()
 corp_dv01 = latest_positions[latest_positions['Asset Class'] == 'CORP']['Value'].sum()
 ois_dv01 = latest_positions[latest_positions['Asset Class'] == 'OIS']['Value'].sum()
 net_dv01 = latest_positions[latest_positions['Asset Class'] == 'NET']['Value'].sum()
 
-
-# Display key metrics in columns
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.metric("Net DV01 (Portfolio)", format_k(net_dv01), help="Overall sensitivity. Positive = bet on rates falling.")
@@ -130,14 +123,12 @@ with tab1:
     ]
     selected_analysis = st.selectbox("Select an Analysis Scenario:", analysis_options)
     
-    # Sidebar for deep dive filters
     st.sidebar.header("Analysis Filters")
     metrics = sorted(df['Metric'].unique())
     asset_classes = sorted(df['Asset Class'].unique())
     tenor_order = ['<=1Y', '2Y', '3Y', '4Y', '5Y', '7Y', '10Y', '>=15Y', 'Total']
     tenors = sorted(df['Tenor'].unique(), key=lambda x: tenor_order.index(x) if x in tenor_order else len(tenor_order))
 
-    # Pre-configure filters based on selected analysis
     if selected_analysis == analysis_options[0]:
         st.sidebar.info("This view tracks the desk's conviction on a core policy bet (OIS 2Y) around MPC meetings.")
         sel_metric, sel_assets, sel_tenor = 'DV01', ['OIS'], '2Y'
@@ -147,7 +138,7 @@ with tab1:
     elif selected_analysis == analysis_options[2]:
         st.sidebar.info("This view shows the overall portfolio direction. Look for major shifts in the trend.")
         sel_metric, sel_assets, sel_tenor = 'DV01', ['NET'], 'Total'
-    else: # Correlate Trading
+    else:
         st.sidebar.info("Look for jumps in credit risk (CORP) and see if they align with positive GDP forecasts from the MPC.")
         sel_metric, sel_assets, sel_tenor = 'DV01', ['CORP'], '5Y'
 
@@ -155,7 +146,6 @@ with tab1:
     selected_asset_classes = st.sidebar.multiselect("Asset Classes", asset_classes, default=sel_assets)
     selected_tenor = st.sidebar.selectbox("Tenor", tenors, index=tenors.index(sel_tenor))
 
-    # Filter data for the chart
     chart_df = df[
         (df['Metric'] == selected_metric) &
         (df['Asset Class'].isin(selected_asset_classes)) &
@@ -165,20 +155,20 @@ with tab1:
     if chart_df.empty:
         st.warning("No data available for the selected filter combination.")
     else:
-        # Create a copy to avoid modifying the cached dataframe
-        plot_df = chart_df.copy()
-        # Convert Date to string for robust plotting
-        plot_df['Date'] = plot_df['Date'].dt.strftime('%Y-%m-%d')
-        
         fig = px.line(
-            plot_df, x='Date', y='Value', color='Asset Class',
+            chart_df, x='Date', y='Value', color='Asset Class',
             title=f"{selected_metric}: {', '.join(selected_asset_classes)} ({selected_tenor})",
             labels={'Value': f'{selected_metric} Value (£k)', 'Date': 'Date'},
             template='plotly_dark'
         )
         for _, row in MPC_DATA.iterrows():
-            fig.add_vline(x=row['Date'].strftime('%Y-%m-%d'), line_width=1, line_dash="dash", line_color="orange", annotation_text=row['Meeting'], annotation_position="top left")
+            fig.add_vline(x=row['Date'], line_width=1, line_dash="dash", line_color="orange", annotation_text=row['Meeting'], annotation_position="top left")
         
+        # Manually set the x-axis range to bypass the internal calculation error
+        min_date = chart_df['Date'].min() - pd.Timedelta(days=10)
+        max_date = chart_df['Date'].max() + pd.Timedelta(days=10)
+        fig.update_xaxes(range=[min_date, max_date])
+
         st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
@@ -186,7 +176,7 @@ with tab2:
     
     latest_pivot = latest_df[latest_df.Tenor != 'Total'].pivot_table(
         index='Tenor', columns='Asset Class', values='Value'
-    ).reindex(tenor_order[:-1]).fillna(0) # Exclude 'Total' from pivot display
+    ).reindex(tenor_order[:-1]).fillna(0)
     
     st.dataframe(latest_pivot.style.format("{:,.0f}").background_gradient(cmap='RdYlGn', axis=None))
     
