@@ -79,7 +79,7 @@ def load_data(file):
     return df
 
 def create_timeseries_chart(df, title, selected_tenors):
-    """Creates a Plotly line chart for a given dataframe and selected tenors."""
+    """Creates a Plotly line chart using the robust marker method for MPC dates."""
     fig = go.Figure()
     
     plot_df = df[df['Tenor'].isin(selected_tenors)]
@@ -88,8 +88,13 @@ def create_timeseries_chart(df, title, selected_tenors):
         tenor_df = plot_df[plot_df['Tenor'] == tenor]
         fig.add_trace(go.Scatter(x=tenor_df['Date'], y=tenor_df['Value'], mode='lines', name=tenor))
 
-    for _, row in MPC_DATA.iterrows():
-        fig.add_vline(x=row['Date'], line_width=1, line_dash="dash", line_color=ACCENT_ORANGE)
+    # Add a separate, stable trace for MPC meeting markers
+    y_pos = plot_df['Value'].max() * 1.05 if not plot_df.empty else 1
+    fig.add_trace(go.Scatter(
+        x=MPC_DATA['Date'], y=[y_pos] * len(MPC_DATA), mode='markers',
+        marker=dict(symbol='diamond-tall', color=ACCENT_ORANGE, size=10),
+        name='MPC Meeting', hovertext=MPC_DATA['Meeting'], hoverinfo='text'
+    ))
 
     fig.update_layout(
         title_text=title, template='plotly_white',
@@ -180,32 +185,19 @@ else: # Day-on-Day Comparison View
         asset_comp_df = comparison_df[comparison_df['Asset Class'] == asset]
         
         if not asset_comp_df.empty:
-            # Pivot data to calculate changes
             pivot_df = asset_comp_df.pivot_table(index='Tenor', columns='Date', values='Value').reset_index()
-            # Ensure columns are named correctly after pivot
             pivot_df = pivot_df.rename(columns={pd.to_datetime(date_1): 'Date 1 Value', pd.to_datetime(date_2): 'Date 2 Value'})
-            
-            # Fill missing values that can occur if a tenor exists on one date but not the other
             pivot_df = pivot_df.fillna(0)
 
-            # Calculate absolute and percentage change
             pivot_df['Change'] = pivot_df['Date 2 Value'] - pivot_df['Date 1 Value']
-            # Safely calculate percentage change, handling division by zero
             pivot_df['% Change'] = (pivot_df['Change'] / pivot_df['Date 1 Value'].replace(0, pd.NA)) * 100
 
-            # Sort by predefined tenor order
             pivot_df['Tenor'] = pd.Categorical(pivot_df['Tenor'], categories=tenor_order, ordered=True)
             pivot_df = pivot_df.sort_values('Tenor')
 
-            # --- Create Bar Chart of the Change ---
             fig_change = px.bar(
-                pivot_df,
-                x='Tenor',
-                y='Change',
-                title=f"Change in DV01 for {asset}",
-                labels={'Change': 'Change in DV01 (£k)'},
-                color='Change',
-                color_continuous_scale='RdBu'
+                pivot_df, x='Tenor', y='Change', title=f"Change in DV01 for {asset}",
+                labels={'Change': 'Change in DV01 (£k)'}, color='Change', color_continuous_scale='RdBu'
             )
             fig_change.update_layout(
                 template='plotly_white', paper_bgcolor=CHART_BG_COLOR, plot_bgcolor=CHART_BG_COLOR,
@@ -213,13 +205,13 @@ else: # Day-on-Day Comparison View
             )
             st.plotly_chart(fig_change, use_container_width=True)
 
-            # --- Display Detailed Summary Table ---
-            st.dataframe(
-                pivot_df.style.format({
-                    'Date 1 Value': '{:,.2f}',
-                    'Date 2 Value': '{:,.2f}',
-                    'Change': '{:,.2f}',
-                    '% Change': '{:,.2f}%'
-                }).hide(axis='index')
-            )
+            # --- Simplified and Safe Dataframe Display ---
+            # Create a clean copy for display and format it
+            display_df = pivot_df.copy()
+            display_df['Date 1 Value'] = display_df['Date 1 Value'].map('{:,.2f}'.format)
+            display_df['Date 2 Value'] = display_df['Date 2 Value'].map('{:,.2f}'.format)
+            display_df['Change'] = display_df['Change'].map('{:,.2f}'.format)
+            display_df['% Change'] = display_df['% Change'].map('{:,.2f}%'.format)
+            
+            st.dataframe(display_df.set_index('Tenor'))
             st.markdown("---")
