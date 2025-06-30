@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -184,39 +185,61 @@ else: # Day-on-Day Comparison View
         asset_comp_df = comparison_df[comparison_df['Asset Class'] == asset]
         
         if not asset_comp_df.empty:
-            pivot_df = asset_comp_df.pivot_table(index='Tenor', columns='Date', values='Value').reset_index()
-            date1_col_name = f"Value on {pd.to_datetime(date_1).strftime('%d-%b')}"
-            date2_col_name = f"Value on {pd.to_datetime(date_2).strftime('%d-%b')}"
-            pivot_df = pivot_df.rename(columns={pd.to_datetime(date_1): date1_col_name, pd.to_datetime(date_2): date2_col_name})
-            pivot_df = pivot_df.fillna(0)
-
-            pivot_df['Change'] = pivot_df[date2_col_name] - pivot_df[date1_col_name]
-
-            pivot_df['Tenor'] = pd.Categorical(pivot_df['Tenor'], categories=tenor_order, ordered=True)
-            pivot_df = pivot_df.sort_values('Tenor')
-
-            # Bar chart of the absolute change
-            fig_change = px.bar(
-                pivot_df, x='Tenor', y='Change', title=f"Change in DV01 for {asset}",
-                labels={'Change': 'Change in DV01 (£k)'}, color='Change', color_continuous_scale='RdBu'
+            # --- Create Grouped Bar Chart ---
+            asset_comp_df['Date'] = asset_comp_df['Date'].dt.strftime('%d-%b-%Y')
+            asset_comp_df['Tenor'] = pd.Categorical(asset_comp_df['Tenor'], categories=tenor_order, ordered=True)
+            asset_comp_df = asset_comp_df.sort_values('Tenor')
+            
+            fig_comp = px.bar(
+                asset_comp_df, x='Tenor', y='Value', color='Date', barmode='group',
+                title=f"DV01 for {asset}",
+                labels={'Value': 'DV01 Value (£k)'},
+                color_discrete_map={
+                    pd.to_datetime(date_1).strftime('%d-%b-%Y'): PRIMARY_BLUE,
+                    pd.to_datetime(date_2).strftime('%d-%b-%Y'): ACCENT_BLUE
+                }
             )
-            fig_change.update_layout(
+            fig_comp.update_layout(
                 template='plotly_white', paper_bgcolor=CHART_BG_COLOR, plot_bgcolor=CHART_BG_COLOR,
                 font=dict(color=TEXT_COLOR)
             )
-            st.plotly_chart(fig_change, use_container_width=True)
+            st.plotly_chart(fig_comp, use_container_width=True)
 
-            # --- Simplified and Safe Dataframe Display ---
+            # --- Create and Display AG Grid Table ---
             with st.expander("Show/Hide Detailed Data"):
-                display_df = pivot_df.rename(columns={
-                    date1_col_name: f"Value on {pd.to_datetime(date_1).strftime('%d-%b')}",
-                    date2_col_name: f"Value on {pd.to_datetime(date_2).strftime('%d-%b')}",
-                    'Change': "Change (£k)"
-                })
+                pivot_df = asset_comp_df.pivot_table(index='Tenor', columns='Date', values='Value').reset_index()
+                date1_col_name = pd.to_datetime(date_1).strftime('%d-%b-%Y')
+                date2_col_name = pd.to_datetime(date_2).strftime('%d-%b-%Y')
                 
-                # Use a simple st.dataframe without complex styling to avoid recursion
-                st.dataframe(
-                    display_df.set_index('Tenor'),
-                    use_container_width=True
+                pivot_df = pivot_df.rename(columns={date1_col_name: 'Date 1 Value', date2_col_name: 'Date 2 Value'})
+                pivot_df = pivot_df.fillna(0)
+                pivot_df['Change'] = pivot_df['Date 2 Value'] - pivot_df['Date 1 Value']
+
+                gb = GridOptionsBuilder.from_dataframe(pivot_df)
+                
+                # JS code to format numbers to 2 decimal places
+                jscode = JsCode("""
+                function(params) {
+                    if (params.value === null || params.value === undefined) {
+                        return '';
+                    }
+                    return '£' + params.value.toFixed(2);
+                }
+                """)
+                
+                gb.configure_column("Tenor", headerName="Tenor")
+                gb.configure_column("Date 1 Value", headerName=date1_col_name, valueFormatter=jscode)
+                gb.configure_column("Date 2 Value", headerName=date2_col_name, valueFormatter=jscode)
+                gb.configure_column("Change", headerName="Change (£k)", valueFormatter=jscode)
+                
+                gb.configure_default_column(flex=1)
+                gridOptions = gb.build()
+
+                AgGrid(
+                    pivot_df,
+                    gridOptions=gridOptions,
+                    theme='alpine',
+                    allow_unsafe_jscode=True,
+                    height=300
                 )
             st.markdown("---")
