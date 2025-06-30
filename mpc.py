@@ -82,7 +82,6 @@ def create_timeseries_chart(df, title, selected_tenors):
     """Creates a Plotly line chart for a given dataframe and selected tenors."""
     fig = go.Figure()
     
-    # Filter the dataframe for the selected tenors before plotting
     plot_df = df[df['Tenor'].isin(selected_tenors)]
     
     for tenor in selected_tenors:
@@ -100,13 +99,13 @@ def create_timeseries_chart(df, title, selected_tenors):
     )
     return fig
 
-def create_comparison_barchart(df, title):
+def create_comparison_barchart(df, title, date1_str, date2_str):
     """Creates a Plotly grouped bar chart for day-on-day comparison."""
     df['Date'] = df['Date'].dt.strftime('%d-%b-%Y')
     fig = px.bar(
         df, x='Tenor', y='Value', color='Date', barmode='group',
         title=title, labels={'Value': 'DV01 Value (£k)'},
-        color_discrete_map={df['Date'].unique()[0]: PRIMARY_BLUE, df['Date'].unique()[1]: ACCENT_BLUE}
+        color_discrete_map={date1_str: PRIMARY_BLUE, date2_str: ACCENT_BLUE}
     )
     fig.update_layout(
         template='plotly_white', paper_bgcolor=CHART_BG_COLOR, plot_bgcolor=CHART_BG_COLOR,
@@ -136,18 +135,16 @@ comparison_mode = st.sidebar.toggle("Show Day-on-Day Comparison", value=False)
 if not comparison_mode:
     st.header("Time Series Analysis: DV01 Risk Profile")
     
-    # --- Global Tenor Filter for Time Series View ---
     selected_tenors = st.multiselect(
         "Select Tenors to Display:",
         options=available_tenors,
-        default=available_tenors[:3] # Default to the first three tenors
+        default=available_tenors[:3]
     )
 
     if not selected_tenors:
         st.warning("Please select at least one tenor to display the charts.")
         st.stop()
 
-    # --- NET Risk Chart ---
     st.subheader("Portfolio Net Exposure (NET)")
     net_df = df_dv01[df_dv01['Asset Class'] == 'NET']
     if not net_df.empty:
@@ -156,7 +153,6 @@ if not comparison_mode:
     else:
         st.warning("No data found for Asset Class 'NET'.")
 
-    # --- Other Asset Class Charts ---
     st.markdown("---")
     st.subheader("Asset Class Deep Dive")
     other_assets = sorted([a for a in df_dv01['Asset Class'].unique() if a != 'NET'])
@@ -173,22 +169,42 @@ else: # Day-on-Day Comparison View
         st.error("Cannot perform comparison. The dataset contains data for only one day.")
         st.stop()
     
-    latest_date = pd.to_datetime(unique_dates[0])
-    previous_date = pd.to_datetime(unique_dates[1])
+    # --- Date Selection for Comparison ---
+    col1, col2 = st.columns(2)
+    with col1:
+        date_1 = st.selectbox(
+            "Select First Date:",
+            options=unique_dates,
+            format_func=lambda date: pd.to_datetime(date).strftime('%d-%b-%Y'),
+            index=1 # Default to the second latest date
+        )
+    with col2:
+        date_2 = st.selectbox(
+            "Select Second Date:",
+            options=unique_dates,
+            format_func=lambda date: pd.to_datetime(date).strftime('%d-%b-%Y'),
+            index=0 # Default to the latest date
+        )
     
-    st.header(f"Day-on-Day Comparison: {previous_date.strftime('%d-%b-%Y')} vs {latest_date.strftime('%d-%b-%Y')}")
+    if date_1 == date_2:
+        st.warning("Please select two different dates for a meaningful comparison.")
+        st.stop()
+        
+    st.header(f"Day-on-Day Comparison: {pd.to_datetime(date_1).strftime('%d-%b-%Y')} vs {pd.to_datetime(date_2).strftime('%d-%b-%Y')}")
     
-    comparison_df = df_dv01[df_dv01['Date'].isin([latest_date, previous_date])].copy()
+    comparison_df = df_dv01[df_dv01['Date'].isin([date_1, date_2])].copy()
     comparison_df = comparison_df[comparison_df['Tenor'] != 'Total']
     
     all_assets = sorted(comparison_df['Asset Class'].unique())
     
+    date1_str = pd.to_datetime(date_1).strftime('%d-%b-%Y')
+    date2_str = pd.to_datetime(date_2).strftime('%d-%b-%Y')
+    
     for asset in all_assets:
         asset_comp_df = comparison_df[comparison_df['Asset Class'] == asset]
-        # Ensure correct sorting based on the predefined order
         asset_comp_df['Tenor'] = pd.Categorical(asset_comp_df['Tenor'], categories=tenor_order, ordered=True)
         asset_comp_df = asset_comp_df.sort_values('Tenor')
         
         if not asset_comp_df.empty:
-            fig_comp = create_comparison_barchart(asset_comp_df, f"{asset} DV01 Comparison")
+            fig_comp = create_comparison_barchart(asset_comp_df, f"{asset} DV01 Comparison", date1_str, date2_str)
             st.plotly_chart(fig_comp, use_container_width=True)
