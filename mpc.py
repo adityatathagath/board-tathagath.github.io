@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from st_aggrid import AgGrid, GridOptionsBuilder
 
 # --- Page Configuration ---
 # Set the layout to wide mode for better visualization
@@ -119,7 +118,32 @@ else:
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- Display MPC and Raw Data ---
+# --- Display Explanations, MPC Data, and Raw Data Table ---
+st.subheader("Data Explorer & Explanations")
+
+# Use an expander to explain the risk metrics
+with st.expander("How to Interpret This Risk Data", expanded=False):
+    st.markdown("""
+    This dashboard visualizes Interest Rate Risk using the **DV01** metric.
+
+    ### What is DV01?
+    **DV01** stands for 'Dollar Value of a 1 Basis Point Move'. It measures how much the value of a portfolio changes if interest rates move by 0.01% (or 1 basis point). The values are shown in thousands of British Pounds (£k).
+
+    - **Positive DV01**: A positive value means the portfolio **gains money if interest rates fall**. This indicates a *long duration* position, like owning a bond.
+    - **Negative DV01**: A negative value means the portfolio **gains money if interest rates rise**. This indicates a *short duration* position, like paying the fixed leg of an interest rate swap.
+
+    ### Metrics:
+    - **DV01**: This is the total risk exposure on a given day.
+    - **Change DV01**: This shows the day-over-day change in the DV01, indicating how trading activity has altered the risk profile.
+
+    ### Example Analysis:
+    If the DV01 for **GOV** in the **10Y** tenor is **-25**, it means:
+    - The portfolio has a short position in 10-year government bonds (or equivalent derivatives).
+    - If 10-year interest rates **rise** by 1 basis point (0.01%), the position will **gain £25,000**.
+    - If 10-year interest rates **fall** by 1 basis point (0.01%), the position will **lose £25,000**.
+    """)
+
+
 col1, col2 = st.columns([1, 2])
 
 with col1:
@@ -127,22 +151,7 @@ with col1:
     st.dataframe(mpc_data.set_index('Meeting'))
 
 with col2:
-    st.subheader("Raw Data Explorer")
-    
-    # Configure AG Grid options for interactivity
-    gb = GridOptionsBuilder.from_dataframe(df)
-    gb.configure_pagination(paginationAutoPageSize=True)
-    gb.configure_side_bar()
-    gb.configure_default_column(groupable=True, value=True, enableRowGroup=True, aggFunc='sum', editable=False)
-    gridOptions = gb.build()
+    st.subheader("Consolidated Raw Data")
+    # Display the raw data in a simple, scrollable dataframe
+    st.dataframe(df)
 
-    # Display the interactive grid
-    AgGrid(
-        df,
-        gridOptions=gridOptions,
-        theme='alpine-dark', # Use a standard dark theme that is more compatible
-        height=400,
-        width='100%',
-        fit_columns_on_grid_load=True,
-        allow_unsafe_jscode=True, # Set to True to allow jsfunction to be injected
-    )
