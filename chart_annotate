@@ -1,0 +1,148 @@
+import streamlit as st
+import pandas as pd
+import plotly.graph_objects as go
+
+# --- Data Loading ---
+@st.cache_data
+def load_usdinr_data_and_events(file_path):
+    # Load the Excel file
+    df = pd.read_excel(file_path)
+    # Ensure the 'Date' column is in datetime format
+    df['Date'] = pd.to_datetime(df['Date'])
+    
+    # Filter the data for the specified date range
+    start_date = '1973-01-03'
+    end_date = '2025-06-20'
+    df = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)]
+    
+    return df
+
+# --- Major Events Data ---
+def get_major_events():
+    # Define major events impacting the INR
+    events = [
+        {'date': '1991-07-01', 'event': '1991 BoP Crisis & Devaluation', 'description': 'Crisis leading to significant devaluation of INR.'},
+        {'date': '1998-05-11', 'event': 'Pokhran II Nuclear Tests', 'description': 'Triggered sanctions and market volatility.'},
+        {'date': '2008-09-15', 'event': 'Lehman Brothers Collapse', 'description': 'Global financial crisis impacting emerging markets.'},
+        {'date': '2013-05-22', 'event': 'Taper Tantrum', 'description': 'US Fed signals tapering of bond purchases, leading to capital outflows.'},
+        {'date': '2020-03-24', 'event': 'COVID-19 Pandemic Shock', 'description': 'Global pandemic leading to economic disruptions.'},
+        {'date': '2022-02-24', 'event': 'Russia-Ukraine War', 'description': 'Geopolitical tensions causing inflation and currency volatility.'},
+    ]
+    return pd.DataFrame(events)
+
+# --- Streamlit Application ---
+st.set_page_config(layout="wide", page_title="USD/INR Historical Dynamics", icon="📈")
+
+st.title("📈 USD/INR Historical Dynamics (1973-2025) with Major Events")
+
+# File uploader for the Excel file
+uploaded_file = st.file_uploader("Upload your USD/INR Excel file", type=["xlsx"])
+
+if uploaded_file is not None:
+    # Load the data
+    df_usd_inr = load_usdinr_data_and_events(uploaded_file)
+
+    # Get major events
+    df_events = get_major_events()
+    df_events['date'] = pd.to_datetime(df_events['date'])
+
+    # Create the Plotly figure
+    fig = go.Figure()
+
+    # Add the main USD/INR line trace
+    fig.add_trace(go.Scatter(
+        x=df_usd_inr['Date'],
+        y=df_usd_inr['USD_INR'],  # Assuming the column name for rates is 'USD_INR'
+        mode='lines',  # Clean line without markers
+        name='USD/INR Exchange Rate',
+        line=dict(color='#1f77b4', width=4),  # A nice blue color, thicker line
+        hovertemplate='<b>Date:</b> %{x}<br><b>USD/INR:</b> %{y:.2f}<extra></extra>'  # Custom hover text
+    ))
+
+    # Add arrows for major events
+    for index, row in df_events.iterrows():
+        fig.add_annotation(
+            x=row['date'],
+            y=df_usd_inr.loc[df_usd_inr['Date'] == row['date'], 'USD_INR'].values[0],  # Get the corresponding rate
+            ax=row['date'],
+            ay=row['date'] + pd.DateOffset(days=30),  # Offset above the line
+            text=f"<b>{row['event']}</b>: {row['description']}",
+            showarrow=True,
+            arrowhead=2,
+            arrowsize=1,
+            arrowwidth=2,
+            arrowcolor="red",
+            axref="x",
+            ayref="y",
+            font=dict(color="black", size=10),
+            bgcolor="rgba(255, 255, 255, 0.8)",
+            bordercolor="red",
+            borderwidth=1,
+            borderpad=4,
+            opacity=0.9
+        )
+
+    # Update layout for better aesthetics
+    fig.update_layout(
+        title={
+            'text': 'USD/INR Exchange Rate (1973-2025) with Major Historical Events',
+            'y': 0.95,
+            'x': 0.5,
+            'xanchor': 'center',
+            'yanchor': 'top',
+            'font': {'size': 24, 'color': '#333'}
+        },
+        xaxis_title='Date',
+        yaxis_title='INR per USD',
+        hovermode='x unified',  # Ensures hover shows data for all traces at that x-point
+        height=650,  # Slightly taller for better annotation spacing
+        template='plotly_white',  # Clean white background
+        margin=dict(l=50, r=50, t=80, b=50),  # Adjust margins
+        xaxis=dict(
+            tickmode='linear',
+            dtick="M6",  # Show ticks every 6 months
+            tickformat="%b %Y",  # Format for month and year
+            showgrid=False,  # Remove grid lines
+            linecolor='black',
+            linewidth=1,
+            mirror=True
+        ),
+        yaxis=dict(
+            showgrid=False,  # Remove grid lines
+            linecolor='black',
+            linewidth=1,
+            mirror=True
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.subheader("Key Historical Events Influencing USD/INR")
+    st.markdown("Hover over the arrows on the chart for quick event details, or expand the sections below for more context.")
+
+    # Display events in an expandable section for more detail
+    for index, row in df_events.iterrows():
+        with st.expander(f"**{row['event']}**"):
+            st.markdown(f"**Date:** {row['date'].date()}<br>{row['description']}")
+
+st.markdown("---")
+st.markdown("### Data Source & Methodology")
+st.markdown("""
+The USD/INR exchange rate data is sourced from the uploaded Excel file containing daily rates from January 3, 1973, to June 20, 2025.
+Major events and their descriptions are extracted from historical analysis, highlighting significant economic and political developments
+that influenced the Indian Rupee's value.
+""")
+
+st.markdown("---")
+st.markdown("### Disclaimer")
+st.markdown("""
+This application is for informational purposes only and should not be considered financial advice.
+The data presented is based on the provided text and may not reflect real-time market conditions.
+""")
