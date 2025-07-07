@@ -1,0 +1,107 @@
+import streamlit as st
+import pandas as pd
+import win32com.client
+
+# Function to run any MDX query
+def run_mdx_query(mdx_query):
+    conn = win32com.client.Dispatch("ADODB.Connection")
+    conn.ConnectionString = (
+        "Provider=MSOLAP.8;"
+        "Data Source=gpdfm001;"
+        "Initial Catalog=MacroCube;"
+        "Integrated Security=SSPI;"
+    )
+    conn.Open()
+
+    rs = win32com.client.Dispatch("ADODB.Recordset")
+    rs.Open(mdx_query, conn)
+
+    # Fetch data
+    fields = [rs.Fields(i).Name for i in range(rs.Fields.Count)]
+    rows = []
+    while not rs.EOF:
+        rows.append([rs.Fields(i).Value for i in range(rs.Fields.Count)])
+        rs.MoveNext()
+
+    df = pd.DataFrame(rows, columns=fields)
+    rs.Close()
+    conn.Close()
+    return df
+
+# Get all dimensions and measures from cube
+@st.cache_data
+def get_cube_metadata():
+    conn = win32com.client.Dispatch("ADODB.Connection")
+    conn.ConnectionString = (
+        "Provider=MSOLAP.8;"
+        "Data Source=gpdfm001;"
+        "Initial Catalog=MacroCube;"
+        "Integrated Security=SSPI;"
+    )
+    conn.Open()
+
+    dim_schema = conn.OpenSchema(8)  # MDSCHEMA_DIMENSIONS
+    dimensions = []
+    while not dim_schema.EOF:
+        dim_name = dim_schema.Fields("DIMENSION_NAME").Value
+        if dim_name != '[Measures]':
+            dimensions.append(dim_name)
+        dim_schema.MoveNext()
+
+    meas_schema = conn.OpenSchema(20)  # MDSCHEMA_MEASURES
+    measures = []
+    while not meas_schema.EOF:
+        measures.append(meas_schema.Fields("MEASURE_NAME").Value)
+        meas_schema.MoveNext()
+
+    conn.Close()
+    return sorted(list(set(dimensions))), sorted(list(set(measures)))
+
+# Streamlit UI
+st.set_page_config(page_title="MacroCube Pivot Explorer", layout="wide")
+st.title("📊 MacroCube Live Pivot Explorer")
+
+dimensions, measures = get_cube_metadata()
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    row_dim = st.selectbox("Select Row Dimension", dimensions)
+with col2:
+    col_dim = st.selectbox("Select Column Dimension", dimensions)
+with col3:
+    selected_measure = st.selectbox("Select Measure", measures)
+
+filter_dim = st.selectbox("Optional Filter Dimension", ['None'] + dimensions)
+filter_val = None
+if filter_dim != 'None':
+    # Show members for that dimension
+    mdx_members = f"SELECT {{[{filter_dim}].Children}} ON ROWS FROM [MacroCube]"
+    members_df = run_mdx_query(mdx_members)
+    filter_val = st.multiselect("Select Filter Values", members_df.iloc[:, 0].tolist())
+
+# Construct MDX dynamically
+row_dim_hierarchy = f"[{row_dim}].[{row_dim}]"
+col_dim_hierarchy = f"[{col_dim}].[{col_dim}]"
+
+mdx = f"""
+SELECT 
+    NON EMPTY {{[Measures].[{selected_measure}]}} ON COLUMNS,
+    NON EMPTY {{ {row_dim_hierarchy}.Members * {col_dim_hierarchy}.Members }} ON ROWS
+FROM [MacroCube]
+"""
+
+if filter_dim != 'None' and filter_val:
+    filter_set = ",".join(f"[{filter_dim}].[{filter_dim}].[{val}]" for val in filter_val)
+    mdx += f"""
+WHERE ({{{filter_set}}})
+"""
+
+st.code(mdx, language='mdx')
+
+# Execute Query
+try:
+    df = run_mdx_query(mdx)
+    st.subheader("🧾 Pivot Table Output")
+    st.dataframe(df, use_container_width=True)
+except Exception as e:
+    st.error(f"MDX Query Failed: {e}")
