@@ -1,0 +1,72 @@
+import streamlit as st
+import pandas as pd
+import plotly.graph_objects as go
+
+# Use your passed DataFrame directly
+# Example: df = your_dataframe
+def plot_usdinr_chart(df: pd.DataFrame):
+    df.columns = df.columns.str.strip()
+    df['Date'] = pd.to_datetime(df['Date'])
+    df = df.sort_values('Date')
+
+    fig = go.Figure()
+
+    # Plot USDINR Line
+    fig.add_trace(go.Scatter(
+        x=df['Date'], y=df['USDINR'],
+        mode='lines',
+        line=dict(color='royalblue'),
+        name='USD/INR'
+    ))
+
+    # Annotated events with emojis
+    events = [
+        {"date": "1973-08-15", "text": "📉 End of Bretton Woods"},
+        {"date": "1991-07-01", "text": "💣 1991 BoP Crisis"},
+        {"date": "1997-07-02", "text": "⚠️ Asian Financial Crisis"},
+        {"date": "2000-03-01", "text": "💻 Dot-com Bubble"},
+        {"date": "2008-09-15", "text": "🏦 Lehman Collapse"},
+        {"date": "2013-05-22", "text": "💸 Taper Tantrum"},
+        {"date": "2016-11-08", "text": "💰 Demonetization"},
+        {"date": "2019-08-05", "text": "🛑 Article 370 Removed"},
+        {"date": "2020-03-20", "text": "🦠 COVID Crash"},
+        {"date": "2022-02-24", "text": "💣 Russia-Ukraine War"},
+        {"date": "2022-09-01", "text": "🔺 USD Peak 2022"},
+        {"date": "2023-03-01", "text": "🏛️ SVB Crisis (US Banks)"},
+        {"date": "2024-05-01", "text": "🗳️ India Election Season"},
+        {"date": "2025-01-01", "text": "🔮 FX Outlook Turning"}
+    ]
+
+    # Add annotations
+    for event in events:
+        event_date = pd.to_datetime(event['date'])
+        closest_idx = (df['Date'] - event_date).abs().idxmin()
+        y_val = df.loc[closest_idx, 'USDINR']
+
+        fig.add_trace(go.Scatter(
+            x=[df.loc[closest_idx, 'Date']],
+            y=[y_val],
+            mode="markers+text",
+            marker=dict(size=9, color='crimson', symbol='x'),
+            text=[event["text"]],
+            textposition="top center",
+            name=event["text"],
+            showlegend=False
+        ))
+
+    # Clean Layout
+    fig.update_layout(
+        title="📈 USD/INR Exchange Rate (1973–2025) with Key Historical Annotations",
+        xaxis_title="Date",
+        yaxis_title="USD/INR",
+        template="plotly_white",
+        height=650,
+        margin=dict(l=40, r=40, t=80, b=40),
+        hovermode="x unified"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+# Example use:
+# df = pd.read_excel("usdinr_data.xlsx")  # Already done on your side
+# plot_usdinr_chart(df)
