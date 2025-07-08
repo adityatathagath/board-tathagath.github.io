@@ -2,24 +2,15 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-# Use your passed DataFrame directly
-# Example: df = your_dataframe
-def plot_usdinr_chart(df: pd.DataFrame):
+def plot_usdinr_chart_halfyear(df: pd.DataFrame):
     df.columns = df.columns.str.strip()
     df['Date'] = pd.to_datetime(df['Date'])
     df = df.sort_values('Date')
 
-    fig = go.Figure()
+    # --- Half-Yearly Downsampling ---
+    df_halfyear = df.resample('2QS', on='Date').mean().reset_index()  # Half-yearly
 
-    # Plot USDINR Line
-    fig.add_trace(go.Scatter(
-        x=df['Date'], y=df['USDINR'],
-        mode='lines',
-        line=dict(color='royalblue'),
-        name='USD/INR'
-    ))
-
-    # Annotated events with emojis
+    # --- Major Events ---
     events = [
         {"date": "1973-08-15", "text": "📉 End of Bretton Woods"},
         {"date": "1991-07-01", "text": "💣 1991 BoP Crisis"},
@@ -28,45 +19,70 @@ def plot_usdinr_chart(df: pd.DataFrame):
         {"date": "2008-09-15", "text": "🏦 Lehman Collapse"},
         {"date": "2013-05-22", "text": "💸 Taper Tantrum"},
         {"date": "2016-11-08", "text": "💰 Demonetization"},
-        {"date": "2019-08-05", "text": "🛑 Article 370 Removed"},
         {"date": "2020-03-20", "text": "🦠 COVID Crash"},
         {"date": "2022-02-24", "text": "💣 Russia-Ukraine War"},
-        {"date": "2022-09-01", "text": "🔺 USD Peak 2022"},
-        {"date": "2023-03-01", "text": "🏛️ SVB Crisis (US Banks)"},
-        {"date": "2024-05-01", "text": "🗳️ India Election Season"},
-        {"date": "2025-01-01", "text": "🔮 FX Outlook Turning"}
+        {"date": "2023-03-01", "text": "🏛️ SVB Crisis"},
+        {"date": "2024-05-01", "text": "🗳️ Election Season"},
+        {"date": "2025-01-01", "text": "🔮 FX Outlook Shift"}
     ]
 
-    # Add annotations
+    # --- Base Plot with Half-Year Data ---
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df_halfyear['Date'],
+        y=df_halfyear['USDINR'],
+        mode='lines',
+        line=dict(shape='spline', color='royalblue'),
+        name='USD/INR (Half-Year Avg)'
+    ))
+
+    # --- Add Events ---
     for event in events:
         event_date = pd.to_datetime(event['date'])
-        closest_idx = (df['Date'] - event_date).abs().idxmin()
-        y_val = df.loc[closest_idx, 'USDINR']
+        if df['Date'].min() <= event_date <= df['Date'].max():
+            idx = (df['Date'] - event_date).abs().idxmin()
+            y_val = df.loc[idx, 'USDINR']
+            event_actual_date = df.loc[idx, 'Date']
 
-        fig.add_trace(go.Scatter(
-            x=[df.loc[closest_idx, 'Date']],
-            y=[y_val],
-            mode="markers+text",
-            marker=dict(size=9, color='crimson', symbol='x'),
-            text=[event["text"]],
-            textposition="top center",
-            name=event["text"],
-            showlegend=False
-        ))
+            # Add marker at event
+            fig.add_trace(go.Scatter(
+                x=[event_actual_date],
+                y=[y_val],
+                mode='markers+text',
+                marker=dict(color='crimson', size=8, symbol='circle'),
+                text=[event['text']],
+                textposition="top center",
+                showlegend=False,
+                hovertext=event['text']
+            ))
 
-    # Clean Layout
+            # Add vertical line
+            fig.add_vline(x=event_actual_date, line=dict(color="gray", dash="dot", width=1))
+
+    # --- Layout Enhancements ---
     fig.update_layout(
-        title="📈 USD/INR Exchange Rate (1973–2025) with Key Historical Annotations",
+        title="USD/INR (1973–2025) — Clean Chart with Key Events",
         xaxis_title="Date",
         yaxis_title="USD/INR",
         template="plotly_white",
         height=650,
         margin=dict(l=40, r=40, t=80, b=40),
-        hovermode="x unified"
+        hovermode="x unified",
+        xaxis=dict(
+            rangeselector=dict(
+                buttons=[
+                    dict(count=10, label="10Y", step="year", stepmode="backward"),
+                    dict(count=20, label="20Y", step="year", stepmode="backward"),
+                    dict(step="all")
+                ]
+            ),
+            rangeslider=dict(visible=True),
+            type="date"
+        )
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
-# Example use:
-# df = pd.read_excel("usdinr_data.xlsx")  # Already done on your side
-# plot_usdinr_chart(df)
+# Example:
+# df = pd.read_excel("your_usdinr_data.xlsx")
+# plot_usdinr_chart_halfyear(df)
