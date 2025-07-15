@@ -1,32 +1,56 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+from datetime import datetime, time
 
-# 1️⃣ Load Data
+# ---------------------------------
+# 1️⃣ Load data
+# ---------------------------------
 df = pd.read_csv('data.csv')
 
-# 2️⃣ Convert COB to datetime
+# Ensure COB is datetime
 df['COB'] = pd.to_datetime(df['COB'])
 
-# 3️⃣ Convert SLA and DVaR PuB Time to datetime.time (with dummy date for plotting)
-df['SLA_dt'] = pd.to_datetime(df['SLA'], format='%H:%M')
-df['DVaR_dt'] = pd.to_datetime(df['DVaR PuB Time'], format='%H:%M')
+# ---------------------------------
+# 2️⃣ Clean/convert SLA and DVaR PuB Time
+# ---------------------------------
+# Universal function to handle text, with or without seconds, or time objects
+def ensure_time(val):
+    if isinstance(val, time):
+        return val
+    try:
+        return pd.to_datetime(str(val)).time()
+    except:
+        raise ValueError(f"Cannot parse time value: {val}")
 
-# 4️⃣ For plotting, shift times onto a single dummy date
+df['SLA_time'] = df['SLA'].apply(ensure_time)
+df['DVaR_time'] = df['DVaR PuB Time'].apply(ensure_time)
+
+# ---------------------------------
+# 3️⃣ Map times onto a single dummy date for plotting
+# ---------------------------------
+# We fix all times onto a single date to make them plottable on Y-axis
 base_date = pd.Timestamp('2025-07-01')
-df['SLA_plot'] = base_date + (df['SLA_dt'] - df['SLA_dt'].dt.normalize())
-df['DVaR_plot'] = base_date + (df['DVaR_dt'] - df['DVaR_dt'].dt.normalize())
+df['SLA_plot'] = df['SLA_time'].apply(lambda t: datetime.combine(base_date, t))
+df['DVaR_plot'] = df['DVaR_time'].apply(lambda t: datetime.combine(base_date, t))
 
-# 5️⃣ Plot
+# ---------------------------------
+# 4️⃣ Plotting
+# ---------------------------------
 plt.figure(figsize=(10,6))
-plt.plot(df['COB'], df['SLA_plot'], color='red', marker='o', label='SLA (16:00)')
+
+# SLA fixed line in red
+plt.plot(df['COB'], df['SLA_plot'], color='red', marker='o', label='SLA (Fixed 16:00)')
+
+# DVaR PuB Time line in blue
 plt.plot(df['COB'], df['DVaR_plot'], color='blue', marker='o', label='DVaR PuB Time')
 
-# 6️⃣ Format Y-axis as time of day
+# Format Y-axis as time-of-day
 plt.gca().yaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-plt.ylabel('Time of Day (HH:MM)')
+
 plt.xlabel('Date (COB)')
-plt.title('SLA vs DVaR PuB Time')
+plt.ylabel('Time of Day (HH:MM)')
+plt.title('SLA vs DVaR Publication Time')
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
