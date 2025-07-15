@@ -1,0 +1,34 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
+# 1️⃣ Load Data
+df = pd.read_csv('data.csv')
+
+# 2️⃣ Convert COB to datetime
+df['COB'] = pd.to_datetime(df['COB'])
+
+# 3️⃣ Convert SLA and DVaR PuB Time to datetime.time (with dummy date for plotting)
+df['SLA_dt'] = pd.to_datetime(df['SLA'], format='%H:%M')
+df['DVaR_dt'] = pd.to_datetime(df['DVaR PuB Time'], format='%H:%M')
+
+# 4️⃣ For plotting, shift times onto a single dummy date
+base_date = pd.Timestamp('2025-07-01')
+df['SLA_plot'] = base_date + (df['SLA_dt'] - df['SLA_dt'].dt.normalize())
+df['DVaR_plot'] = base_date + (df['DVaR_dt'] - df['DVaR_dt'].dt.normalize())
+
+# 5️⃣ Plot
+plt.figure(figsize=(10,6))
+plt.plot(df['COB'], df['SLA_plot'], color='red', marker='o', label='SLA (16:00)')
+plt.plot(df['COB'], df['DVaR_plot'], color='blue', marker='o', label='DVaR PuB Time')
+
+# 6️⃣ Format Y-axis as time of day
+plt.gca().yaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+plt.ylabel('Time of Day (HH:MM)')
+plt.xlabel('Date (COB)')
+plt.title('SLA vs DVaR PuB Time')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+
+plt.show()
