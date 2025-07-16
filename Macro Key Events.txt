@@ -1,0 +1,179 @@
+------------------------------------------------------------ Till 15 jul 2025 ----------------------------------------------------------------------------------------------------------------------------
+🇺🇸 United States
+🔧 Inflation & Monetary Policy
+June CPI: +0.3% MoM, +2.7% YoY (↑ from 2.4%) with core at ~2.9%, confirming tariff-driven price pressure .
+
+Treasuries: Yields surged across the curve; fed futures now imply ~25 bp cut in Sep, but no cut before .
+
+💰 Trade Policy
+New tariff proposals: Trump announced 19% tariffs on Indonesian goods and flagged duties on EU, Mexico, Canada, copper, pharma; includes expiration delays of the 90-day pause to Aug 1 .
+
+⚖️ Market Impact & Positioning
+Bank earnings strong: Citi (+25%), JPMorgan net ~$15 B; supported US equity resilience .
+
+Fund manager sentiment: Bullish, top decile since Feb. Cash-poor (3.9%) per BofA—rotating within equities, wary of euro overweights; USD-short remains crowded 
+The Australian
++1
+MarketWatch
++1
+.
+
+🇬🇧 United Kingdom & 🇪🇺 Europe
+📈 UK
+June CPI: +3.6% YoY (highest since Jan 2024); core inflation rising—pound rallied, gilt yields up; BoE chances of Aug cut slimmed 
+scotiabank.com
+.
+
+Business data: Workspace Group’s occupancy doldrums add pressure; Barclays fined £42 M over AML failings 
+The Times
+.
+
+🇪🇺 Eurozone
+EU defiance: German finance chief warned of counter‑tariffs; Frankfurt & Paris markets oscillated 
+home.saxo
+.
+
+ECB FX watch: Officials flagged euro strength + tariff risk as headwinds; 2026 inflation expected to ease 
+Reuters
++3
+The Australian
++3
+Reuters
++3
+.
+
+🌏 Asia & Pacific
+🇨🇳 China
+Q2 GDP: +5.2% YoY—steady but below hype; balanced risks keep regional sentiment cautious .
+
+Nvidia note: CEO Huang optimistic on China chip business after export clearance; ASML stock hit by geopolitical concerns 
+The Times
+.
+
+🇯🇵 Japan, 🇰🇷 S. Korea, 🇦🇺 Australia
+FX & equities: USD/JPY surged to ~149, pressuring BoJ pause prospects; JPY and AUD weaker, AUD supported by risk-on flows .
+
+Markets: Nikkei/ASX resumed highs after recent slides; South Korea tech-led gains +1–2% week 
+Wikipedia
+.
+
+RBA preview: July 29 inflation data expected; labour resilience flagged as BoA risk 
+scotiabank.com
+.
+
+🇮🇳 India
+✅ Inflation & Rates
+June CPI: 2.1–2.8% YoY (multi-year lows); core inflation ~4.5% 
+Reuters
+.
+
+RBI signals: Governor open to further cuts later in the year; one more cut likely in Oct or Dec 
+Reuters
+.
+
+📊 Growth & Outlook
+GDP forecast: FY 25–26 growth between 6.5–6.7%, driven by capex and rural monsoon; fiscal consolidation expected (deficit fall from 4.8→4.4%) 
+efginternational.com
++1
+tradingeconomics.com
++1
+.
+
+Forex: USD/INR pressured lower (~85.8), forward premiums tightening to ~1.96% as India becomes more dovish vs Fed’s inaction 
+Reuters
++1
+mitrade.com
++1
+.
+
+🛢 Commodities & Crypto
+Gold & silver: Safe-haven flows lifted silver to ~$36.50; gold remained near $3,375/oz 
+atfxconnect.com
+.
+
+Copper & energy: Copper buoyed by tariff talk; oil modest (-3% weekly) on demand concerns .
+
+Crypto: Bitcoin cooled ~1–2% after hitting $123K all-time high, but AI-linked tokens and SBC demand from institutions like Standard Chartered kept momentum alive 
+cryptorank.io
++1
+atfxconnect.com
++1
+.
+
+🌐 Global Themes & Positioning
+Trade turbulence: Tariff headlines remain the primary macro risk, affecting goods, FX, and yield curves.
+
+Yield positioning: Treasuries/gilts sold; curve steepening on sticky inflation. Asia bonds quiet until clarity on Fed/RBI paths.
+
+Vol & Conviction: VIX remains subdued; BofA survey flags "toppy" optimism—not excessive—favoring sector rotation 
+Reuters
++1
+MarketWatch
++1
+.
+
+Trading strategies:
+
+FX: Long USD/JPY; consider INR appreciation. Short EUR per BofA.
+
+Rates: Position for short-end cuts in India/US; long-end convexity risk.
+
+Equities: Rotate from mega-cap into cyclicals/value; opportunistic in China/Asia.
+
+Commodities: Long silver/copper; oil trades defensive.
+
+🗓 Top Upcoming Catalysts
+Monetary policy: BoE (Aug), Fed (Sept), RBI (Oct/Dec).
+
+Economic data: UK CPI, Japan trade figures, Australia inflation.
+
+Trade negotiations: US-India deal talks, Indonesia tariff first effective date, Aug 1 global tariff deadlines.
+
+Tech earnings: Nvidia follow-up in China; ASML results.
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+### Global Macro Update (July 7–15, 2025)
+
+#### United States
+
+Over the past week, the U.S. economy was marked by a significant rise in inflation, driven mainly by new tariffs. The June CPI rose to 2.7% year-over-year, up notably from 2.4% previously, with core inflation reaching approximately 2.9%. This has led to market adjustments, with Treasury yields rising sharply across all maturities. As a result, expectations for Federal Reserve rate cuts have moderated, with markets now pricing in a modest 25 basis-point cut in September at the earliest.
+
+Trade policy remained a key concern, with the Trump administration announcing fresh tariffs of 19% on imports from Indonesia and reiterating plans for substantial tariffs on goods from the EU, Mexico, and Canada. The market responded with heightened volatility, though strong earnings from major banks, notably Citigroup and JPMorgan, offered some support to investor sentiment.
+
+#### United Kingdom and Europe
+
+The UK experienced an unexpected spike in inflation, with June CPI climbing to 3.6%, the highest since January 2024. This rise has significantly diminished the likelihood of an interest rate cut by the Bank of England in August. Gilt yields increased, and the pound strengthened in response to these inflation figures.
+
+In the broader Eurozone, geopolitical trade tensions remain elevated, with Germany signaling potential counter-tariffs against the U.S. European markets, particularly in Frankfurt and Paris, exhibited volatility amid these concerns. European Central Bank officials have expressed caution, noting the combined pressure from tariff threats and euro appreciation on their inflation and growth outlook.
+
+#### Asia-Pacific
+
+China’s second-quarter GDP growth came in at a stable 5.2%, reassuring markets but failing to generate strong optimism due to persistent concerns over global trade dynamics. In Japan, the yen weakened significantly against the U.S. dollar, reaching around 149 JPY/USD, as markets speculated the Bank of Japan might pause its normalization process in response to global uncertainty.
+
+South Korea's market was notably resilient, led by technology sector gains, while Australian markets cautiously recovered. Attention in Australia is turning towards upcoming inflation data and potential implications for the Reserve Bank of Australia’s policy path.
+
+#### India
+
+India stood out positively with a substantial easing in inflation. June CPI dropped to a multi-year low range of 2.1–2.8% year-over-year, significantly below RBI’s upper target. The Reserve Bank of India has thus signaled openness to additional rate cuts later this year, potentially in October or December. India's GDP growth outlook remains strong at approximately 6.5–6.7% for FY25–26, underpinned by robust capital expenditure and positive monsoon forecasts.
+
+The rupee strengthened slightly against the dollar, reflecting the divergence between RBI's easing bias and the Federal Reserve’s relatively cautious stance. Forward premiums tightened as markets adjusted to this evolving policy differential.
+
+#### Commodities and Alternative Assets
+
+Precious metals saw increased safe-haven demand, with silver notably rising to around \$36.50 per ounce. Gold remained stable near \$3,375 per ounce. Copper prices benefited from tariff-induced supply chain concerns, while oil prices remained subdued, reflecting uncertainty around global demand.
+
+Cryptocurrency markets saw Bitcoin retrace slightly from its recent all-time high above \$123,000, though continued institutional interest, especially linked to artificial intelligence-driven applications, maintained overall positive sentiment.
+
+#### Global Themes and Strategic Outlook
+
+The dominant global theme continues to be trade policy uncertainty, specifically U.S.-initiated tariffs, influencing inflation dynamics, FX movements, and bond market volatility. Major trading desks are responding by positioning cautiously—favoring selective risk exposure and strategic hedges.
+
+Strategically, trading desks are positioning for:
+
+* Continued USD strength, particularly against JPY and EUR.
+* Short-end interest rate cuts in India and potentially the U.S., balanced by careful management of duration risk.
+* Sector rotations from large-cap tech toward cyclicals and value stocks.
+* Tactical long positions in silver and copper to hedge trade uncertainty.
+
+Upcoming catalysts include monetary policy decisions from the Bank of England, Federal Reserve, and Reserve Bank of India, alongside critical economic data releases such as UK CPI, Australian inflation, and continued monitoring of trade negotiations between major global economies.
+
+This comprehensive overview should provide clarity on current market dynamics and inform our strategic approach moving forward.
