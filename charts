@@ -2,63 +2,51 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.dates as mdates
-from matplotlib.colors import TwoSlopeNorm
 import numpy as np
 import matplotlib.gridspec as gridspec
 
-# Sample data creation (replace with pd.read_excel in production)
-np.random.seed(0)
-dates = pd.date_range(start="2025-01-01", periods=30, freq='B')
-sub_desks = ['FX Trading', 'Rates Strategy', 'EM Credit', 'FX Options', 'EM Trading', 'Macro RV']
-data = []
+# 🔁 CHANGE THIS TO YOUR FILE PATH
+file_path = "path_to_your_excel_file.xlsx"  # e.g. "C:/Users/aditya/Documents/macro_pnl.xlsx"
 
-for date in dates:
-    for desk in sub_desks:
-        if 'FX' in desk:
-            level_04 = 'FX'
-        elif 'Rates' in desk:
-            level_04 = 'Rates'
-        else:
-            level_04 = 'EM Macro'
-        actual = np.random.normal(loc=0, scale=5)
-        budget = np.random.normal(loc=0, scale=4)
-        data.append([date, level_04, desk, actual, budget])
+# Load data
+df = pd.read_excel(file_path, parse_dates=["Business Date"])
 
-df = pd.DataFrame(data, columns=['Business Date', 'GMIS Level 04 Name', 'GMIS Level 05 Name', 'Formal Daily Balance', 'Budget Daily Balance'])
-
-# Set Barclays theme colors
+# Barclays theme colors
 barclays_blue = "#00A3E0"
-barclays_light_blue = "#9BD8F7"
 barclays_grey = "#4C4C4C"
-barclays_red = "#E1251B"
-barclays_teal = "#007C91"
 
-# Prepare data
+# Preprocessing
 df.sort_values("Business Date", inplace=True)
 df["Cumulative Actual"] = df.groupby("GMIS Level 05 Name")["Formal Daily Balance"].cumsum()
 df["Cumulative Budget"] = df.groupby("GMIS Level 05 Name")["Budget Daily Balance"].cumsum()
 
-# Aggregated macro desks
+# Aggregated Macro Desk Total
 macro_df = df[df["GMIS Level 04 Name"].isin(["FX", "Rates", "EM Macro"])]
 macro_agg = macro_df.groupby("Business Date")[["Formal Daily Balance", "Budget Daily Balance"]].sum().cumsum()
 
-# Group by macro desk category
+# Macro Category Breakdown
 grouped = df.groupby(["Business Date", "GMIS Level 04 Name"])[["Formal Daily Balance", "Budget Daily Balance"]].sum().reset_index()
 pivot_actual = grouped.pivot(index="Business Date", columns="GMIS Level 04 Name", values="Formal Daily Balance").cumsum()
 pivot_budget = grouped.pivot(index="Business Date", columns="GMIS Level 04 Name", values="Budget Daily Balance").cumsum()
 
-# Aggregate by sub-desk
+# Sub-Desk Aggregates
 agg_subdesk = df.groupby("GMIS Level 05 Name")[["Formal Daily Balance", "Budget Daily Balance"]].sum().sort_values("Formal Daily Balance", ascending=False)
 
-# Deviation Heatmap
+# Bubble chart data prep
 df["Deviation"] = df["Formal Daily Balance"] - df["Budget Daily Balance"]
-pivot_dev = df.pivot_table(index="GMIS Level 05 Name", columns="Business Date", values="Deviation", aggfunc="sum")
+bubble_data = df.groupby(["Business Date", "GMIS Level 05 Name"])["Deviation"].sum().reset_index()
+bubble_data["Size"] = bubble_data["Deviation"].abs()
+bubble_data["Color"] = np.where(bubble_data["Deviation"] >= 0, barclays_blue, "#E1251B")
 
-# Setup the main canvas
+# Map sub-desks to numeric y values
+subdesk_map = {desk: i for i, desk in enumerate(sorted(bubble_data["GMIS Level 05 Name"].unique()))}
+bubble_data["Y"] = bubble_data["GMIS Level 05 Name"].map(subdesk_map)
+
+# Canvas Setup
 fig = plt.figure(constrained_layout=True, figsize=(20, 22))
 spec = gridspec.GridSpec(ncols=2, nrows=3, figure=fig)
 
-# Chart 1: Cumulative Macro P&L
+# Chart 1: Total Macro Cumulative P&L
 ax1 = fig.add_subplot(spec[0, :])
 ax1.plot(macro_agg.index, macro_agg["Formal Daily Balance"], label="Cumulative Actual", color=barclays_blue, linewidth=2)
 ax1.plot(macro_agg.index, macro_agg["Budget Daily Balance"], label="Cumulative Budget", color=barclays_grey, linestyle="--", linewidth=2)
@@ -69,7 +57,7 @@ ax1.legend()
 ax1.grid(True, linestyle='--', alpha=0.5)
 ax1.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
 
-# Chart 2: P&L by Macro Category
+# Chart 2: By Macro Desk
 ax2 = fig.add_subplot(spec[1, :])
 for col in pivot_actual.columns:
     ax2.plot(pivot_actual.index, pivot_actual[col], label=f"{col} Actual", linewidth=2)
@@ -81,7 +69,7 @@ ax2.legend()
 ax2.grid(True, linestyle='--', alpha=0.5)
 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
 
-# Chart 3: Bar Chart Subdesk
+# Chart 3: Bar Chart by Subdesk
 ax3 = fig.add_subplot(spec[2, 0])
 agg_subdesk.plot(kind='bar', ax=ax3, color=[barclays_blue, barclays_grey])
 ax3.set_title("Total P&L vs Budget by Sub-Desk", fontsize=14, weight='bold')
@@ -89,15 +77,23 @@ ax3.set_ylabel("Total P&L")
 ax3.grid(axis='y', linestyle='--', alpha=0.6)
 ax3.tick_params(axis='x', rotation=45)
 
-# Chart 4: Heatmap
+# Chart 4: Bubble Chart for Deviation
 ax4 = fig.add_subplot(spec[2, 1])
-norm = TwoSlopeNorm(vmin=pivot_dev.min().min(), vcenter=0, vmax=pivot_dev.max().max())
-sns.heatmap(pivot_dev, cmap="RdBu_r", center=0, linewidths=0.3, linecolor='grey', norm=norm, 
-            cbar_kws={"label": "Deviation"}, ax=ax4)
-ax4.set_title("P&L Deviation Heatmap (Actual - Budget)", fontsize=14, weight='bold')
+ax4.scatter(
+    x=bubble_data["Business Date"],
+    y=bubble_data["Y"],
+    s=bubble_data["Size"] * 15,
+    c=bubble_data["Color"],
+    alpha=0.7,
+    edgecolors="black"
+)
+ax4.set_yticks(list(subdesk_map.values()))
+ax4.set_yticklabels(list(subdesk_map.keys()))
+ax4.set_title("P&L Deviation Bubble Chart (Actual - Budget)", fontsize=14, weight='bold')
 ax4.set_xlabel("Date")
 ax4.set_ylabel("Sub-Desk")
-ax4.tick_params(axis='x', rotation=45)
+ax4.grid(True, linestyle='--', alpha=0.4)
+ax4.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
 
 plt.suptitle("Macro Risk Daily P&L Overview", fontsize=16, weight='bold')
 plt.show()
