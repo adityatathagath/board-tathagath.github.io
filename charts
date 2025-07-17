@@ -1,0 +1,72 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Load and preprocess data
+df = pd.read_excel("your_file.xlsx", parse_dates=["Business Date"])
+
+# Group by Level 04 and date
+grouped = df.groupby(["Business Date", "GMIS Level 04 Name"]).sum(numeric_only=True).reset_index()
+
+# Plot per GMIS Level 04
+for desk in grouped["GMIS Level 04 Name"].unique():
+    temp = grouped[grouped["GMIS Level 04 Name"] == desk]
+    plt.figure(figsize=(12, 6))
+    plt.plot(temp["Business Date"], temp["Formal Daily Balance"], label="Actual P&L", marker='o')
+    plt.plot(temp["Business Date"], temp["Budget Daily Balance"], label="Budget P&L", linestyle='--')
+    plt.title(f"{desk}: Daily P&L vs Budget")
+    plt.xlabel("Date")
+    plt.ylabel("P&L")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+
+df.sort_values("Business Date", inplace=True)
+df["Cumulative Actual"] = df.groupby("GMIS Level 05 Name")["Formal Daily Balance"].cumsum()
+df["Cumulative Budget"] = df.groupby("GMIS Level 05 Name")["Budget Daily Balance"].cumsum()
+
+# Plot for each Level 05 Subdesk
+for subdesk in df["GMIS Level 05 Name"].unique():
+    temp = df[df["GMIS Level 05 Name"] == subdesk]
+    plt.figure(figsize=(12, 6))
+    plt.plot(temp["Business Date"], temp["Cumulative Actual"], label="Cumulative Actual")
+    plt.plot(temp["Business Date"], temp["Cumulative Budget"], label="Cumulative Budget", linestyle="--")
+    plt.title(f"{subdesk}: Cumulative P&L vs Budget")
+    plt.xlabel("Date")
+    plt.ylabel("Cumulative P&L")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+
+# Aggregate total P&L and Budget by Level 05 Desk
+agg_df = df.groupby("GMIS Level 05 Name")[["Formal Daily Balance", "Budget Daily Balance"]].sum().reset_index()
+
+# Plot
+agg_df.plot(x="GMIS Level 05 Name", kind="bar", figsize=(12,6))
+plt.title("Total Actual vs Budget P&L by Sub-Desk")
+plt.ylabel("Total P&L")
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+
+
+
+import seaborn as sns
+
+df["Deviation"] = df["Formal Daily Balance"] - df["Budget Daily Balance"]
+pivot_df = df.pivot_table(index="GMIS Level 05 Name", columns="Business Date", values="Deviation", aggfunc="sum")
+
+plt.figure(figsize=(14, 8))
+sns.heatmap(pivot_df, cmap="RdBu_r", center=0, linewidths=0.5)
+plt.title("P&L Deviation Heatmap (Actual - Budget)")
+plt.xlabel("Date")
+plt.ylabel("Sub Desk")
+plt.tight_layout()
+plt.show()
+
