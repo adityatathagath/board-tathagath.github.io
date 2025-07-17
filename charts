@@ -1,72 +1,103 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
+import matplotlib.dates as mdates
+from matplotlib.colors import TwoSlopeNorm
+import numpy as np
+import matplotlib.gridspec as gridspec
 
-# Load and preprocess data
-df = pd.read_excel("your_file.xlsx", parse_dates=["Business Date"])
+# Sample data creation (replace with pd.read_excel in production)
+np.random.seed(0)
+dates = pd.date_range(start="2025-01-01", periods=30, freq='B')
+sub_desks = ['FX Trading', 'Rates Strategy', 'EM Credit', 'FX Options', 'EM Trading', 'Macro RV']
+data = []
 
-# Group by Level 04 and date
-grouped = df.groupby(["Business Date", "GMIS Level 04 Name"]).sum(numeric_only=True).reset_index()
+for date in dates:
+    for desk in sub_desks:
+        if 'FX' in desk:
+            level_04 = 'FX'
+        elif 'Rates' in desk:
+            level_04 = 'Rates'
+        else:
+            level_04 = 'EM Macro'
+        actual = np.random.normal(loc=0, scale=5)
+        budget = np.random.normal(loc=0, scale=4)
+        data.append([date, level_04, desk, actual, budget])
 
-# Plot per GMIS Level 04
-for desk in grouped["GMIS Level 04 Name"].unique():
-    temp = grouped[grouped["GMIS Level 04 Name"] == desk]
-    plt.figure(figsize=(12, 6))
-    plt.plot(temp["Business Date"], temp["Formal Daily Balance"], label="Actual P&L", marker='o')
-    plt.plot(temp["Business Date"], temp["Budget Daily Balance"], label="Budget P&L", linestyle='--')
-    plt.title(f"{desk}: Daily P&L vs Budget")
-    plt.xlabel("Date")
-    plt.ylabel("P&L")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+df = pd.DataFrame(data, columns=['Business Date', 'GMIS Level 04 Name', 'GMIS Level 05 Name', 'Formal Daily Balance', 'Budget Daily Balance'])
 
+# Set Barclays theme colors
+barclays_blue = "#00A3E0"
+barclays_light_blue = "#9BD8F7"
+barclays_grey = "#4C4C4C"
+barclays_red = "#E1251B"
+barclays_teal = "#007C91"
 
-
+# Prepare data
 df.sort_values("Business Date", inplace=True)
 df["Cumulative Actual"] = df.groupby("GMIS Level 05 Name")["Formal Daily Balance"].cumsum()
 df["Cumulative Budget"] = df.groupby("GMIS Level 05 Name")["Budget Daily Balance"].cumsum()
 
-# Plot for each Level 05 Subdesk
-for subdesk in df["GMIS Level 05 Name"].unique():
-    temp = df[df["GMIS Level 05 Name"] == subdesk]
-    plt.figure(figsize=(12, 6))
-    plt.plot(temp["Business Date"], temp["Cumulative Actual"], label="Cumulative Actual")
-    plt.plot(temp["Business Date"], temp["Cumulative Budget"], label="Cumulative Budget", linestyle="--")
-    plt.title(f"{subdesk}: Cumulative P&L vs Budget")
-    plt.xlabel("Date")
-    plt.ylabel("Cumulative P&L")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+# Aggregated macro desks
+macro_df = df[df["GMIS Level 04 Name"].isin(["FX", "Rates", "EM Macro"])]
+macro_agg = macro_df.groupby("Business Date")[["Formal Daily Balance", "Budget Daily Balance"]].sum().cumsum()
 
+# Group by macro desk category
+grouped = df.groupby(["Business Date", "GMIS Level 04 Name"])[["Formal Daily Balance", "Budget Daily Balance"]].sum().reset_index()
+pivot_actual = grouped.pivot(index="Business Date", columns="GMIS Level 04 Name", values="Formal Daily Balance").cumsum()
+pivot_budget = grouped.pivot(index="Business Date", columns="GMIS Level 04 Name", values="Budget Daily Balance").cumsum()
 
+# Aggregate by sub-desk
+agg_subdesk = df.groupby("GMIS Level 05 Name")[["Formal Daily Balance", "Budget Daily Balance"]].sum().sort_values("Formal Daily Balance", ascending=False)
 
-# Aggregate total P&L and Budget by Level 05 Desk
-agg_df = df.groupby("GMIS Level 05 Name")[["Formal Daily Balance", "Budget Daily Balance"]].sum().reset_index()
-
-# Plot
-agg_df.plot(x="GMIS Level 05 Name", kind="bar", figsize=(12,6))
-plt.title("Total Actual vs Budget P&L by Sub-Desk")
-plt.ylabel("Total P&L")
-plt.xticks(rotation=45)
-plt.tight_layout()
-plt.show()
-
-
-
-
-import seaborn as sns
-
+# Deviation Heatmap
 df["Deviation"] = df["Formal Daily Balance"] - df["Budget Daily Balance"]
-pivot_df = df.pivot_table(index="GMIS Level 05 Name", columns="Business Date", values="Deviation", aggfunc="sum")
+pivot_dev = df.pivot_table(index="GMIS Level 05 Name", columns="Business Date", values="Deviation", aggfunc="sum")
 
-plt.figure(figsize=(14, 8))
-sns.heatmap(pivot_df, cmap="RdBu_r", center=0, linewidths=0.5)
-plt.title("P&L Deviation Heatmap (Actual - Budget)")
-plt.xlabel("Date")
-plt.ylabel("Sub Desk")
-plt.tight_layout()
+# Setup the main canvas
+fig = plt.figure(constrained_layout=True, figsize=(20, 22))
+spec = gridspec.GridSpec(ncols=2, nrows=3, figure=fig)
+
+# Chart 1: Cumulative Macro P&L
+ax1 = fig.add_subplot(spec[0, :])
+ax1.plot(macro_agg.index, macro_agg["Formal Daily Balance"], label="Cumulative Actual", color=barclays_blue, linewidth=2)
+ax1.plot(macro_agg.index, macro_agg["Budget Daily Balance"], label="Cumulative Budget", color=barclays_grey, linestyle="--", linewidth=2)
+ax1.set_title("Total Macro Cumulative P&L vs Budget", fontsize=14, weight='bold')
+ax1.set_xlabel("Date")
+ax1.set_ylabel("Cumulative P&L")
+ax1.legend()
+ax1.grid(True, linestyle='--', alpha=0.5)
+ax1.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
+
+# Chart 2: P&L by Macro Category
+ax2 = fig.add_subplot(spec[1, :])
+for col in pivot_actual.columns:
+    ax2.plot(pivot_actual.index, pivot_actual[col], label=f"{col} Actual", linewidth=2)
+    ax2.plot(pivot_budget.index, pivot_budget[col], linestyle='--', label=f"{col} Budget", linewidth=2)
+ax2.set_title("Cumulative P&L vs Budget by Macro Desk", fontsize=14, weight='bold')
+ax2.set_xlabel("Date")
+ax2.set_ylabel("Cumulative P&L")
+ax2.legend()
+ax2.grid(True, linestyle='--', alpha=0.5)
+ax2.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
+
+# Chart 3: Bar Chart Subdesk
+ax3 = fig.add_subplot(spec[2, 0])
+agg_subdesk.plot(kind='bar', ax=ax3, color=[barclays_blue, barclays_grey])
+ax3.set_title("Total P&L vs Budget by Sub-Desk", fontsize=14, weight='bold')
+ax3.set_ylabel("Total P&L")
+ax3.grid(axis='y', linestyle='--', alpha=0.6)
+ax3.tick_params(axis='x', rotation=45)
+
+# Chart 4: Heatmap
+ax4 = fig.add_subplot(spec[2, 1])
+norm = TwoSlopeNorm(vmin=pivot_dev.min().min(), vcenter=0, vmax=pivot_dev.max().max())
+sns.heatmap(pivot_dev, cmap="RdBu_r", center=0, linewidths=0.3, linecolor='grey', norm=norm, 
+            cbar_kws={"label": "Deviation"}, ax=ax4)
+ax4.set_title("P&L Deviation Heatmap (Actual - Budget)", fontsize=14, weight='bold')
+ax4.set_xlabel("Date")
+ax4.set_ylabel("Sub-Desk")
+ax4.tick_params(axis='x', rotation=45)
+
+plt.suptitle("Macro Risk Daily P&L Overview", fontsize=16, weight='bold')
 plt.show()
-
