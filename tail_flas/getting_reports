@@ -2,17 +2,18 @@ import os
 import logging
 import time
 import pythoncom
+
+import xlwings as xw
 import pandas as pd
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
-import win32com.client as win32
 
-# —— CONFIGURATION ——
+# —— CONFIG ——
 ICE_XLL_PATH = r"C:\path\to\ICE.ExcelAddin64.xll"
 REPORTS = {
     "Daily P&L":    20384820,
     "Risk Summary": 20384821,
-    # … add your other report-name:report-id pairs …
+    # … add all 20 report-name ↔ report-id pairs …
 }
 LOG_FILE = "dashboard.log"
 
@@ -23,93 +24,108 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s"
 )
 
-def fetch_report(report_id: int, param: str = "") -> pd.DataFrame:
-    """
-    Uses FormulaArray to call Ice_Report_Legacy(report_id,,"$C$1")
-    and returns the result as a pandas DataFrame.
-    """
+# —— LAUNCH & REGISTER EXCEL (ONE INSTANCE) ——
+@st.cache_resource
+def get_excel_and_workbook():
+    """Start Excel once, register the XLL, and return (app, wb)."""
     pythoncom.CoInitialize()
-    xl = None
-    wb = None
-    df = pd.DataFrame()
     try:
-        # 1) Launch a fresh Excel COM instance
-        xl = win32.DispatchEx("Excel.Application")
-        xl.Visible = False
-        xl.DisplayAlerts = False
+        app = xw.App(visible=False)
+    except Exception as e:
+        logging.exception("Could not start Excel")
+        st.error(f"⚠️ Excel startup failed: {e}")
+        return None, None
 
-        # 2) Register the XLL
+    # Register the ICE add-in
+    try:
         if not os.path.isfile(ICE_XLL_PATH):
             raise FileNotFoundError(f"XLL not found: {ICE_XLL_PATH}")
-        if not xl.RegisterXLL(ICE_XLL_PATH):
-            raise RuntimeError(f"Failed to register XLL: {ICE_XLL_PATH}")
+        ok = app.api.RegisterXLL(ICE_XLL_PATH)
+        if not ok:
+            raise RuntimeError(f"RegisterXLL returned False for {ICE_XLL_PATH}")
+    except Exception as e:
+        logging.exception("Could not register ICE XLL")
+        st.error(f"⚠️ ICE add‑in registration failed: {e}")
+        app.kill()
+        return None, None
 
-        # 3) Add a new workbook & set up parameter cell
-        wb = xl.Workbooks.Add()
-        ws = wb.Worksheets(1)
-        ws.Range("C1").Value = param
+    # Create a blank workbook (we'll populate one sheet per report)
+    wb = app.books.add()
+    return app, wb
 
-        # 4) Enter the array formula in A1
-        formula = f'=Ice_Report_Legacy({report_id},, $C$1)'
-        ws.Range("A1").FormulaArray = formula
+# —— RENDER ALL FORMULAS IN ONE GO ——
+def load_all_reports(param: str):
+    """
+    Writes all 20 =Ice_Report_Legacy(...) array‑formulas into separate sheets,
+    fires one Calculate(), then reads them back into st.session_state.data.
+    """
+    app, wb = get_excel_and_workbook()
+    if not app or not wb:
+        return {}
 
-        # 5) Force a calculation
+    data = {}
+    try:
+        # 1) Ensure exactly one sheet per report (rename or recreate)
+        # Delete extras first
+        for sht in wb.sheets:
+            sht.delete()
+        # Then add one per report
+        for name, rid in REPORTS.items():
+            sht = wb.sheets.add(name)
+            # param cell
+            sht.range("C1").value = param
+            # array‐formula in A1
+            fmla = f'=Ice_Report_Legacy({rid},,C1)'
+            sht.range("A1").formula_array = fmla
+
+        # 2) Calculate everything once
         try:
-            xl.CalculateUntilAsyncQueriesDone()
-        except AttributeError:
-            xl.Calculate()
-        time.sleep(1)  # allow time for the add-in to spill the array
+            app.api.CalculateUntilAsyncQueriesDone()
+        except Exception:
+            app.calculate()
+        # give ICE add‑in a moment
+        time.sleep(2)
 
-        # 6) Read back the spilled range
-        used = ws.UsedRange.Value
-        if used:
-            headers = used[0]
-            rows = used[1:]
-            df = pd.DataFrame(rows, columns=headers)
+        # 3) Read each sheet’s UsedRange into a DataFrame
+        for name in REPORTS:
+            try:
+                sht = wb.sheets[name]
+                # Expand to include the spill automatically
+                df = sht.range("A1").options(pd.DataFrame,
+                                            header=1,
+                                            index=False,
+                                            expand="table").value
+                data[name] = df
+            except Exception as e:
+                logging.exception(f"Failed to read sheet {name}")
+                st.error(f"⚠️ Could not read report **{name}**: {e}")
+                data[name] = pd.DataFrame()
 
     except Exception as e:
-        logging.exception(f"Error fetching report {report_id}")
-        st.error(f"⚠️ Could not load report {report_id}: {e}")
-    finally:
-        # 7) Clean up workbook
-        if wb:
-            try:
-                wb.Close(False)
-            except Exception:
-                logging.exception("Failed to close workbook")
-        # 8) Quit Excel
-        if xl:
-            try:
-                xl.Quit()
-            except Exception:
-                logging.exception("Failed to quit Excel")
-        pythoncom.CoUninitialize()
+        logging.exception("Error during load_all_reports")
+        st.error(f"🚨 Unexpected error fetching reports: {e}")
 
-    return df
+    return data
 
+# —— STREAMLIT APP ——
 def main():
     st.set_page_config(page_title="ICE Dashboard", layout="wide")
     st.title("📊 Live ICE Reports Dashboard")
 
-    # Auto‑refresh every 5 minutes
-    refresh_count = st_autorefresh(interval=300_000, key="ice_refresh")
+    # Auto‑refresh every 5 min
+    refresh = st_autorefresh(interval=300_000, key="refresh")
 
-    # Shared parameter (goes into $C$1)
     param = st.text_input("Parameter for $C$1", "")
 
-    # On first load or when refresh_count increments, reload all reports
-    if "data" not in st.session_state or refresh_count:
-        st.session_state.data = {}
-        for name, rid in REPORTS.items():
-            with st.spinner(f"Loading {name}…"):
-                df = fetch_report(rid, param)
-                st.session_state.data[name] = df
+    if "data" not in st.session_state or refresh:
+        with st.spinner("Fetching all reports…"):
+            st.session_state.data = load_all_reports(param)
 
-    # Display each DataFrame
+    # Display them
     for name, df in st.session_state.data.items():
         st.subheader(name)
-        if df.empty:
-            st.warning(f"No data available for **{name}**")
+        if df is None or df.empty:
+            st.warning(f"No data for **{name}**")
         else:
             st.dataframe(df, use_container_width=True)
 
@@ -117,5 +133,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        logging.exception("Unhandled exception in Streamlit app")
-        st.error(f"🚨 Unexpected error: {e}")
+        logging.exception("Unhandled error in Streamlit")
+        st.error(f"💥 Fatal error: {e}")
