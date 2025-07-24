@@ -1,47 +1,131 @@
+import os
+import logging
+import traceback
+
 import xlwings as xw
 import pandas as pd
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
+# —— CONFIGURATION ——
 ICE_XLL_PATH = r"C:\path\to\ICE.ExcelAddin64.xll"
 REPORTS = {
     "Daily P&L":    20384820,
     "Risk Summary": 20384821,
-    # … add all 20
+    # … add all 20 report-name: report-id pairs here
 }
 
+LOG_FILE = "dashboard.log"
+
+# —— LOGGING SETUP ——
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s"
+)
+
+# —— EXCEL INITIALIZATION ——
 @st.experimental_singleton
-def get_excel_app():
-    app = xw.App(visible=False)
-    app.api.RegisterXLL(ICE_XLL_PATH)
+def init_excel_app():
+    """Launch Excel and register the ICE XLL (singleton)."""
+    # 1. Start Excel
+    try:
+        app = xw.App(visible=False)
+    except Exception as e:
+        logging.exception("Failed to start Excel")
+        st.error(f"⚠️ Could not start Excel: {e}")
+        return None
+
+    # 2. Register XLL
+    try:
+        if not os.path.exists(ICE_XLL_PATH):
+            raise FileNotFoundError(f"File not found: {ICE_XLL_PATH}")
+        # Returns True if successful (COM returns non-zero)
+        success = app.api.RegisterXLL(ICE_XLL_PATH)
+        if not success:
+            raise RuntimeError(f"RegisterXLL returned false for {ICE_XLL_PATH}")
+    except Exception as e:
+        logging.exception("Failed to register XLL")
+        st.error(f"⚠️ Could not register ICE add-in: {e}")
+        try:
+            app.kill()
+        except Exception:
+            pass
+        return None
+
     return app
 
+# —— FETCHING REPORT ——
 def fetch_report(report_id: int, param: str = "") -> pd.DataFrame:
-    app = get_excel_app()
-    wb  = app.books.add()
-    sht = wb.sheets[0]
-    sht.range("C1").value = param
-    raw = app.api.Run("Ice_Report_Legacy", report_id, "", sht.range("C1"))
-    wb.close(False)
-    data    = tuple(raw)
-    headers = data[0]
-    rows    = data[1:]
-    return pd.DataFrame(rows, columns=headers)
+    """
+    Calls Ice_Report_Legacy(report_id, "", param) headlessly and
+    returns a DataFrame. Returns an empty DataFrame on error.
+    """
+    df = pd.DataFrame()
+    app = init_excel_app()
+    if app is None:
+        return df
 
+    wb = None
+    try:
+        wb = app.books.add()
+        sht = wb.sheets[0]
+        sht.range("C1").value = param
+
+        raw = app.api.Run("Ice_Report_Legacy", report_id, "", sht.range("C1"))
+    except Exception as e:
+        logging.exception(f"Error running Ice_Report_Legacy for ID {report_id}")
+        st.error(f"⚠️ Failed to fetch report {report_id}: {e}")
+        return df
+    finally:
+        if wb:
+            try:
+                wb.close(False)
+            except Exception:
+                logging.exception("Failed to close Excel workbook")
+
+    # Convert SafeArray → tuple → DataFrame
+    try:
+        data = tuple(raw)
+        headers = data[0]
+        rows = data[1:]
+        df = pd.DataFrame(rows, columns=headers)
+    except Exception as e:
+        logging.exception(f"Error processing data for report {report_id}")
+        st.error(f"⚠️ Failed to process data for report {report_id}: {e}")
+
+    return df
+
+# —— STREAMLIT APP ——
 def main():
+    st.set_page_config(page_title="ICE Reports Dashboard", layout="wide")
     st.title("📊 Live ICE Reports Dashboard")
-    st_autorefresh(interval=300_000, key="ice_refresh")
+
+    # Auto-refresh every 5 minutes
+    refresh_count = st_autorefresh(interval=300_000, key="ice_refresh")
+
+    # Shared parameter cell
     param = st.text_input("Parameter for $C$1", "")
-    if "data" not in st.session_state:
+
+    # On first load or when auto-refresh triggers, reload all reports
+    if "data" not in st.session_state or refresh_count:
         st.session_state.data = {}
-    # Always overwrite on each refresh
-    st.session_state.data = {
-        name: fetch_report(rid, param)
-        for name, rid in REPORTS.items()
-    }
+        for name, rid in REPORTS.items():
+            with st.spinner(f"Loading {name}…"):
+                df = fetch_report(rid, param)
+                st.session_state.data[name] = df
+
+    # Display results
     for name, df in st.session_state.data.items():
         st.subheader(name)
-        st.dataframe(df, height=250)
+        if df.empty:
+            st.warning(f"No data available for **{name}**")
+        else:
+            st.dataframe(df, use_container_width=True)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        logging.exception("Unhandled exception in Streamlit app")
+        st.error(f"🚨 Unexpected error: {e}")
