@@ -8,12 +8,12 @@ import pandas as pd
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
-# —— CONFIG ——
+# —— CONFIGURATION ——
 ICE_XLL_PATH = r"C:\path\to\ICE.ExcelAddin64.xll"
 REPORTS = {
     "Daily P&L":    20384820,
     "Risk Summary": 20384821,
-    # … add all 20 report-name ↔ report-id pairs …
+    # … add your remaining 18 report-name ↔ report-id pairs …
 }
 LOG_FILE = "dashboard.log"
 
@@ -24,104 +24,118 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s"
 )
 
-# —— LAUNCH & REGISTER EXCEL (ONE INSTANCE) ——
+# —— LAUNCH & REGISTER EXCEL (CACHED) ——
 @st.cache_resource
-def get_excel_and_workbook():
-    """Start Excel once, register the XLL, and return (app, wb)."""
+def get_excel_app():
+    """Start Excel once and register the ICE XLL."""
     pythoncom.CoInitialize()
     try:
         app = xw.App(visible=False)
     except Exception as e:
         logging.exception("Could not start Excel")
         st.error(f"⚠️ Excel startup failed: {e}")
-        return None, None
+        return None
 
-    # Register the ICE add-in
+    if not os.path.isfile(ICE_XLL_PATH):
+        st.error(f"⚠️ XLL not found: {ICE_XLL_PATH}")
+        app.kill()
+        return None
     try:
-        if not os.path.isfile(ICE_XLL_PATH):
-            raise FileNotFoundError(f"XLL not found: {ICE_XLL_PATH}")
         ok = app.api.RegisterXLL(ICE_XLL_PATH)
         if not ok:
-            raise RuntimeError(f"RegisterXLL returned False for {ICE_XLL_PATH}")
+            raise RuntimeError("RegisterXLL returned False")
     except Exception as e:
         logging.exception("Could not register ICE XLL")
-        st.error(f"⚠️ ICE add‑in registration failed: {e}")
+        st.error(f"⚠️ ICE add-in registration failed: {e}")
         app.kill()
-        return None, None
+        return None
 
-    # Create a blank workbook (we'll populate one sheet per report)
-    wb = app.books.add()
-    return app, wb
+    return app
 
-# —— RENDER ALL FORMULAS IN ONE GO ——
-def load_all_reports(param: str):
+# —— LOAD ALL REPORTS AT ONCE ——
+def load_all_reports(param: str) -> dict:
     """
-    Writes all 20 =Ice_Report_Legacy(...) array‑formulas into separate sheets,
-    fires one Calculate(), then reads them back into st.session_state.data.
+    Creates one new workbook, renames its default sheet to the first report,
+    adds sheets for the rest, writes all array‐formulas, calculates once,
+    and reads each spilled range into a DataFrame.
     """
-    app, wb = get_excel_and_workbook()
-    if not app or not wb:
+    app = get_excel_app()
+    if app is None:
         return {}
 
     data = {}
+    wb = None
     try:
-        # 1) Ensure exactly one sheet per report (rename or recreate)
-        # Delete extras first
-        for sht in wb.sheets:
-            sht.delete()
-        # Then add one per report
-        for name, rid in REPORTS.items():
-            sht = wb.sheets.add(name)
-            # param cell
-            sht.range("C1").value = param
-            # array‐formula in A1
-            fmla = f'=Ice_Report_Legacy({rid},,C1)'
-            sht.range("A1").formula_array = fmla
+        # 1) New workbook
+        wb = app.books.add()
 
-        # 2) Calculate everything once
+        # 2) Rename default sheet & drop first formula
+        report_names = list(REPORTS.keys())
+        first_name = report_names[0]
+        first_rid  = REPORTS[first_name]
+
+        sht = wb.sheets[0]
+        sht.name = first_name
+        sht.range("C1").value = param
+        sht.range("A1").formula_array = f'=Ice_Report_Legacy({first_rid},,C1)'
+
+        # 3) Add & populate remaining sheets
+        for name in report_names[1:]:
+            rid = REPORTS[name]
+            sht2 = wb.sheets.add(name=name)
+            sht2.range("C1").value = param
+            sht2.range("A1").formula_array = f'=Ice_Report_Legacy({rid},,C1)'
+
+        # 4) One global calculate
         try:
             app.api.CalculateUntilAsyncQueriesDone()
         except Exception:
             app.calculate()
-        # give ICE add‑in a moment
-        time.sleep(2)
+        time.sleep(2)  # give the XLL time to finish spilling
 
-        # 3) Read each sheet’s UsedRange into a DataFrame
-        for name in REPORTS:
+        # 5) Read each sheet via xlwings’ table‐expand
+        for name in report_names:
             try:
-                sht = wb.sheets[name]
-                # Expand to include the spill automatically
-                df = sht.range("A1").options(pd.DataFrame,
-                                            header=1,
-                                            index=False,
-                                            expand="table").value
+                sheet = wb.sheets[name]
+                df = sheet.range("A1").options(
+                    pd.DataFrame,
+                    header=1,
+                    index=False,
+                    expand="table"
+                ).value
                 data[name] = df
             except Exception as e:
-                logging.exception(f"Failed to read sheet {name}")
+                logging.exception(f"Error reading sheet {name}")
                 st.error(f"⚠️ Could not read report **{name}**: {e}")
                 data[name] = pd.DataFrame()
 
     except Exception as e:
-        logging.exception("Error during load_all_reports")
+        logging.exception("Error in load_all_reports")
         st.error(f"🚨 Unexpected error fetching reports: {e}")
+
+    finally:
+        if wb:
+            try:
+                wb.close(False)
+            except Exception:
+                logging.exception("Failed to close workbook")
 
     return data
 
 # —— STREAMLIT APP ——
 def main():
-    st.set_page_config(page_title="ICE Dashboard", layout="wide")
+    st.set_page_config(page_title="ICE Reports Dashboard", layout="wide")
     st.title("📊 Live ICE Reports Dashboard")
 
-    # Auto‑refresh every 5 min
-    refresh = st_autorefresh(interval=300_000, key="refresh")
+    # Auto-refresh every 5 minutes
+    refresh_count = st_autorefresh(interval=300_000, key="ice_refresh")
 
     param = st.text_input("Parameter for $C$1", "")
 
-    if "data" not in st.session_state or refresh:
-        with st.spinner("Fetching all reports…"):
+    if "data" not in st.session_state or refresh_count:
+        with st.spinner("Fetching all ICE reports…"):
             st.session_state.data = load_all_reports(param)
 
-    # Display them
     for name, df in st.session_state.data.items():
         st.subheader(name)
         if df is None or df.empty:
