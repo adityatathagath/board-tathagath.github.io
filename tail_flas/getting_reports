@@ -1,0 +1,47 @@
+import xlwings as xw
+import pandas as pd
+import streamlit as st
+from streamlit_autorefresh import st_autorefresh
+
+ICE_XLL_PATH = r"C:\path\to\ICE.ExcelAddin64.xll"
+REPORTS = {
+    "Daily P&L":    20384820,
+    "Risk Summary": 20384821,
+    # … add all 20
+}
+
+@st.experimental_singleton
+def get_excel_app():
+    app = xw.App(visible=False)
+    app.api.RegisterXLL(ICE_XLL_PATH)
+    return app
+
+def fetch_report(report_id: int, param: str = "") -> pd.DataFrame:
+    app = get_excel_app()
+    wb  = app.books.add()
+    sht = wb.sheets[0]
+    sht.range("C1").value = param
+    raw = app.api.Run("Ice_Report_Legacy", report_id, "", sht.range("C1"))
+    wb.close(False)
+    data    = tuple(raw)
+    headers = data[0]
+    rows    = data[1:]
+    return pd.DataFrame(rows, columns=headers)
+
+def main():
+    st.title("📊 Live ICE Reports Dashboard")
+    st_autorefresh(interval=300_000, key="ice_refresh")
+    param = st.text_input("Parameter for $C$1", "")
+    if "data" not in st.session_state:
+        st.session_state.data = {}
+    # Always overwrite on each refresh
+    st.session_state.data = {
+        name: fetch_report(rid, param)
+        for name, rid in REPORTS.items()
+    }
+    for name, df in st.session_state.data.items():
+        st.subheader(name)
+        st.dataframe(df, height=250)
+
+if __name__ == "__main__":
+    main()
