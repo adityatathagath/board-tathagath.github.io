@@ -1,110 +1,95 @@
-# app.py
-import pythoncom
-import logging
+import os
 import time
-
+import logging
+import xlwings as xw
 import pandas as pd
-import win32com.client
-import streamlit as st
-from streamlit_autorefresh import st_autorefresh
 
-# —— CONFIGURATION ——
-# Set this to the ProgID you discovered from discovery.py
-ICE_PROGID     = "ICE.ExcelAddin64"
-REPORT_METHOD = "Ice_Report_Legacy"  # usually matches your UDF name
+# ─── CONFIGURATION ────────────────────────────────────────────────────────
+# 1) Full path to your Ice_Report_Legacy add‑in XLL
+XLL_PATH   = r"C:\Path\To\IceAddIn.xll"
 
-# Map friendly names to report IDs
-REPORTS = {
-    "Daily P&L":    20384820,
-    "Risk Summary": 20384821,
-    # … all your other 18 report‑name: report‑id pairs …
-}
+# 2) Directory where CSVs will be written
+OUTPUT_DIR = r"C:\Data\IceReports"
 
-# Log file for post‑mortem
-LOG_FILE = "dashboard.log"
+# 3) List all (report_id, lag) pairs here:
+REPORT_PARAMS = [
+    (20486527, 1),
+    (20486527, 2),
+    # … add your remaining 18 pairs …
+]
 
-# —— LOGGING SETUP ——
+# 4) Log file name
+LOG_FILE = "ice_report_fetch.log"
+
+
+# ─── LOGGER SETUP ──────────────────────────────────────────────────────────
 logging.basicConfig(
-    filename=LOG_FILE,
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s"
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE, mode="a"),
+        logging.StreamHandler()
+    ]
 )
 
-def fetch_report_via_com(report_id: int, param: str = "") -> pd.DataFrame:
-    """
-    Starts Excel, grabs ICE via COMAddIns, calls Ice_Report_Legacy(report_id, None, param),
-    and returns a pandas DataFrame. On any error, logs and returns an empty DataFrame.
-    """
-    pythoncom.CoInitialize()
-    xl = win32com.client.DispatchEx("Excel.Application")
-    xl.Visible = False
-    xl.DisplayAlerts = False
 
+# ─── FETCH FUNCTION ───────────────────────────────────────────────────────
+def fetch_all():
+    # Ensure output directory exists
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    logging.info(f"Output directory: {OUTPUT_DIR}")
+
+    # Launch a brand‑new, invisible Excel instance (no default workbook)
+    app = xw.App(visible=False, add_book=False)
     try:
-        # 1) Locate the COMAddIn
-        addin = None
-        for i in range(1, xl.COMAddIns.Count + 1):
-            ai = xl.COMAddIns.Item(i)
-            if ai.ProgId == ICE_PROGID:
-                addin = ai
-                break
-        if addin is None:
-            raise RuntimeError(f"ICE add-in {ICE_PROGID} not found")
+        # Register the XLL so the formula is available
+        app.api.RegisterXLL(XLL_PATH)
+        logging.info(f"Registered XLL: {XLL_PATH}")
 
-        ice_obj = addin.Object
+        # Loop through each report
+        for report_id, lag in REPORT_PARAMS:
+            out_csv = os.path.join(OUTPUT_DIR, f"report_{report_id}_lag{lag}.csv")
+            logging.info(f"Fetching report_id={report_id}, lag={lag}")
 
-        # 2) Call the method
-        raw = getattr(ice_obj, REPORT_METHOD)(report_id, None, param)
+            # Create a temporary workbook & sheet
+            wb  = app.books.add()
+            sht = wb.sheets[0]
 
-        # 3) Convert SafeArray → tuple → DataFrame
-        rows = tuple(raw)                  # ((header1, header2, ...), (r1c1, r1c2,...), ...)
-        headers, data = rows[0], rows[1:]
-        return pd.DataFrame(data, columns=headers)
+            try:
+                # 1) Write the dynamic‐array formula into A1
+                sht.range("A1").formula = f"=Ice_Report_Legacy({report_id},,{lag})"
 
-    except Exception as e:
-        logging.exception(f"Error fetching report {report_id}")
-        return pd.DataFrame()
+                # 2) Force a full recalculation
+                app.api.CalculateFull()
+                time.sleep(1)  # a brief pause for large reports
+
+                # 3) Grab the spilled range starting at A1
+                data = sht.range("A1").expand().options(ndim=2).value
+                if not data or len(data) < 2:
+                    raise ValueError("No data or only headers returned")
+
+                headers, *rows = data
+
+                # 4) Convert to DataFrame and save
+                df = pd.DataFrame(rows, columns=headers)
+                df.to_csv(out_csv, index=False)
+                logging.info(f"Saved {len(df)} rows → {out_csv}")
+
+            except Exception as e:
+                logging.error(f"Error fetching {report_id}, lag={lag}: {e}")
+
+            finally:
+                # Close the temp workbook without saving
+                wb.close(False)
+
+        logging.info("All reports processed.")
 
     finally:
-        # 4) Clean up
-        try:
-            xl.Quit()
-        except Exception:
-            pass
-        pythoncom.CoUninitialize()
+        # Kill the Excel process
+        app.kill()
+        logging.info("Excel instance closed.")
 
-def main():
-    st.set_page_config(page_title="ICE Reports Dashboard", layout="wide")
-    st.title("📊 Live ICE Reports Dashboard")
 
-    # Auto-refresh every 5 minutes
-    _ = st_autorefresh(interval=300_000, key="ice_refresh")
-
-    # Shared parameter for the COM call
-    param = st.text_input("Parameter for C1", "")
-
-    # Fetch all reports on first load or each refresh
-    if "data" not in st.session_state:
-        st.session_state.data = {}
-    if st.session_state.get("_last_refresh", None) != param:
-        st.session_state.data.clear()
-        for name, rid in REPORTS.items():
-            with st.spinner(f"Loading {name}…"):
-                df = fetch_report_via_com(rid, param)
-                st.session_state.data[name] = df
-        st.session_state._last_refresh = param
-
-    # Display
-    for name, df in st.session_state.data.items():
-        st.subheader(name)
-        if df.empty:
-            st.warning(f"No data for **{name}**")
-        else:
-            st.dataframe(df, use_container_width=True)
-
+# ─── ENTRY POINT ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        logging.exception("Unhandled exception in Streamlit app")
-        st.error(f"🚨 Unexpected error: {e}")
+    fetch_all()
