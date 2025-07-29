@@ -1,0 +1,125 @@
+import os
+import time, datetime
+import logging
+import xlwings as xw
+import pandas as pd
+
+# ─── CONFIG ────────────────────────────────────────────────────────────────
+XLL_PATH    = r"C:\Path\To\IceAddIn.xll"
+BASE_DIR    = r"C:\Data\IceReports"
+
+REPORT_PARAMS = [
+    (20489527, 1, "INR_DailyRates"),
+    (20489527, 2, "INR_DailyRates_T2"),
+    (20486527, 1, "BRL_CreditSpreads"),
+    # … etc …
+]
+
+LOG_FILE    = "ice_report_fetch.log"
+
+# ─── LOGGER ───────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE, mode="a"),
+        logging.StreamHandler()
+    ]
+)
+
+# ─── FETCH WITH VERSIONING ─────────────────────────────────────────────────
+def fetch_all_reports():
+    # Create a timestamped folder for this run
+    run_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(BASE_DIR, "history", run_ts)
+    os.makedirs(run_dir, exist_ok=True)
+    logging.info(f"Writing run to {run_dir}")
+
+    # Also keep a “latest” symlink or copy
+    latest_dir = os.path.join(BASE_DIR, "latest")
+    if os.path.exists(latest_dir):
+        # optional: clear it or overwrite
+        for f in os.listdir(latest_dir):
+            os.remove(os.path.join(latest_dir, f))
+    else:
+        os.makedirs(latest_dir)
+
+    app = xw.App(visible=False, add_book=False)
+    try:
+        app.api.RegisterXLL(XLL_PATH)
+
+        for report_id, lag, name in REPORT_PARAMS:
+            for target_dir in (run_dir, latest_dir):
+                out_csv = os.path.join(target_dir, f"{name}.csv")
+                try:
+                    arr = app.api.Run("Ice_Report_Legacy", report_id, "", lag)
+                    data = [list(row) for row in arr]
+                    headers, *rows = data
+                    df = pd.DataFrame(rows, columns=headers)
+                    df.to_csv(out_csv, index=False)
+                    logging.info(f"Saved {name} → {out_csv}")
+                except Exception as e:
+                    logging.error(f"Failed {name}: {e}")
+                time.sleep(0.1)
+
+    finally:
+        app.kill()
+        logging.info("Excel closed.")
+
+
+
+
+
+
+
+
+
+import os, glob
+import pandas as pd
+import streamlit as st
+
+BASE_DIR = r"C:\Data\IceReports"
+HIST_DIR = os.path.join(BASE_DIR, "history")
+LATEST_DIR = os.path.join(BASE_DIR, "latest")
+
+st.set_page_config(page_title="VaR Dashboard", layout="wide")
+st.title("📊 VaR Dashboard")
+
+# 1) Let user choose to view Latest or History
+view_mode = st.sidebar.radio("View:", ["Latest", "History"])
+if view_mode == "History":
+    runs = sorted(os.listdir(HIST_DIR), reverse=True)
+    run_ts = st.sidebar.selectbox("Select run timestamp:", runs)
+    data_path = os.path.join(HIST_DIR, run_ts)
+else:
+    data_path = LATEST_DIR
+
+# 2) Load CSVs from chosen folder
+csvs = glob.glob(os.path.join(data_path, "*.csv"))
+reports = {os.path.splitext(os.path.basename(p))[0]: p for p in csvs}
+
+if not reports:
+    st.error(f"No files found in {data_path}")
+    st.stop()
+
+# 3) Pick a report
+report_name = st.sidebar.selectbox("Report:", list(reports.keys()))
+df = pd.read_csv(reports[report_name])
+
+# 4) Show summary + raw data
+st.markdown(f"### {report_name}  —  {view_mode} {run_ts if view_mode=='History' else ''}")
+st.write(f"Rows: {df.shape[0]}, Columns: {df.shape[1]}")
+
+if st.sidebar.checkbox("Show raw data", True):
+    st.dataframe(df, use_container_width=True)
+
+# 5) Plot numeric columns
+num_cols = df.select_dtypes("number").columns.tolist()
+if num_cols:
+    cols = st.sidebar.multiselect("Plot columns:", num_cols, default=num_cols[:1])
+    if cols:
+        st.line_chart(df[cols])
+
+# 6) Download button
+st.download_button("Download CSV", df.to_csv(index=False).encode(), file_name=f"{report_name}.csv")
+
