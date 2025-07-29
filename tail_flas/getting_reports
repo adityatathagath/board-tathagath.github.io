@@ -4,92 +4,72 @@ import logging
 import xlwings as xw
 import pandas as pd
 
-# ─── CONFIGURATION ────────────────────────────────────────────────────────
-# 1) Full path to your Ice_Report_Legacy add‑in XLL
-XLL_PATH   = r"C:\Path\To\IceAddIn.xll"
+# ─── 1) CONFIGURATION ─────────────────────────────────────────────────────
+XLL_PATH    = r"C:\Path\To\IceAddIn.xll"
+OUTPUT_DIR  = r"C:\Data\IceReports"
 
-# 2) Directory where CSVs will be written
-OUTPUT_DIR = r"C:\Data\IceReports"
-
-# 3) List all (report_id, lag) pairs here:
+# Your list of (report_id, lag)
 REPORT_PARAMS = [
-    (20486527, 1),
-    (20486527, 2),
-    # … add your remaining 18 pairs …
+    (20489527, 1),
+    (20489527, 2),
+    # … add all 20 here …
 ]
 
-# 4) Log file name
-LOG_FILE = "ice_report_fetch.log"
+LOG_FILE    = "ice_report_fetch.log"
 
-
-# ─── LOGGER SETUP ──────────────────────────────────────────────────────────
+# ─── 2) LOGGER SETUP ───────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
+    format="%(asctime)s %(levelname)-8s %(message)s",
     handlers=[
         logging.FileHandler(LOG_FILE, mode="a"),
         logging.StreamHandler()
     ]
 )
 
-
-# ─── FETCH FUNCTION ───────────────────────────────────────────────────────
-def fetch_all():
-    # Ensure output directory exists
+# ─── 3) FETCH VIA Application.Run ─────────────────────────────────────────
+def fetch_all_reports():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    logging.info(f"Output directory: {OUTPUT_DIR}")
+    logging.info(f"Output → {OUTPUT_DIR}")
 
-    # Launch a brand‑new, invisible Excel instance (no default workbook)
+    # 1) start a fresh, invisible Excel
     app = xw.App(visible=False, add_book=False)
     try:
-        # Register the XLL so the formula is available
+        # 2) load your XLL so the function is registered
         app.api.RegisterXLL(XLL_PATH)
         logging.info(f"Registered XLL: {XLL_PATH}")
 
-        # Loop through each report
         for report_id, lag in REPORT_PARAMS:
             out_csv = os.path.join(OUTPUT_DIR, f"report_{report_id}_lag{lag}.csv")
-            logging.info(f"Fetching report_id={report_id}, lag={lag}")
-
-            # Create a temporary workbook & sheet
-            wb  = app.books.add()
-            sht = wb.sheets[0]
+            logging.info(f"Fetching report {report_id}, lag={lag}")
 
             try:
-                # 1) Write the dynamic‐array formula into A1
-                sht.range("A1").formula = f"=Ice_Report_Legacy({report_id},,{lag})"
+                # 3) invoke the UDF entirely in memory
+                #     This returns a COM SafeArray (tuple of tuples)
+                arr = app.api.Run("Ice_Report_Legacy", report_id, "", lag)
 
-                # 2) Force a full recalculation
-                app.api.CalculateFull()
-                time.sleep(1)  # a brief pause for large reports
+                # 4) convert to Python list of lists
+                data = [list(r) for r in arr]
+                if len(data) < 2:
+                    raise ValueError("No data returned from Ice_Report_Legacy")
 
-                # 3) Grab the spilled range starting at A1
-                data = sht.range("A1").expand().options(ndim=2).value
-                if not data or len(data) < 2:
-                    raise ValueError("No data or only headers returned")
-
+                # 5) split headers vs rows
                 headers, *rows = data
 
-                # 4) Convert to DataFrame and save
+                # 6) build DataFrame & write CSV
                 df = pd.DataFrame(rows, columns=headers)
                 df.to_csv(out_csv, index=False)
-                logging.info(f"Saved {len(df)} rows → {out_csv}")
+                logging.info(f"   • {len(df)} rows → {out_csv}")
 
             except Exception as e:
-                logging.error(f"Error fetching {report_id}, lag={lag}: {e}")
+                logging.error(f"   ✗ Failed {report_id}, lag={lag}: {e}")
 
-            finally:
-                # Close the temp workbook without saving
-                wb.close(False)
-
-        logging.info("All reports processed.")
+            # small throttle
+            time.sleep(0.1)
 
     finally:
-        # Kill the Excel process
         app.kill()
         logging.info("Excel instance closed.")
 
-
-# ─── ENTRY POINT ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    fetch_all()
+    fetch_all_reports()
