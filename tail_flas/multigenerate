@@ -1,32 +1,23 @@
 import os
 import time
 import logging
-from concurrent.futures import ProcessPoolExecutor, as_completed
-
 import xlwings as xw
 import pandas as pd
+import pythoncom
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # ─── 1) CONFIGURATION ────────────────────────────────────────────────────
-# Path to your Ice_Report_Legacy add-in
 XLL_PATH    = r"C:\Path\To\IceAddIn.xll"
-
-# Directory where CSVs will be saved
 OUTPUT_DIR  = r"C:\Data\IceReports"
-
-# List of (report_id, lag, name) tuples for all your reports
 REPORT_PARAMS = [
     (20489527, 1, "INR_DailyRates"),
     (20489527, 2, "INR_DailyRates_T2"),
     (20486527, 1, "BRL_CreditSpreads"),
-    # … add your remaining entries here …
+    # … add all your (report_id, lag, name) tuples …
 ]
-
-# Maximum number of parallel Excel processes
 MAX_WORKERS = 4
-
-# Log file for tracking progress
 LOG_FILE    = "ice_report_fetch.log"
-
 
 # ─── 2) LOGGER SETUP ─────────────────────────────────────────────────────
 def setup_logging():
@@ -41,47 +32,45 @@ def setup_logging():
     )
     logging.info(f"Output directory: {OUTPUT_DIR}")
 
-
-# ─── 3) WORKER FUNCTION ───────────────────────────────────────────────────
+# ─── 3) WORKER ────────────────────────────────────────────────────────────
 def fetch_report(params):
-    report_id, lag, name = params
-    out_csv = os.path.join(OUTPUT_DIR, f"{name}.csv")
-    logging.info(f"[PID {os.getpid()}] Starting '{name}' (report_id={report_id}, lag={lag})")
-
-    # Launch its own Excel COM process
-    app = xw.App(visible=False, add_book=False)
+    # Initialize COM for this process
+    pythoncom.CoInitialize()
     try:
-        # Register XLL and run UDF entirely in memory
-        app.api.RegisterXLL(XLL_PATH)
-        safe_arr = app.api.Run("Ice_Report_Legacy", report_id, "", lag)
+        report_id, lag, name = params
+        out_csv = os.path.join(OUTPUT_DIR, f"{name}.csv")
+        logging.info(f"[PID {os.getpid()}] Starting '{name}' (ID={report_id}, lag={lag})")
 
-        # Convert SafeArray → list of lists
-        data = [list(row) for row in safe_arr]
-        headers, *rows = data
+        # Launch invisible Excel
+        app = xw.App(visible=False, add_book=False)
+        try:
+            app.api.RegisterXLL(XLL_PATH)
+            arr = app.api.Run("Ice_Report_Legacy", report_id, "", lag)
+            data = [list(r) for r in arr]
+            headers, *rows = data
 
-        # Build DataFrame and save CSV
-        df = pd.DataFrame(rows, columns=headers)
-        df.to_csv(out_csv, index=False)
-        logging.info(f"[PID {os.getpid()}] Saved {len(df)} rows → {out_csv}")
+            df = pd.DataFrame(rows, columns=headers)
+            df.to_csv(out_csv, index=False)
+            logging.info(f"[PID {os.getpid()}] Saved {len(df)} rows → {out_csv}")
+        finally:
+            app.kill()
 
     except Exception as e:
         logging.error(f"[PID {os.getpid()}] Error in '{name}': {e}")
     finally:
-        app.kill()
+        pythoncom.CoUninitialize()
 
-
-# ─── 4) MAIN ENTRYPOINT ───────────────────────────────────────────────────
+# ─── 4) MAIN ──────────────────────────────────────────────────────────────
 def main():
+    # Ensure we use spawn so each child starts fresh
+    mp.set_start_method('spawn', force=True)
     setup_logging()
 
     with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        # Submit all jobs
-        futures = {executor.submit(fetch_report, params): params for params in REPORT_PARAMS}
-
-        # As each finishes, raise/log exceptions
+        futures = {executor.submit(fetch_report, p): p for p in REPORT_PARAMS}
         for future in as_completed(futures):
+            # this will re-raise any exception inside fetch_report
             future.result()
-
 
 if __name__ == "__main__":
     main()
