@@ -1,0 +1,51 @@
+import os
+import pandas as pd
+from pyxlsb import open_workbook
+import matplotlib.pyplot as plt
+from datetime import datetime
+
+# Replace with your actual folder path
+folder_path = r'C:\your\path\to\files'
+
+# Store the results
+data = []
+
+# Loop through all .xlsb files
+for file in os.listdir(folder_path):
+    if file.endswith('.xlsb'):
+        file_path = os.path.join(folder_path, file)
+
+        # Extract date from filename (assuming format some_name_YYYYMMDD.xlsb)
+        try:
+            date_str = file.split('_')[-1].replace('.xlsb', '')
+            file_date = datetime.strptime(date_str, '%Y%m%d').date()
+        except Exception as e:
+            print(f"Skipping file {file}: invalid date format.")
+            continue
+
+        try:
+            with open_workbook(file_path) as wb:
+                with wb.get_sheet('control') as sheet:
+                    for row_idx, row in enumerate(sheet.rows()):
+                        if row_idx == 2:  # AD3 is in row 3 (index 2)
+                            if len(row) >= 30:  # Column AD = 30th column (0-indexed)
+                                value = row[29].v
+                                data.append((file_date, value))
+                            break
+        except Exception as e:
+            print(f"Error reading {file}: {e}")
+
+# Convert to DataFrame
+df = pd.DataFrame(data, columns=['Date', 'Value'])
+df.sort_values('Date', inplace=True)
+
+# Plotting
+plt.figure(figsize=(10, 6))
+plt.plot(df['Date'], df['Value'], marker='o')
+plt.title('Timeseries from AD3 in control sheet')
+plt.xlabel('Date')
+plt.ylabel('Value in AD3')
+plt.grid(True)
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
