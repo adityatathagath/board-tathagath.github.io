@@ -214,6 +214,98 @@ Optimism but tariff risk remains
 	•	South Africa: CPI 3.0% y/y (June); SARB easing bias intact; sees modest impact from U.S. tariffs.  ￼
 	•	Nigeria: CPI 22.22% y/y (June); policy rate held 27.50% amid sticky pressures.  ￼
 
+---------------------------
+
+Executive takeaways (1–2 lines each)
+	•	Crude & tariffs: Near-term oil pricing is being driven more by seasonal demand/inventories and the U.S.–China 90-day tariff truce than by direct tariff shocks to crude; markets are not pricing a material disruption from U.S. pressure on India’s Russian-oil purchases. Brent $66.12 (-0.8%), WTI $63.17 (-1.2%) on Aug 12.  ￼
+	•	India/China tariffs: U.S. “Liberation Day” tariffs (10–50%) lifted the average U.S. import duty to the highest in a century; India faces additional +25pp over prior rates (some lines up to ~50%) with authorities estimating ~55% of Indian exports to the U.S. are covered. U.S.–China truce delays a tariff snap-back to Nov 10.  ￼
+	•	Central banks: The Fed held at 4.25–4.50%, with markets now leaning to a Sep cut; BoE cut to 4.00% (5–4 vote); ECB on hold at 2.00%; RBA cut and signaled more easing; RBI on hold 5.50%; BoT cut today to 1.50%; Banxico cut to 7.75%; Brazil BCB held 15%; SARB eased to 7%; BOK on hold 2.50% with a dovish lean; BSP flags two further cuts with inflation 0.9% y/y.  ￼
+
+⸻
+
+1) Tariffs & crude oil: what is actually priced
+
+What’s in force / in motion
+	•	U.S.–China: a 90-day extension of the tariff truce (announced Aug 12) prevents a jump back to triple-digit duties before Nov 10; this de-risks crude/energy trade channels near-term.  ￼
+	•	China’s countermeasures (earlier this year): Beijing imposed 10% on U.S. crude and 15% on U.S. LNG (plus broader counter-tariffs/export curbs), which encourages China to keep maximizing Russian/Middle-East barrels and discourages U.S. crude flows to China.  ￼
+	•	EU–U.S. framework deal: baseline 15% U.S. tariff on most EU goods (including cars) versus far higher levels threatened; steel/aluminum stay at 50% for now. Implications for refined products/petchem margins are second-order but relevant for European energy equities.  ￼
+
+Market pricing today
+	•	Brent/WTI settled $66.12 / $63.17 on Tue (Aug 12), slipping on seasonal demand fade and EIA inventory focus; OPEC lifted 2026 demand growth by +0.1 mb/d to +1.38 mb/d (2025 unchanged).  ￼
+
+How tariffs hit crude (channels that matter)
+	•	Direct price wedge: A tariff on crude raises the landed cost into the target country (e.g., China’s 10% on U.S. crude) and re-routes flows; U.S. barrels get diverted to Europe/LatAm/Asia ex-China, tightening some arb windows and altering Brent-Dubai differentials.  ￼
+	•	Secondary sanctions/tariff threats: Markets currently discount a large disruption from U.S. threats tied to India’s Russian-oil buying; the view is that enforcement will be narrow/slow and India’s role as a key outlet for Russian crude is “too big to break” quickly.  ￼
+	•	Macro second-order effects: Broad tariffs lift goods inflation over time and can weigh on growth; for oil that can mean lower demand vs higher input costs for refiners—net effect depends on breadth/duration. Consensus (and prices) say modest near-term demand drag, not a supply shock.  ￼
+
+Trading angles (near term)
+	•	Cracks: Watch diesel cracks as the first place where tariffs + growth impacts show up (inventory, freight-led).
+	•	Curve: Seasonal demand fade + soft macro = bias to flatter front spreads unless inventories surprise; OPEC’s firmer 2026 view caps medium-term downside.  ￼
+
+⸻
+
+2) India & China: the tariff picture and the macro bite
+
+India
+	•	New U.S. action: Extra +25pp tariff on Indian goods (effective ~Aug 28) on top of earlier duties; some lines rise to ~50%. India estimates ~55% of merchandise exports to the U.S. fall under the new tariff coverage. Negotiations continue despite the hike.  ￼
+	•	Macro lens: Likely drag on FY25/26 growth via exports (textiles, gems/jewelry, chemicals, ceramics). The currency shock has been limited so far, but CPI cooled to 1.55% y/y in July—an unusually low base that cushions import-price pass-through for now; RBI held 5.50% and flagged tariff risks.  ￼
+	•	Crude-specific: The oil market is not pricing forced changes to India’s Russian-oil intake in the near term; disruptions would be bullish Brent and widen Urals discounts if enforcement tightens.  ￼
+
+China
+	•	Status now: U.S.–China truce extended 90 days; existing lower, truce-level tariffs stay in place. Beijing has used targeted counter-tariffs (incl. 10% on U.S. crude, 15% on LNG) plus export curbs; at home it’s adding consumption-support policies (loan-interest subsidies).  ￼
+	•	Macro lens: Truce buys time and reduces tail risk for global trade/EM FX. For oil, it favors status-quo flows (Russia/Middle East to China; U.S. barrels to non-China Asia/Europe).  ￼
+
+Europe linkage (for context)
+	•	EU–U.S. 15% baseline lowers peak-tariff uncertainty for EU autos/industrial supply chains vs the previously threatened highs; steel/aluminum remain at 50% for now—watch European energy-intensive manufacturers’ margins.  ￼
+
+⸻
+
+3) Central banks: where policy is today (and why it matters)
+
+United States (Fed)
+	•	Rate: 4.25–4.50%; held on Jul 30 (9–2 with dovish dissents). Markets price a Sep cut after a soft July CPI (~2.7% y/y, 0.2% m/m); Fed officials still split. Impact of new tariffs on CPI so far appears limited.  ￼
+
+United Kingdom (BoE)
+	•	Rate: 4.00% after -25 bp on Aug 7 (5–4 split). Signal: easing cycle not on autopilot.  ￼
+
+Euro area (ECB)
+	•	Rate: 2.00%, on hold Jul 24; high bar for a Sep cut given tariff uncertainty.  ￼
+
+Australia (RBA)
+	•	Move: Cut on Aug 12, guidance hints more to come as core inflation slowed; growth assumptions trimmed.  ￼ ￼
+
+India (RBI)
+	•	Rate: 5.50%; on hold Aug 6; July CPI 1.55% y/y. Tariff risk flagged; bond market prices a prolonged pause.  ￼ ￼
+
+Thailand (BoT) — today
+	•	Move: -25 bp to 1.50% (fourth cut in 10 months). Rationale: negative headline inflation, weak consumption/exports; tariff headwinds cited.  ￼
+
+Mexico (Banxico)
+	•	Move: Cut to 7.75% (Aug 7). Inflation mixed; easing pace slower.  ￼
+
+Brazil (BCB)
+	•	Rate: 15.0%; held late-July after a long hiking cycle; communication: “not a pause, an interruption.”  ￼
+
+South Africa (SARB)
+	•	Rate: 7.0% (cut effective Aug 1); inflation ~3.0% y/y; debate over lowering target to 3%.  ￼
+
+South Korea (BOK)
+	•	Rate: 2.50%; on hold with guidance that a cut within ~3 months is likely; tariff uncertainty cited.  ￼
+
+Philippines (BSP)
+	•	Rate: 5.25%; Governor guides two more cuts in 2025; inflation 0.9% y/y in July.  ￼
+
+⸻
+
+What it means for macro trading
+
+FX & Rates
+	•	USD rates: A Sep Fed cut is now the modal path; however, tariff-related import-price stickiness keeps longer-dated USTs under upward pressure on term premia—be careful fading the back end too aggressively.  ￼
+	•	EM rates: Asia easing bias (RBA/BoT; BSP guiding; BI already cut) supports local-bond duration where inflation is sub-target (TH, PH). LatAm is more mixed (Banxico easing; Brazil very restrictive but near peak).  ￼
+
+Commodities
+	•	Crude: With truce in place and OPEC’s firmer 2026 demand view, downside is more macro-growth than trade-shock; watch inventories and any tightening in Russian flows to India for upside tails.  ￼
+	•	Metals: EU–U.S. 15% framework + 50% U.S. metals tariffs keep EU smelter margins challenged; copper sensitive to tariff headlines around industrial goods.  ￼
 
 
 
