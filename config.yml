@@ -1,0 +1,84 @@
+# ==================== CONFIG (edit as needed) ====================
+# Dates that appear in the PDF text (front page / captions)
+date_patterns:
+  - "(?i)(week(?:\s*ending|\s*ended)?|as of|week to)[:\s]*([0-9]{1,2}\s*[A-Za-z]{3,9}\s*[0-9]{2,4})"
+  - "(?i)(week(?:\s*ending|\s*ended)?|as of|week to)[:\s]*([0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4})"
+
+value_column_hints: ["WoW", "W/W", "1w", "4w", "4W", "YTD", "QTD", "MTD", "USD mn", "Flow", "Net flow"]
+
+parsing:
+  max_pages: 40
+  table_settings:
+    vertical_strategy: "lines"
+    horizontal_strategy: "lines"
+    explicit_vertical_lines: []
+    explicit_horizontal_lines: []
+  numeric_clean_regex: "[^0-9+\-.,]"
+
+# Heuristics to match high-level tables if present (kept for completeness)
+table_patterns:
+  em_equity_total:
+    keywords: ["EM Equity", "Equity flows", "EM equities"]
+    level: "EM"
+    asset_class: "Equity"
+    unit_hint: ["USD mn"]
+  em_bond_total:
+    keywords: ["EM Bond", "Bond flows", "EM fixed income"]
+    level: "EM"
+    asset_class: "Bond"
+    unit_hint: ["USD mn"]
+  em_bond_local:
+    keywords: ["Local Currency", "LC", "Local-currency"]
+    level: "EM"
+    asset_class: "Bond (Local)"
+    unit_hint: ["USD mn"]
+  em_bond_hard:
+    keywords: ["Hard Currency", "HC", "Hard-currency"]
+    level: "EM"
+    asset_class: "Bond (Hard)"
+    unit_hint: ["USD mn"]
+
+country_table_patterns:
+  apac_local_bonds_by_country:
+    keywords: ["APAC", "Asia", "Local currency bonds", "by country", "country split"]
+    region: "APAC"
+    asset_class: "Bond (Local)"
+    unit_hint: ["USD mn"]
+
+country_name_normalization:
+  "Korea": "South Korea"
+  "UAE": "United Arab Emirates"
+  "Czech": "Czechia"
+
+# ==================== DIGITIZER DEFAULTS ====================
+digitizer:
+  dpi: 220         # bitmap render resolution
+  # default crop boxes (relative 0..1) for FIGUREs; tune with the UI once and Save Template.
+  crops:
+    FIGURE 1: {page: 2, left: 0.06, top: 0.10, right: 0.95, bottom: 0.58}
+    FIGURE 2: {page: 2, left: 0.05, top: 0.60, right: 0.49, bottom: 0.98}
+    FIGURE 3: {page: 2, left: 0.53, top: 0.60, right: 0.96, bottom: 0.98}
+    FIGURE 4: {page: 3, left: 0.05, top: 0.08, right: 0.49, bottom: 0.52}
+    FIGURE 5: {page: 3, left: 0.53, top: 0.08, right: 0.96, bottom: 0.52}
+    FIGURE 6: {page: 3, left: 0.05, top: 0.56, right: 0.96, bottom: 0.98}
+    FIGURE 7: {page: 4, left: 0.06, top: 0.10, right: 0.95, bottom: 0.85}
+    FIGURE 8: {page: 5, left: 0.05, top: 0.08, right: 0.96, bottom: 0.52}
+    FIGURE 9: {page: 5, left: 0.05, top: 0.56, right: 0.96, bottom: 0.98}
+  # default Y-axis ranges in $bn; calibrate once using the Digitizer UI and Save Template.
+  y_ranges:
+    FIGURE 1: {y_min: -10.0, y_max: 46.0, units: "$bn"}
+    FIGURE 2: {y_min: -4.0,  y_max: 6.0,  units: "$bn"}
+    FIGURE 3: {y_min: -5.0,  y_max: 6.0,  units: "$bn"}
+    FIGURE 4: {y_min: -5.0,  y_max: 4.0,  units: "$bn"}
+    FIGURE 5: {y_min: -5.0,  y_max: 6.0,  units: "$bn"}
+    FIGURE 6: {y_min: -10.0, y_max: 42.0, units: "$bn"}
+    FIGURE 7: {y_min: -18.0, y_max: 44.0, units: "$bn"}
+    FIGURE 8: {y_min: -12.0, y_max: 48.0, units: "$bn"}
+    FIGURE 9: {y_min: -60.0, y_max: 160.0, units: "$bn"}
+  # color thresholds (HSV in OpenCV scale H:0-179, S:0-255, V:0-255). Fine-tune in UI.
+  hsv_thresholds:
+    bond_green: {h_min: 45, h_max: 85, s_min: 50, s_max: 255, v_min: 50, v_max: 255}
+    equity_blue: {h_min: 90, h_max: 130, s_min: 50, s_max: 255, v_min: 50, v_max: 255}
+    yellow: {h_min: 18, h_max: 35, s_min: 80, s_max: 255, v_min: 60, v_max: 255}
+    purple: {h_min: 130, h_max: 160, s_min: 40, s_max: 255, v_min: 40, v_max: 255}
+    gray_line: {h_min: 0, h_max: 179, s_min: 0, s_max: 40, v_min: 80, v_max: 255}
