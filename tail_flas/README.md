@@ -1,0 +1,37 @@
+# EM Flows – Offline Dashboard (with Chart Digitizer)
+
+This project ingests your weekly EM flows PDFs *offline* and produces a Streamlit dashboard with deep insights.
+It offers two ingestion modes:
+1) **Parser** – extracts any tables/text (if your PDF has tabular data).
+2) **Digitizer (template-based)** – converts the standard charts in your weekly report (Figures 1–9) into numeric time series.
+
+> Everything runs locally. No internet calls. OCR uses your local Tesseract install if needed.
+
+## Quickstart
+
+```bash
+python -m venv .venv
+. .venv/Scripts/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+## Workflow
+
+- Go to **Digitizer (Charts → Data)**, upload one PDF, pick a figure, and adjust the crop box + y-axis range.
+- Select HSV color thresholds to isolate each series (green bonds, blue equities, yellow hard-currency, etc.).
+- Click **Extract** to generate a series; it will be saved under `data/digitized/FIGURE_X.parquet`.
+- Repeat for the figures you need.
+- Then visit **Insights & Alerts** to see rolls, z-scores, streaks, divergences, and an auto-written weekly note.
+
+## Notes
+
+- The digitizer assumes a consistent layout week-to-week. Calibrate once and **Save as Template**. 
+- Y-axis values in charts are in **$bn**. The app converts to **USD mn** where appropriate for analytics.
+- If your PDF pages differ, update the default crops and y-ranges in `config.yml` or with the UI.
+- For Windows, install Tesseract separately and set its path in `digitizer.py` if needed.
+
+## Extend
+
+- Add country/region mapping if you digitize by-region figures.
+- Implement additional bindings in `Insights` to join digitized series with parsed dates from page 1 text.
