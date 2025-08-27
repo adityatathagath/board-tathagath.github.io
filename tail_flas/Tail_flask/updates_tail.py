@@ -218,6 +218,17 @@ def _ensure_ice_dirs():
     return latest_dir, hist_dir
 
 
+def _ice_run_with_retry(app, fn_name, *args, retries=3, sleep=0.6):
+    """Run ICE UDF with simple retries to handle COM hiccups."""
+    last_err = None
+    for _ in range(retries):
+        try:
+            return app.api.Run(fn_name, *args)
+        except Exception as e:
+            last_err = e
+            time.sleep(sleep)
+    raise last_err
+
 def fetch_tail_report(var_type: str, lag: int):
     if xw is None:
         raise RuntimeError("xlwings not available in this environment.")
@@ -229,8 +240,11 @@ def fetch_tail_report(var_type: str, lag: int):
     app = xw.App(visible=False, add_book=False)
     try:
         app.api.RegisterXLL(XLL_PATH)
-        arr = app.api.Run("Ice_Report_Legacy", report_id, "*", lag)
+        # Correct ICE call with retries; ensure int args
+        arr = _ice_run_with_retry(app, "Ice_Report_Legacy", int(report_id), "*", int(lag))
         data = [list(row) for row in arr]
+        if not data:
+            raise RuntimeError("ICE returned no data.")
         headers, *rows = data
         df = pd.DataFrame(rows, columns=headers)
 
@@ -248,14 +262,13 @@ def fetch_tail_report(var_type: str, lag: int):
         except Exception:
             pass
 
-
 def fetch_all_via_ice():
     paths = {}
     for var in ("DVaR", "SVaR"):
         for lag in (LAG_COB, LAG_PREV):
             try:
                 paths[(var, lag)] = fetch_tail_report(var, lag)
-                time.sleep(0.1)
+                time.sleep(0.2)
             except Exception as e:
                 logging.error(f"Failed {var} lag={lag}: {e}")
     return paths
@@ -263,30 +276,20 @@ def fetch_all_via_ice():
 
 def get_cob_dates(use_ice: bool, source_excel_path: str | None) -> tuple[datetime | None, datetime | None]:
     """Return (COB_date, PrevCOB_date).
-    - In ICE mode: evaluate Excel formula =FODate_AddBusDays(TODAY(),-1,"Ldn") and -2 for Prev.
-    - In Excel mode: parse from filename and compute previous business day.
+    - In ICE mode: evaluate EXACT formula the user specified: =@FODate_AddBusDasy(TODAY(),-1,"Ldn") and -2 for Prev.
+    - In Excel mode: parse from filename and compute prev business day.
     """
     if use_ice and xw is not None:
         app = xw.App(visible=False, add_book=True)
         try:
-            # Try both the correct and (historically seen) misspelled function names
-            sheet = app.books.add().sheets[0]
-            tried = ["FODate_AddBusDays", "FODate_AddBusDasy"]
-            cob_dt = None
-            prev_dt = None
-            for fname in tried:
-                try:
-                    sheet.range("A1").formula = f"={fname}(TODAY(),-1,\"Ldn\")"
-                    sheet.range("A2").formula = f"={fname}(TODAY(),-2,\"Ldn\")"
-                    cob_dt = sheet.range("A1").value
-                    prev_dt = sheet.range("A2").value
-                    if cob_dt and prev_dt:
-                        break
-                except Exception:
-                    continue
-            # Normalize to datetime
-            cob_dt = pd.to_datetime(cob_dt).to_pydatetime() if cob_dt else None
-            prev_dt = pd.to_datetime(prev_dt).to_pydatetime() if prev_dt else None
+            sht = app.books.add().sheets[0]
+            sht.range("A1").formula = '=@FODate_AddBusDasy(TODAY(),-1,"Ldn")'
+            sht.range("A2").formula = '=@FODate_AddBusDasy(TODAY(),-2,"Ldn")'
+            app.api.CalculateFullRebuild()
+            cob_dt = pd.to_datetime(sht.range("A1").value)
+            prev_dt = pd.to_datetime(sht.range("A2").value)
+            cob_dt = cob_dt.to_pydatetime() if not pd.isna(cob_dt) else None
+            prev_dt = prev_dt.to_pydatetime() if not pd.isna(prev_dt) else None
             return cob_dt, prev_dt
         finally:
             try:
@@ -313,13 +316,20 @@ use_ice = st.sidebar.toggle("Use ICE latest CSVs (xlwings)", value=False)
 col1, col2 = st.sidebar.columns(2)
 with col1:
     if st.button("Fetch latest via ICE"):
-        try:
-            out_paths = fetch_all_via_ice()
-            st.success("Fetched via ICE. Latest CSVs updated.")
-            if out_paths:
-                st.caption("\n".join(f"✓ {k}: {v}" for k, v in out_paths.items()))
-        except Exception as e:
-            st.error(f"ICE fetch failed: {e}")
+        with st.spinner("Fetching reports via ICE… this may take a moment"):
+            try:
+                out_paths = fetch_all_via_ice()
+                # Clear cached loader so the new CSVs are read immediately
+                try:
+                    load_from_ice_latest.clear()
+                except Exception:
+                    pass
+                st.success("Fetched via ICE. Latest CSVs updated.")
+                if out_paths:
+                    st.caption("
+".join(f"✓ {k}: {v}" for k, v in out_paths.items()))
+            except Exception as e:
+                st.error(f"ICE fetch failed: {e}")
 with col2:
     debug_mode = st.checkbox("Debug mode")
 
