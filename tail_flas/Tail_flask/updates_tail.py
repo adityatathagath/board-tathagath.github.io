@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from datetime import datetime, timedelta
+from typing import Optional, Tuple
 from bokeh.plotting import figure
 from bokeh.models import HoverTool
 from st_aggrid import AgGrid, GridOptionsBuilder
@@ -81,9 +82,11 @@ def get_latest_excel_file():
     return os.path.join(DATA_DIR, files_sorted[0][0])
 
 
+from pandas.tseries.offsets import BDay
+
 def previous_business_day(d: datetime, n: int = 1) -> datetime:
-    # Simple Mon-Fri business day logic (no holidays). If you want London holidays, we can add a calendar.
-    return np.busday_offset(d.date(), -n, roll='backward').astype('datetime64[D]').astype(datetime)
+    # Mon–Fri business day (no holidays). For London holidays we can wire a holiday calendar later.
+    return (pd.Timestamp(d) - BDay(n)).to_pydatetime()
 
 
 # =====================
@@ -274,7 +277,7 @@ def fetch_all_via_ice():
     return paths
 
 
-def get_cob_dates(use_ice: bool, source_excel_path: str | None) -> tuple[datetime | None, datetime | None]:
+def get_cob_dates(use_ice: bool, source_excel_path: Optional[str]) -> Tuple[Optional[datetime], Optional[datetime]]:
     """Return (COB_date, PrevCOB_date).
     - In ICE mode: evaluate EXACT formula the user specified: =@FODate_AddBusDasy(TODAY(),-1,"Ldn") and -2 for Prev.
     - In Excel mode: parse from filename and compute prev business day.
