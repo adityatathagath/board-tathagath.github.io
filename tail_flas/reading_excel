@@ -1,0 +1,193 @@
+# We'll create an Excel workbook with structured sheets and formulas
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side, numbers
+
+wb = Workbook()
+
+# --- Helper styles ---
+hdr = Font(bold=True)
+thin = Side(style="thin", color="999999")
+border = Border(left=thin, right=thin, top=thin, bottom=thin)
+fill_hdr = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+fill_input = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
+
+def fmt_col(ws, col, width):
+    ws.column_dimensions[get_column_letter(col)].width = width
+
+# ============== Sheet 1: Curve_Bootstrap ==============
+ws = wb.active
+ws.title = "Curve_Bootstrap"
+
+# Headers
+ws["A1"] = "Tenor (yrs)"; ws["A1"].font = hdr; ws["A1"].fill = fill_hdr
+ws["B1"] = "Par Swap Rate (Dec)"; ws["B1"].font = hdr; ws["B1"].fill = fill_hdr
+ws["C1"] = "Accrual α"; ws["C1"].font = hdr; ws["C1"].fill = fill_hdr
+ws["D1"] = "Sum α*DF (prev)"; ws["D1"].font = hdr; ws["D1"].fill = fill_hdr
+ws["E1"] = "Discount Factor DF_t"; ws["E1"].font = hdr; ws["E1"].fill = fill_hdr
+ws["F1"] = "Annuity A(0,t)=Σα*DF"; ws["F1"].font = hdr; ws["F1"].fill = fill_hdr
+ws["G1"] = "Par +100bp (Dec)"; ws["G1"].font = hdr; ws["G1"].fill = fill_hdr
+ws["H1"] = "DF_t (+100bp)"; ws["H1"].font = hdr; ws["H1"].fill = fill_hdr
+ws["I1"] = "Annuity +100bp"; ws["I1"].font = hdr; ws["I1"].fill = fill_hdr
+
+# Tenors 1..30 (so user can extend to 30y curve; we only need up to 10, but more is handy)
+max_tenor = 30
+for i in range(2, 2 + max_tenor):
+    t = i - 1
+    ws[f"A{i}"] = t
+    ws[f"C{i}"] = 1.0  # annual accrual by default
+    ws[f"B{i}"] = None
+    ws[f"G{i}"] = None
+    # sum α*DF(prev)
+    if i == 2:
+        ws[f"D{i}"] = 0
+        ws[f"F{i}"] = "=C2*E2"
+        ws[f"I{i}"] = "=C2*H2"
+    else:
+        ws[f"D{i}"] = f"=F{i-1}"
+        ws[f"F{i}"] = f"=F{i-1}+C{i}*E{i}"
+        ws[f"I{i}"] = f"=I{i-1}+C{i}*H{i}"
+    # DF formula
+    # DF_i = (1 - S_i * sum_prev) / (1 + S_i * alpha_i)
+    ws[f"E{i}"] = f"=IF(B{i}=\"\", \"\", (1 - B{i}*D{i})/(1 + B{i}*C{i}))"
+    # +100bp column S_i_up = B + 0.01
+    ws[f"H{i}"] = f"=IF(B{i}=\"\", \"\", (1 - (B{i}+0.01)*D{i})/(1 + (B{i}+0.01)*C{i}))"
+
+# Notes / instructions
+ws["A34"] = "INSTRUCTIONS:"; ws["A34"].font = hdr
+ws["A35"] = "1) Paste par swap rates in column B as decimals (e.g., 0.045 for 4.5%)."
+ws["A36"] = "2) Accrual α assumed annual (=1.0). Change column C if semi-annual etc."
+ws["A37"] = "3) Column E bootstraps discount factors recursively from par rates."
+ws["A38"] = "4) Column H bootstraps DFs for a +100bp parallel shift (B + 0.01)."
+ws["A39"] = "5) Columns F and I compute the fixed-leg annuity A = Σα*DF up to that tenor."
+for col, w in enumerate([14, 20, 12, 18, 20, 20, 16, 16, 16], start=1):
+    fmt_col(ws, col, w)
+
+# ============== Sheet 2: Swap_10Y ==============
+ws2 = wb.create_sheet("Swap_10Y")
+
+ws2["A1"] = "Input"; ws2["A1"].font = hdr; ws2["A1"].fill = fill_hdr
+ws2["B1"] = "Value"; ws2["B1"].font = hdr; ws2["B1"].fill = fill_hdr
+ws2["A2"] = "Notional"; ws2["B2"] = 1000000; ws2["B2"].fill = fill_input
+ws2["A3"] = "Fixed rate K (Dec)"; ws2["B3"] = "=IF(Curve_Bootstrap!B11=\"\",0,Curve_Bootstrap!B11)"; ws2["B3"].fill = fill_input
+ws2["A4"] = "Tenor (yrs)"; ws2["B4"] = 10
+
+ws2["A6"] = "Derived"; ws2["A6"].font = hdr; ws2["A6"].fill = fill_hdr
+ws2["A7"] = "Annuity A (base)"; ws2["B7"] = "=Curve_Bootstrap!F11"
+ws2["A8"] = "DF(T) base"; ws2["B8"] = "=Curve_Bootstrap!E11"
+ws2["A9"] = "Par swap rate S_par"; ws2["B9"] = "=(1-B8)/B7"
+ws2["A10"] = "PV (payer, base)"; ws2["B10"] = "=B2*(B7*(B9-B3))"
+ws2["A11"] = "PV (receiver, base)"; ws2["B11"] = "=B2*(B7*(B3-B9))"
+ws2["A12"] = "DV01 (per 1bp, ≈ N*A/10000)"; ws2["B12"] = "=B2*B7/10000"
+
+ws2["A14"] = "Shift +100bp"; ws2["A14"].font = hdr; ws2["A14"].fill = fill_hdr
+ws2["A15"] = "Annuity A (+100bp)"; ws2["B15"] = "=Curve_Bootstrap!I11"
+ws2["A16"] = "DF(T) +100bp"; ws2["B16"] = "=Curve_Bootstrap!H11"
+ws2["A17"] = "S_par (+100bp)"; ws2["B17"] = "=(1-B16)/B15"
+ws2["A18"] = "PV (payer, +100bp)"; ws2["B18"] = "=B2*(B15*(B17-B3))"
+ws2["A19"] = "PV (receiver, +100bp)"; ws2["B19"] = "=B2*(B15*(B3-B17))"
+
+ws2["A21"] = "Hedge with 5Y swap"; ws2["A21"].font = hdr; ws2["A21"].fill = fill_hdr
+ws2["A22"] = "Annuity A_5y"; ws2["B22"] = "=Curve_Bootstrap!F6"
+ws2["A23"] = "DV01_10y"; ws2["B23"] = "=B12"
+ws2["A24"] = "DV01_5y"; ws2["B24"] = "=B2*B22/10000"
+ws2["A25"] = "Hedge Notional (5Y) to neutralize DV01"; 
+ws2["B25"] = "=IF(B24=0,0,-B23/B24*B2)"
+
+for col, w in enumerate([28, 22], start=1):
+    fmt_col(ws2, col, w)
+
+# ============== Sheet 3: VaR_Stress ==============
+ws3 = wb.create_sheet("VaR_Stress")
+
+ws3["A1"] = "Paste daily 10Y swap rate (Dec) in column A (newest at bottom)."; ws3["A1"].font = hdr
+ws3["A2"] = "Rate (Dec)"; ws3["A2"].font = hdr; ws3["A2"].fill = fill_hdr
+for i in range(3, 503):
+    ws3[f"A{i}"] = None
+
+ws3["C1"] = "Inputs"; ws3["C1"].font = hdr; ws3["C1"].fill = fill_hdr
+ws3["C2"] = "Confidence Z (99%)"; ws3["D2"] = 2.33; ws3["D2"].fill = fill_input
+ws3["C3"] = "Shock for 'Primary Stress' (bp)"; ws3["D3"] = 200; ws3["D3"].fill = fill_input
+ws3["C4"] = "DV01 (from Swap_10Y!B12)"; ws3["D4"] = "=Swap_10Y!B12"
+
+ws3["C6"] = "Computed"; ws3["C6"].font = hdr; ws3["C6"].fill = fill_hdr
+ws3["C7"] = "Daily Δrate stdev (bp)"; ws3["D7"] = "=STDEV.S((A4:A503-A3:A502)*10000)"
+ws3["C8"] = "Param VaR (99%) ≈ |DV01|*Z*σ(bp)"; ws3["D8"] = "=ABS(D4)*D2*D7"
+ws3["C9"] = "Primary Stress P&L ≈ DV01*Shock(bp)"; ws3["D9"] = "=D4*D3"
+
+fmt_col(ws3, 1, 18); fmt_col(ws3, 3, 28); fmt_col(ws3, 4, 22)
+
+# ============== Sheet 4: FX_Forward ==============
+ws4 = wb.create_sheet("FX_Forward")
+
+ws4["A1"] = "Input"; ws4["A1"].font = hdr; ws4["A1"].fill = fill_hdr
+ws4["B1"] = "Value"; ws4["B1"].font = hdr; ws4["B1"].fill = fill_hdr
+ws4["A2"] = "Spot S (e.g., EURUSD)"; ws4["B2"] = 1.1000; ws4["B2"].fill = fill_input
+ws4["A3"] = "Domestic rate r_d (Dec)"; ws4["B3"] = 0.03; ws4["B3"].fill = fill_input
+ws4["A4"] = "Foreign rate r_f (Dec)"; ws4["B4"] = 0.015; ws4["B4"].fill = fill_input
+ws4["A5"] = "T (years)"; ws4["B5"] = 1.0; ws4["B5"].fill = fill_input
+
+ws4["A7"] = "Outputs"; ws4["A7"].font = hdr; ws4["A7"].fill = fill_hdr
+ws4["A8"] = "Forward F = S*(1+r_d*T)/(1+r_f*T)"; ws4["B8"] = "=B2*(1+B3*B5)/(1+B4*B5)"
+ws4["A9"] = "Forward points (pips)"; ws4["B9"] = "=(B8-B2)*10000"
+
+ws4["D1"] = "Bump Sensitivities (finite diff)"; ws4["D1"].font = hdr; ws4["D1"].fill = fill_hdr
+ws4["D2"] = "ΔF/ΔS (≈ dF/dS)"; ws4["E2"] = "=(B2*1.0001*(1+B3*B5)/(1+B4*B5) - B8)/(B2*0.0001)"
+ws4["D3"] = "ΔF/Δr_d per 1bp"; ws4["E3"] = "=(B2*(1+(B3+0.0001)*B5)/(1+B4*B5)-B8)/0.0001"
+ws4["D4"] = "ΔF/Δr_f per 1bp"; ws4["E4"] = "=(B2*(1+B3*B5)/(1+(B4+0.0001)*B5)-B8)/0.0001"
+
+for col, w in enumerate([30, 18, 2, 32, 18], start=1):
+    fmt_col(ws4, col, w)
+
+# ============== Sheet 5: Digital_Option ==============
+ws5 = wb.create_sheet("Digital_Option")
+
+ws5["A1"] = "Input"; ws5["A1"].font = hdr; ws5["A1"].fill = fill_hdr
+ws5["B1"] = "Value"; ws5["B1"].font = hdr; ws5["B1"].fill = fill_hdr
+ws5["A2"] = "Spot S (EURUSD)"; ws5["B2"] = 1.10; ws5["B2"].fill = fill_input
+ws5["A3"] = "Strike K"; ws5["B3"] = 1.20; ws5["B3"].fill = fill_input
+ws5["A4"] = "Vol σ (Dec)"; ws5["B4"] = 0.10; ws5["B4"].fill = fill_input
+ws5["A5"] = "T (years)"; ws5["B5"] = 1.0; ws5["B5"].fill = fill_input
+ws5["A6"] = "Cash payout (USD)"; ws5["B6"] = 1.0; ws5["B6"].fill = fill_input
+ws5["A7"] = "Domestic r_d"; ws5["B7"] = 0.0; ws5["B7"].fill = fill_input
+ws5["A8"] = "Foreign r_f"; ws5["B8"] = 0.0; ws5["B8"].fill = fill_input
+
+ws5["D1"] = "Derived"; ws5["D1"].font = hdr; ws5["D1"].fill = fill_hdr
+ws5["D2"] = "d1"; ws5["E2"] = "=(LN(B2/B3)+(B7-B8+0.5*B4^2)*B5)/(B4*SQRT(B5))"
+ws5["D3"] = "d2"; ws5["E3"] = "=E2-B4*SQRT(B5)"
+
+ws5["D5"] = "Digital Call Price (cash-or-nothing)"; ws5["E5"] = "=B6*EXP(-B7*B5)*NORM.S.DIST(E3,TRUE)"
+ws5["D6"] = "Delta (analytic)"; ws5["E6"] = "=B6*EXP(-B7*B5)*NORM.S.DIST(0,TRUE,FALSE)*EXP(-E3^2/2)/(B2*B4*SQRT(B5))"
+# Note: NORM.S.DIST(0,TRUE,FALSE) returns PDF at 0? In Excel: NORM.S.DIST(z, cumulative) — pdf isn't available.
+# We'll implement standard normal pdf φ(z) = 1/SQRT(2π)*EXP(-z^2/2)
+ws5["E6"] = "=B6*EXP(-B7*B5)*(1/SQRT(2*PI()))*EXP(-(E3^2)/2)/(B2*B4*SQRT(B5))"
+
+ws5["D7"] = "Vega (analytic)"; 
+# Vega = e^{-rT} * φ(d2) * (- d1 / σ)
+ws5["E7"] = "=B6*EXP(-B7*B5)*(1/SQRT(2*PI()))*EXP(-(E3^2)/2)*(-E2/B4)"
+
+ws5["D9"] = "Delta (bump 0.1%)"; ws5["E9"] = "=(B6*EXP(-B7*B5)*NORM.S.DIST(((LN((B2*1.001)/B3)+(B7-B8+0.5*B4^2)*B5)/(B4*SQRT(B5)))-B4*SQRT(B5),TRUE)-E5)/(B2*0.001)"
+ws5["D10"] = "Vega (bump 1 vol pt)"; ws5["E10"] = "=(B6*EXP(-B7*B5)*NORM.S.DIST(((LN(B2/B3)+(B7-B8+0.5*(B4+0.01)^2)*B5)/((B4+0.01)*SQRT(B5)))-(B4+0.01)*SQRT(B5),TRUE)-E5)/0.01"
+
+# Grid for charting delta/vega vs S
+ws5["A12"] = "S Grid"; ws5["A12"].font = hdr; ws5["B12"] = "Delta"; ws5["B12"].font = hdr; ws5["C12"] = "Vega"; ws5["C12"].font = hdr
+for i in range(13, 13+41):  # 41 points
+    idx = i - 13
+    ws5[f"A{i}"] = f"=B2*0.8 + {idx}*(B2*0.6/40)"  # from 0.8*S to 1.4*S
+    # recompute d1/d2 for each S_i
+    s_cell = f"A{i}"
+    d1_cell = f"((LN({s_cell}/$B$3)+($B$7-$B$8+0.5*$B$4^2)*$B$5)/($B$4*SQRT($B$5)))"
+    d2_cell = f"({d1_cell}-$B$4*SQRT($B$5))"
+    price_cell = f"$B$6*EXP(-$B$7*$B$5)*NORM.S.DIST({d2_cell},TRUE)"
+    delta_cell = f"$B$6*EXP(-$B$7*$B$5)*(1/SQRT(2*PI()))*EXP(-({d2_cell}^2)/2)/({s_cell}*$B$4*SQRT($B$5))"
+    vega_cell = f"$B$6*EXP(-$B$7*$B$5)*(1/SQRT(2*PI()))*EXP(-({d2_cell}^2)/2)*(-{d1_cell}/$B$4)"
+    ws5[f"B{i}"] = f"={delta_cell}"
+    ws5[f"C{i}"] = f"={vega_cell}"
+
+for col, w in enumerate([24, 16, 16, 26, 22], start=1):
+    fmt_col(ws5, col, w)
+
+# Save
+path = "/mnt/data/IRS_FX_Training_Templates.xlsx"
+wb.save(path)
+path
