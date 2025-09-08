@@ -394,3 +394,110 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+📊 High-Level EM Macro VaR
+
+Total EM Macro VaR95 (current): ~$15.84m
+
+Change vs T-2: +$587k
+
+Total EM Macro VaR99 (current): ~$19.13m
+
+Change vs T-2: +$468k
+
+So, overall risk is up modestly at both the 95% and 99% levels. This indicates increased portfolio sensitivity to market moves.
+
+🌎 Regional Drivers
+1. EM Macro Americas
+
+VaR95: ~$12.43m (up ~$653k vs T-2)
+
+Biggest Contributors:
+
+EM Rates – NY: +$269k jump at 95% VaR
+
+EM FX Forwards & NDF – US: +$215k
+
+EM Rates – Mexico: +$293k (with 99% also rising ~+293k)
+
+📌 Americas is the largest driver of the total increase, especially from Rates desks (NY, Mexico) and FX Forwards US.
+
+2. EM Macro APAC
+
+VaR95: ~$3.99m (up ~$609k)
+
+Key Movers:
+
+EM Rates – India: +$76k increase (95%), with big rise in 99% VaR +$165k.
+
+EM Rates – Singapore: +$130k (95%), +$534k (99%)
+
+EM Macro – Hong Kong: +$50k to 95%, but 99% shows +$217k
+
+📌 APAC rise mainly from India and Singapore Rates.
+99% tails are especially heavy in Singapore and India, suggesting rate curve shocks were key in stress moves.
+
+3. EM Macro EMEA
+
+VaR95: ~$2.12m (up ~$615k)
+
+Top Contributors:
+
+EM Rates – Israel: +$52k at 95%, +$27k at 99%
+
+EM Rates – London: +$208k (95%), +$286k (99%) – largest jump in EMEA
+
+HUF Rates & Poland Rates: smaller but notable adds (+91k & +61k at 95%)
+
+📌 EMEA was driven by London Rates (CE3, RUB, HUF, Poland) – clearly a rates-heavy shock day in CEE.
+
+🔑 Top Risk Drivers Across the Book
+
+Americas Rates (NY, Mexico) – biggest increases across both 95% and 99%.
+
+APAC (India + Singapore Rates) – both show significant 99% tails.
+
+EMEA (London Rates, CE3 block, RUB/HUF) – strong moves in CEEMEA yield curves.
+
+FX Forwards (US + Asia) – moderate but broad-based adds.
+
+🎯 Interpretation
+
+The risk increase is geographically diversified: Americas (Rates), APAC (India/Singapore), and EMEA (London/CEE).
+
+Rates desks dominate the move – suggests underlying yield curve shocks, rate vol upticks, or basis shifts across EM curves.
+
+FX Forwards/NDFs add moderate support, possibly linked to hedging flows or currency volatility spillovers.
+
+The deltaCoVar (red numbers) highlights correlation effects – some desks added diversification (negative deltas), others concentrated risk (positive deltas).
