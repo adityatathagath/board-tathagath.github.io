@@ -1,78 +1,87 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-VaR Explain — Final Executive Generator (robust to your new 'p1..p7' hierarchy view)
------------------------------------------------------------------------------------
-- Auto-detects hierarchy columns (p1/p2/.../pl3..., Drilldowns, Level1..N, etc.), and builds:
-    * Desk (last non-empty node)
-    * DeskPath (joined path)
-- Fuzzy-detects metric columns: VaR95/99, [T-2], DeltaCoVar, Limit
-- Computes ΔVaR95/99 vs T-2, utilization, and correlation effects
-- Produces an Excel with:
-    1) Executive Summary (paste-ready text + totals)
-    2) Top Drivers 95/99 (UP & DOWN by |Δ|) with utilization and deltaCoVar
-    3) Regional Roll-up (95/99) using heuristics or an optional mapping CSV
-    4) Hierarchy Roll-up (group at level N you choose)
-    5) Raw (trimmed) for QA
+EM Macro / FX / Rates — VaR Explainer (Hierarchy-aware)
+======================================================
 
-CLI:
-    python var_explain_final.py --file "export.xlsx" --sheet "Sheet1" --out "VaR_Explain.xlsx" \
-        --map "desk_to_region.csv" --hier_level 2
+Purpose
+-------
+Given your drilldown export with hierarchical columns (e.g., `pl3..pl7`), this script
+builds an executive-quality **VaR Explain** for a specific desk subtree — e.g.,
+**EM Macro (node id 1373254 at pl3)** — including:
 
-Notes:
-- If you pass --hier_level 2 we roll-up by first two nodes (e.g., "EM Macro / FX Spot").
-- Mapping CSV (optional) should contain: Desk,Region  (exact desk names as appear in 'Desk')
+1) Executive Snapshot (portfolio VaR95/99, Δ vs T-2, ΔCoVar, Utilization)
+2) Top Drivers at the *immediate child* level (e.g., Americas/APAC/EMEA under EM Macro)
+3) Deep Drivers (leaf nodes) by |ΔVaR| (95 and 99) with directions
+4) Regional roll-up (heuristics or optional mapping CSV)
+5) Full branch dump for QA
+
+Why hierarchy-aware?
+--------------------
+Parent rows (e.g., "1373254, EM Macro") have **non‑additive** VaR. We therefore:
+- Use the **parent row itself** for the headline totals.
+- Use *children & descendants* only to list **drivers** (not to sum to the parent).
+
+Usage
+-----
+```bash
+pip install pandas xlsxwriter
+
+python var_explain_desk.py \
+  --file "export.xlsx" \
+  --sheet "Sheet1" \
+  --node_id 1373254 \
+  --node_level 3 \
+  --out "VaR_Explain_EM_Macro.xlsx" \
+  --topn 15 \
+  --map "desk_to_region.csv"   # optional (Desk,Region)
+```
+
+Notes
+-----
+- `node_level` is the hierarchy level number that contains the node id (EM Macro = pl3).
+- The script auto-detects hierarchy columns (`pl1..pl7`, `Drilldowns`, `Level1..N`).
+- Metric column names are fuzzy-matched: `var95`, `var95 [T-2]`, `deltaCoVar95`, `var99`,
+  `var99 [T-2]`, `deltaCoVar99`, and `LimitAmount`.
+- Output sheets are fully formatted (integers with thousands separators, frozen panes, autofilters).
 """
-import argparse, re
-from typing import List, Dict, Optional, Tuple
+import argparse
+import re
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
-# ----------------------------- CONFIG ---------------------------------
-CONFIG = {
-    "top_n": 12,
-    "sheets": {
-        "summary": "Executive Summary",
-        "drivers95": "Top Drivers 95",
-        "drivers99": "Top Drivers 99",
-        "regions": "Regional Roll-up",
-        "hier": "Hierarchy Roll-up",
-        "raw": "Raw (trimmed)",
-    },
-    # Heuristic region rules
-    "region_rules": [
-        ("Americas", [r"\\bamericas?\\b", r"\\bUS\\b", r"\\bU\\.?S\\.?\\b", r"\\bNY\\b", r"\\bmexic", r"\\bLATAM\\b", r"\\bbr[az]il"]),
-        ("APAC",     [r"\\bAPAC\\b", r"\\bASIA\\b", r"\\bindia\\b", r"\\bsingapore\\b", r"\\bhong\\s*kong\\b", r"\\bshanghai\\b", r"\\bPRC\\b"]),
-        ("EMEA",     [r"\\bEMEA\\b", r"\\blondon\\b", r"\\bpoland\\b", r"\\bhuf\\b", r"\\bruk?b\\b", r"\\bce3\\b", r"\\bisrael\\b", r"\\brub\\b", r"\\bhungar"]),
-    ],
-    # Fuzzy patterns for metric columns
-    "col_patterns": {
-        "limit":        [r"^limit.*amount$", r"^limit$", r"^limitamount$"],
-        "var95":        [r"^mgt.*total.*var.*95$", r"^mgt.*var.*95$", r"^var\\s*95$", r"^var95$"],
-        "var95_t2":     [r"^.*var.*95.*t-?2.*$", r"^var95\\[t-2\\]$"],
-        "deltacovar95": [r"^delta.*co.*var.*95$", r"^delta.*95$", r"^deltacovar95$"],
-        "var99":        [r"^mgt.*total.*var.*99$", r"^mgt.*var.*99$", r"^var\\s*99$", r"^var99$"],
-        "var99_t2":     [r"^.*var.*99.*t-?2.*$", r"^var99\\[t-2\\]$"],
-        "deltacovar99": [r"^delta.*co.*var.*99$", r"^delta.*99$", r"^deltacovar99$"],
-    }
+# ------------------------------ Config ---------------------------------
+SHEETS = {
+    "summary": "Executive Summary",
+    "drivers_child": "Top Drivers — Child Lv",
+    "drivers_leaf95": "Leaf Drivers 95",
+    "drivers_leaf99": "Leaf Drivers 99",
+    "regions": "Regional Roll-up",
+    "branch": "Branch (QA)",
 }
 
-# ----------------------------- HELPERS ---------------------------------
-def nrm(s:str) -> str:
-    return str(s).strip()
+REGION_RULES = [
+    ("Americas", [r"\bamericas?\b", r"\bUS\b", r"\bU\.?S\.?\b", r"\bNY\b", r"\bmexic", r"\bLATAM\b", r"\bbr[az]il"]),
+    ("APAC",     [r"\bAPAC\b", r"\bASIA\b", r"\bindia\b", r"\bsingapore\b", r"\bhong\s*kong\b", r"\bshanghai\b", r"\bPRC\b"]),
+    ("EMEA",     [r"\bEMEA\b", r"\blondon\b", r"\bpoland\b", r"\bhuf\b", r"\bruk?b\b", r"\bce3\b", r"\bisrael\b", r"\brub\b", r"\bhungar"]),
+]
 
-def is_hierarchy_col(colname:str) -> Tuple[bool, int]:
-    c = colname.lower().strip()
-    if c.startswith("drilldown"):
-        return True, 999
-    m = re.match(r"^(pl|p|level|lvl)\\s*([0-9]+)$", c)
-    if m:
-        return True, int(m.group(2))
-    m2 = re.match(r"^(pl|p|level|lvl)([0-9]+)$", c)
-    if m2:
-        return True, int(m2.group(2))
-    return False, -1
+COL_PATTERNS = {
+    "limit":        [r"^limit.*amount$", r"^limit$", r"^limitamount$"],
+    "var95":        [r"^mgt.*total.*var.*95$", r"^mgt.*var.*95$", r"^var\s*95$", r"^var95$"],
+    "var95_t2":     [r"^.*var.*95.*t-?2.*$", r"^var95\[t-2\]$"],
+    "deltacovar95": [r"^delta.*co.*var.*95$", r"^delta.*95$", r"^deltacovar95$"],
+    "var99":        [r"^mgt.*total.*var.*99$", r"^mgt.*var.*99$", r"^var\s*99$", r"^var99$"],
+    "var99_t2":     [r"^.*var.*99.*t-?2.*$", r"^var99\[t-2\]$"],
+    "deltacovar99": [r"^delta.*co.*var.*99$", r"^delta.*99$", r"^deltacovar99$"],
+}
+
+# ------------------------------ Helpers --------------------------------
+def nrm(s: str) -> str:
+    return str(s).strip()
 
 def pick_first_matching_column(columns: List[str], patterns: List[str]) -> Optional[str]:
     low = [c.lower() for c in columns]
@@ -83,73 +92,81 @@ def pick_first_matching_column(columns: List[str], patterns: List[str]) -> Optio
                 return columns[i]
     return None
 
-def find_metric_columns(df: pd.DataFrame) -> Dict[str, Optional[str]]:
-    cols = [nrm(c) for c in df.columns]
-    out = {}
-    for key, pats in CONFIG["col_patterns"].items():
-        out[key] = pick_first_matching_column(cols, pats)
-    return out
-
 def detect_hierarchy_columns(df: pd.DataFrame) -> List[str]:
-    tagged = []
+    tagged: List[Tuple[int, str]] = []
     for c in df.columns:
-        is_h, order = is_hierarchy_col(str(c))
-        if is_h:
-            tagged.append((order, c))
+        cl = str(c).lower().strip()
+        if cl.startswith("drilldown"):
+            tagged.append((0, c))
+            continue
+        m = re.match(r"^(pl|p|level|lvl)\s*([0-9]+)$", cl) or re.match(r"^(pl|p|level|lvl)([0-9]+)$", cl)
+        if m:
+            tagged.append((int(m.group(2)), c))
     if not tagged:
-        for c in df.columns:
-            if "drill" in str(c).lower():
-                tagged.append((1, c))
-        if not tagged:
-            obj_cols = [c for c in df.columns if df[c].dtype == "object"]
-            return obj_cols[:1] if obj_cols else [df.columns[0]]
+        obj_cols = [c for c in df.columns if df[c].dtype == "object"]
+        return obj_cols[:1] if obj_cols else [df.columns[0]]
     tagged.sort(key=lambda x: x[0])
     return [c for _, c in tagged]
 
-def strip_id_prefix(x: str) -> str:
-    if not isinstance(x, str):
-        return str(x)
-    return re.sub(r"^\\s*\\d+\\s*,\\s*", "", x.strip())
+def split_id_name(val: str) -> Tuple[Optional[str], Optional[str]]:
+    if val is None:
+        return None, None
+    s = str(val).strip()
+    if not s or s.lower() in ("nan", "none", "n/a", "na"):
+        return None, None
+    # Expect "12345, Desk Name" but be tolerant
+    if "," in s:
+        a, b = s.split(",", 1)
+        a = a.strip()
+        b = b.strip()
+        return (a if a.isdigit() else None), b
+    # If no comma, try extracting leading digits
+    m = re.match(r"^(\d+)\s*(.*)$", s)
+    if m:
+        node = m.group(1)
+        name = m.group(2).strip(" ,-") or None
+        return node, name
+    return None, s
 
-def coerce_num(s: pd.Series) -> pd.Series:
-    return pd.to_numeric(s, errors="coerce").fillna(0.0)
+def coerce_num(sr: pd.Series) -> pd.Series:
+    return pd.to_numeric(sr, errors="coerce").fillna(0.0)
 
 def infer_region(name: str) -> str:
     s = name.lower() if isinstance(name, str) else ""
-    for region, pats in CONFIG["region_rules"]:
+    for region, pats in REGION_RULES:
         for pat in pats:
             if re.search(pat, s, re.I):
                 return region
     return "Unmapped"
 
-# ----------------------------- CORE ------------------------------------
-def compute(df: pd.DataFrame, hier_level:int=2, region_map: Optional[pd.DataFrame]=None) -> Dict[str, pd.DataFrame]:
+def find_metric_columns(df: pd.DataFrame) -> Dict[str, Optional[str]]:
+    cols = [nrm(c) for c in df.columns]
+    out: Dict[str, Optional[str]] = {}
+    for k, pats in COL_PATTERNS.items():
+        out[k] = pick_first_matching_column(cols, pats)
+    return out
+
+# ------------------------------ Core -----------------------------------
+
+def build_branch_frames(df: pd.DataFrame, node_id: str, node_level: int,
+                        region_map: Optional[pd.DataFrame] = None,
+                        topn: int = 12) -> Dict[str, pd.DataFrame]:
     df = df.copy()
     df.columns = [nrm(c) for c in df.columns]
 
+    # 1) Identify hierarchy columns and pull out id/name per level
     hier_cols = detect_hierarchy_columns(df)
-    def build_path(row):
-        parts = []
-        for c in hier_cols:
-            v = str(row[c]).strip()
-            if v and v.lower() not in ("nan", "none"):
-                parts.append(strip_id_prefix(v))
-        return " / ".join(parts)
-    def last_node(row):
-        for c in reversed(hier_cols):
-            v = str(row[c]).strip()
-            if v and v.lower() not in ("nan", "none"):
-                return strip_id_prefix(v)
-        return ""
-    df["DeskPath"] = df.apply(build_path, axis=1)
-    df["Desk"] = df.apply(last_node, axis=1)
+    level_cols = {i+1: c for i, c in enumerate(hier_cols)}  # 1-based level
 
+    for lvl, col in level_cols.items():
+        ids, names = zip(*(split_id_name(v) for v in df[col]))
+        df[f"L{lvl}_id"] = list(ids)
+        df[f"L{lvl}_name"] = list(names)
+
+    # 2) Metrics detection & coercion
     m = find_metric_columns(df)
-    for k in ["var95","var95_t2","deltacovar95","var99","var99_t2","deltacovar99"]:
-        if m.get(k) is None:
-            df[k.upper()] = 0.0
-        else:
-            df[k.upper()] = coerce_num(df[m[k]])
+    for key in ["var95","var95_t2","deltacovar95","var99","var99_t2","deltacovar99"]:
+        df[key.upper()] = coerce_num(df[m[key]]) if m.get(key) else 0.0
     df["LIMIT"] = coerce_num(df[m["limit"]]) if m.get("limit") else 0.0
 
     df["dVaR95"] = df["VAR95"] - df["VAR95_T2"]
@@ -157,93 +174,223 @@ def compute(df: pd.DataFrame, hier_level:int=2, region_map: Optional[pd.DataFram
     df["Util95_%"] = np.where(df["LIMIT"]!=0, 100*df["VAR95"]/df["LIMIT"], np.nan)
     df["Util99_%"] = np.where(df["LIMIT"]!=0, 100*df["VAR99"]/df["LIMIT"], np.nan)
 
-    if region_map is not None and set(["Desk","Region"]).issubset(region_map.columns):
-        df = df.merge(region_map[["Desk","Region"]], on="Desk", how="left", suffixes=("", "_map"))
-        df["Region"] = df["Region"].fillna(df["Desk"].map(infer_region))
-    else:
-        df["Region"] = df["Desk"].map(infer_region)
+    # 3) Filter to the branch (keep parent row + all descendants)
+    lvl_id_col = f"L{node_level}_id"
+    branch = df[df[lvl_id_col] == str(node_id)].copy()
 
-    totals = pd.DataFrame([{
-        "VaR95": df["VAR95"].sum(),
-        "ΔVaR95": df["dVaR95"].sum(),
-        "DeltaCoVar95": df["DELTACOVAR95"].sum(),
-        "VaR99": df["VAR99"].sum(),
-        "ΔVaR99": df["dVaR99"].sum(),
-        "DeltaCoVar99": df["DELTACOVAR99"].sum(),
+    # 4) Parent row for headline (rows where deeper levels are empty)
+    deeper_id_cols = [f"L{i}_id" for i in range(node_level+1, len(level_cols)+1)]
+    if deeper_id_cols:
+        parent = branch.copy()
+        for c in deeper_id_cols:
+            parent = parent[parent[c].isna()]
+        if len(parent) == 0:
+            # fallback: take the first occurrence at this level
+            parent = branch.iloc[[0]].copy()
+    else:
+        parent = branch.iloc[[0]].copy()
+
+    parent_name = parent[f"L{node_level}_name"].iloc[0] or "Selected Desk"
+
+    # 5) Region (optional mapping overrides heuristics)
+    if region_map is not None and {"Desk","Region"}.issubset(region_map.columns):
+        # Determine a desk label per row (last non-null name)
+        name_cols = [f"L{i}_name" for i in range(1, len(level_cols)+1)]
+        branch["Desk"] = branch[name_cols].bfill(axis=1).iloc[:, -1]
+        branch = branch.merge(region_map[["Desk","Region"]], on="Desk", how="left")
+        branch["Region"] = branch["Region"].fillna(branch["Desk"].map(infer_region))
+    else:
+        name_cols = [f"L{i}_name" for i in range(1, len(level_cols)+1)]
+        branch["Desk"] = branch[name_cols].bfill(axis=1).iloc[:, -1]
+        branch["Region"] = branch["Desk"].map(infer_region)
+
+    # 6) Executive snapshot — from the PARENT row only
+    exec_total = parent[["VAR95","VAR95_T2","dVaR95","DELTACOVAR95",
+                         "VAR99","VAR99_T2","dVaR99","DELTACOVAR99","LIMIT"]].sum()
+    snap = pd.DataFrame([{ 
+        "Desk": parent_name,
+        "VaR95": int(round(exec_total["VAR95"])),
+        "ΔVaR95": int(round(exec_total["dVaR95"])),
+        "ΔCoVar95": int(round(exec_total["DELTACOVAR95"])),
+        "VaR99": int(round(exec_total["VAR99"])),
+        "ΔVaR99": int(round(exec_total["dVaR99"])),
+        "ΔCoVar99": int(round(exec_total["DELTACOVAR99"])),
+        "Limit": int(round(exec_total["LIMIT"])),
+        "Util95_%": np.where(exec_total["LIMIT"]!=0, 100*exec_total["VAR95"]/exec_total["LIMIT"], np.nan),
+        "Util99_%": np.where(exec_total["LIMIT"]!=0, 100*exec_total["VAR99"]/exec_total["LIMIT"], np.nan),
     }])
 
-    def fmt(x): return f"${x:,.0f}"
-    text = (
-        f"EM Macro VaR — Executive Snapshot\n"
-        f"• VaR95: {fmt(totals.loc[0,'VaR95'])}  (Δ {fmt(totals.loc[0,'ΔVaR95'])}, ΔCoVar {fmt(totals.loc[0,'DeltaCoVar95'])})\n"
-        f"• VaR99: {fmt(totals.loc[0,'VaR99'])}  (Δ {fmt(totals.loc[0,'ΔVaR99'])}, ΔCoVar {fmt(totals.loc[0,'DeltaCoVar99'])})\n"
-    )
-    summary_text = pd.DataFrame({"Executive_Summary":[text]})
+    # 7) Immediate child drivers (level = node_level+1) — rank by |ΔVaR95|
+    child_lvl = node_level + 1
+    if child_lvl in level_cols:
+        child_key = f"L{child_lvl}_name"
+        child_tab = (branch[branch[child_key].notna()]
+                     .groupby(child_key, as_index=False)
+                     .agg(VaR95=("VAR95","sum"), dVaR95=("dVaR95","sum"),
+                          VaR99=("VAR99","sum"), dVaR99=("dVaR99","sum"),
+                          ΔCoVar95=("DELTACOVAR95","sum"), ΔCoVar99=("DELTACOVAR99","sum"),
+                          Limit=("LIMIT","sum")))
+        child_tab["RankAbs95"] = child_tab["dVaR95"].abs()
+        child_tab = child_tab.sort_values(["RankAbs95","dVaR95"], ascending=[False, False]).drop(columns=["RankAbs95"]).head(topn)
+        # ints
+        for c in ["VaR95","dVaR95","VaR99","dVaR99","ΔCoVar95","ΔCoVar99","Limit"]:
+            child_tab[c] = child_tab[c].round().astype(int)
+    else:
+        child_tab = pd.DataFrame(columns=["Name","VaR95","dVaR95","VaR99","dVaR99","ΔCoVar95","ΔCoVar99","Limit"])
 
-    drivers95 = df.sort_values("dVaR95", key=abs, ascending=False).head(CONFIG["top_n"])
-    drivers99 = df.sort_values("dVaR99", key=abs, ascending=False).head(CONFIG["top_n"])
+    # 8) Leaf drivers — deepest available name column
+    deepest_name_col = None
+    for lvl in range(len(level_cols), 0, -1):
+        if branch[f"L{lvl}_name"].notna().any():
+            deepest_name_col = f"L{lvl}_name"
+            break
+    leaf = (branch[branch[deepest_name_col].notna()]
+            [[deepest_name_col,"Region","VAR95","dVaR95","DELTACOVAR95","VAR99","dVaR99","DELTACOVAR99","LIMIT"]]
+            .rename(columns={deepest_name_col:"Leaf"}))
+    leaf95 = leaf.copy()
+    leaf95["RankAbs"] = leaf95["dVaR95"].abs()
+    leaf95 = leaf95.sort_values(["RankAbs","dVaR95"], ascending=[False, False]).drop(columns=["RankAbs"]).head(topn)
+    leaf99 = leaf.copy()
+    leaf99["RankAbs"] = leaf99["dVaR99"].abs()
+    leaf99 = leaf99.sort_values(["RankAbs","dVaR99"], ascending=[False, False]).drop(columns=["RankAbs"]).head(topn)
 
-    reg95 = df.groupby("Region", as_index=False).agg(
-        VaR95=("VAR95","sum"), ΔVaR95=("dVaR95","sum"), DeltaCoVar95=("DELTACOVAR95","sum")
-    ).sort_values("VaR95", ascending=False)
-    reg99 = df.groupby("Region", as_index=False).agg(
-        VaR99=("VAR99","sum"), ΔVaR99=("dVaR99","sum"), DeltaCoVar99=("DELTACOVAR99","sum")
-    ).sort_values("VaR99", ascending=False)
+    # Integer formatting for main numeric cols
+    def to_int_cols(df_in: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
+        out = df_in.copy()
+        for c in cols:
+            if c in out.columns:
+                out[c] = out[c].round().astype(int)
+        return out
 
-    level_cols = detect_hierarchy_columns(df)[:max(1,hier_level)]
-    hier = df.groupby(level_cols, as_index=False).agg(
-        VaR95=("VAR95","sum"), ΔVaR95=("dVaR95","sum"),
-        VaR99=("VAR99","sum"), ΔVaR99=("dVaR99","sum"),
-        DeltaCoVar95=("DELTACOVAR95","sum"), DeltaCoVar99=("DELTACOVAR99","sum"),
-        Limit=("LIMIT","sum")
-    )
-    hier["Util95_%"] = np.where(hier["Limit"]!=0, 100*hier["VaR95"]/hier["Limit"], np.nan)
-    hier["Util99_%"] = np.where(hier["Limit"]!=0, 100*hier["VaR99"]/hier["Limit"], np.nan)
+    leaf95 = to_int_cols(leaf95, ["VAR95","dVaR95","DELTACOVAR95","VAR99","dVaR99","DELTACOVAR99","LIMIT"])
+    leaf99 = to_int_cols(leaf99, ["VAR95","dVaR95","DELTACOVAR95","VAR99","dVaR99","DELTACOVAR99","LIMIT"])
 
-    trimmed = df[["Desk","Region","DeskPath","VAR95","VAR95_T2","dVaR95","DELTACOVAR95",
-                  "VAR99","VAR99_T2","dVaR99","DELTACOVAR99","LIMIT","Util95_%","Util99_%"]]
+    # 9) Regional roll-up (over branch)
+    reg95 = (branch.groupby("Region", as_index=False)
+             .agg(VaR95=("VAR95","sum"), dVaR95=("dVaR95","sum"), ΔCoVar95=("DELTACOVAR95","sum")))
+    reg99 = (branch.groupby("Region", as_index=False)
+             .agg(VaR99=("VAR99","sum"), dVaR99=("dVaR99","sum"), ΔCoVar99=("DELTACOVAR99","sum")))
 
-    return dict(summary_text=summary_text, totals=totals,
-                drivers95=drivers95, drivers99=drivers99,
-                reg95=reg95, reg99=reg99, hier=hier, trimmed=trimmed)
+    # Int-ify region tables
+    for df_tmp, cols in [(reg95,["VaR95","dVaR95","ΔCoVar95"]),(reg99,["VaR99","dVaR99","ΔCoVar99"])]:
+        for c in cols:
+            df_tmp[c] = df_tmp[c].round().astype(int)
 
-def read_mapping_csv(path: Optional[str]) -> Optional[pd.DataFrame]:
-    if not path: return None
-    p = Path(path)
-    if not p.exists(): return None
-    try:
-        df = pd.read_csv(p)
-        if not {"Desk","Region"}.issubset(df.columns): return None
-        return df
-    except: return None
+    # 10) Neat QA dump of the branch rows
+    qa_cols = ["Desk"] + [f"L{i}_name" for i in range(1,len(level_cols)+1)] + [
+        "VAR95","VAR95_T2","dVaR95","DELTACOVAR95","VAR99","VAR99_T2","dVaR99","DELTACOVAR99","LIMIT","Util95_%","Util99_%","Region"
+    ]
+    qa = branch[qa_cols].copy()
+
+    return {
+        "parent_name": parent_name,
+        "snap": snap,
+        "child": child_tab,
+        "leaf95": leaf95,
+        "leaf99": leaf99,
+        "reg95": reg95,
+        "reg99": reg99,
+        "qa": qa,
+    }
+
+# ------------------------------ Writer ---------------------------------
+
+def write_report(out_path: Path, res: Dict[str, pd.DataFrame]):
+    with pd.ExcelWriter(out_path, engine="xlsxwriter") as writer:
+        wb = writer.book
+        intfmt = wb.add_format({"num_format": "#,##0"})
+        pctfmt = wb.add_format({"num_format": "0.0%"})
+        head = wb.add_format({"bold": True, "bg_color": "#F2F2F2", "border": 1})
+        title = wb.add_format({"bold": True, "font_size": 14})
+
+        # Summary
+        res["snap"].to_excel(writer, SHEETS["summary"], index=False, startrow=2)
+        ws = writer.sheets[SHEETS["summary"]]
+        ws.write(0, 0, f"VaR Explain — {res['parent_name']}", title)
+        ws.set_column(0, 0, 28)
+        ws.set_column(1, 20, 16, intfmt)
+        ws.freeze_panes(3, 1)
+
+        # Child drivers
+        res["child"].to_excel(writer, SHEETS["drivers_child"], index=False)
+        ws = writer.sheets[SHEETS["drivers_child"]]
+        ws.set_row(0, None, head)
+        ws.autofilter(0, 0, len(res["child"]), res["child"].shape[1]-1)
+        ws.set_column(0, 0, 32)
+        ws.set_column(1, res["child"].shape[1]-1, 16, intfmt)
+        ws.freeze_panes(1, 1)
+
+        # Leaf 95
+        res["leaf95"].to_excel(writer, SHEETS["drivers_leaf95"], index=False)
+        ws = writer.sheets[SHEETS["drivers_leaf95"]]
+        ws.set_row(0, None, head)
+        ws.autofilter(0, 0, len(res["leaf95"]), res["leaf95"].shape[1]-1)
+        ws.set_column(0, 1, 34)
+        ws.set_column(2, res["leaf95"].shape[1]-1, 16, intfmt)
+        ws.freeze_panes(1, 1)
+
+        # Leaf 99
+        res["leaf99"].to_excel(writer, SHEETS["drivers_leaf99"], index=False)
+        ws = writer.sheets[SHEETS["drivers_leaf99"]]
+        ws.set_row(0, None, head)
+        ws.autofilter(0, 0, len(res["leaf99"]), res["leaf99"].shape[1]-1)
+        ws.set_column(0, 1, 34)
+        ws.set_column(2, res["leaf99"].shape[1]-1, 16, intfmt)
+        ws.freeze_panes(1, 1)
+
+        # Regions
+        # Stack 95 and 99 blocks with a gap
+        r95 = res["reg95"].copy(); r99 = res["reg99"].copy()
+        r95.to_excel(writer, SHEETS["regions"], index=False, startrow=0)
+        r99.to_excel(writer, SHEETS["regions"], index=False, startrow=len(r95)+3)
+        ws = writer.sheets[SHEETS["regions"]]
+        ws.set_row(0, None, head)
+        ws.set_row(len(r95)+3, None, head)
+        ws.set_column(0, 0, 20)
+        ws.set_column(1, 6, 16, intfmt)
+        ws.freeze_panes(1, 1)
+
+        # Branch QA
+        res["qa"].to_excel(writer, SHEETS["branch"], index=False)
+        ws = writer.sheets[SHEETS["branch"]]
+        ws.set_row(0, None, head)
+        ws.autofilter(0, 0, len(res["qa"]), res["qa"].shape[1]-1)
+        ws.set_column(0, 10, 28)
+        ws.set_column(11, res["qa"].shape[1]-1, 16, intfmt)
+        ws.freeze_panes(1, 1)
+
+# ------------------------------ CLI ------------------------------------
 
 def main():
-    ap = argparse.ArgumentParser(description="VaR Explain — Final Executive Generator")
-    ap.add_argument("--file", required=True)
-    ap.add_argument("--sheet", default=None)
-    ap.add_argument("--out", default="VaR_Explain.xlsx")
-    ap.add_argument("--map", default=None)
-    ap.add_argument("--hier_level", type=int, default=2)
+    ap = argparse.ArgumentParser(description="Hierarchy-aware VaR Explainer for a specific desk node")
+    ap.add_argument("--file", required=True, help="Excel export path")
+    ap.add_argument("--sheet", default=None, help="Sheet name (default: first)")
+    ap.add_argument("--node_id", required=True, help="Node id (e.g., 1373254 for EM Macro)")
+    ap.add_argument("--node_level", type=int, default=3, help="Hierarchy level that contains the node id (pl3=3)")
+    ap.add_argument("--out", default="VaR_Explain_SelectedDesk.xlsx", help="Output Excel filename")
+    ap.add_argument("--topn", type=int, default=12, help="Top N for driver tables")
+    ap.add_argument("--map", default=None, help="Optional CSV: Desk,Region for exact region roll-up")
     args = ap.parse_args()
 
     xls = pd.ExcelFile(args.file)
     sheet = args.sheet or xls.sheet_names[0]
     df = pd.read_excel(xls, sheet_name=sheet, header=0)
 
-    mapping = read_mapping_csv(args.map)
-    res = compute(df, hier_level=args.hier_level, region_map=mapping)
+    # region mapping (optional)
+    region_map = None
+    if args.map:
+        p = Path(args.map)
+        if p.exists():
+            tmp = pd.read_csv(p)
+            if {"Desk","Region"}.issubset(tmp.columns):
+                region_map = tmp
 
-    out_path = Path(args.out)
-    with pd.ExcelWriter(out_path, engine="xlsxwriter") as writer:
-        res["summary_text"].to_excel(writer, CONFIG["sheets"]["summary"], index=False)
-        res["totals"].to_excel(writer, CONFIG["sheets"]["summary"], index=False, startrow=3)
-        res["drivers95"].to_excel(writer, CONFIG["sheets"]["drivers95"], index=False)
-        res["drivers99"].to_excel(writer, CONFIG["sheets"]["drivers99"], index=False)
-        res["reg95"].to_excel(writer, CONFIG["sheets"]["regions"], index=False)
-        res["reg99"].to_excel(writer, CONFIG["sheets"]["regions"], index=False, startrow=len(res["reg95"])+3)
-        res["hier"].to_excel(writer, CONFIG["sheets"]["hier"], index=False)
-        res["trimmed"].to_excel(writer, CONFIG["sheets"]["raw"], index=False)
-    print(f"[OK] Wrote: {out_path.resolve()}")
+    res = build_branch_frames(df, node_id=str(args.node_id), node_level=int(args.node_level),
+                              region_map=region_map, topn=args.topn)
+
+    outp = Path(args.out)
+    write_report(outp, res)
+    print(f"[OK] Wrote report: {outp.resolve()}")
 
 if __name__ == "__main__":
     main()
