@@ -1,189 +1,249 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-VaR Explain — Executive Summary Generator
-Author: You + ChatGPT
+VaR Explain — Final Executive Generator (robust to your new 'p1..p7' hierarchy view)
+-----------------------------------------------------------------------------------
+- Auto-detects hierarchy columns (p1/p2/.../pl3..., Drilldowns, Level1..N, etc.), and builds:
+    * Desk (last non-empty node)
+    * DeskPath (joined path)
+- Fuzzy-detects metric columns: VaR95/99, [T-2], DeltaCoVar, Limit
+- Computes ΔVaR95/99 vs T-2, utilization, and correlation effects
+- Produces an Excel with:
+    1) Executive Summary (paste-ready text + totals)
+    2) Top Drivers 95/99 (UP & DOWN by |Δ|) with utilization and deltaCoVar
+    3) Regional Roll-up (95/99) using heuristics or an optional mapping CSV
+    4) Hierarchy Roll-up (group at level N you choose)
+    5) Raw (trimmed) for QA
+
+CLI:
+    python var_explain_final.py --file "export.xlsx" --sheet "Sheet1" --out "VaR_Explain.xlsx" \
+        --map "desk_to_region.csv" --hier_level 2
+
+Notes:
+- If you pass --hier_level 2 we roll-up by first two nodes (e.g., "EM Macro / FX Spot").
+- Mapping CSV (optional) should contain: Desk,Region  (exact desk names as appear in 'Desk')
 """
-
-import argparse
-import re
-from pathlib import Path
-from typing import Dict, List, Optional
-
+import argparse, re
+from typing import List, Dict, Optional, Tuple
+import numpy as np
 import pandas as pd
+from pathlib import Path
 
 # ----------------------------- CONFIG ---------------------------------
-
 CONFIG = {
-    # Columns that might contain the desk/name/path (in order of preference).
-    "name_columns": [
-        "Drilldowns",   # <-- added for your case
-        "Desk",
-        "Name",
-        "Book",
-        "Path",
-        "Description",
-        "desc"
-    ],
-    # Candidate header patterns for key metrics.
-    "col_patterns": {
-        "var95":       [r"^var\s*95$", r"^var95$", r"^mgt.*var\s*95$", r"^mgt.*total.*var\s*95$"],
-        "var95_t2":    [r"^var\s*95.*t-2$", r"^var95\[t-2\]$"],
-        "deltacovar95":[r"^delta.*95$", r"^deltacovar95$"],
-        "var99":       [r"^var\s*99$", r"^var99$", r"^mgt.*var\s*99$"],
-        "var99_t2":    [r"^var\s*99.*t-2$", r"^var99\[t-2\]$"],
-        "deltacovar99":[r"^delta.*99$", r"^deltacovar99$"],
-        "limit":       [r"^limit.*amount$", r"^limit$", r"^limitamount$"],
-    },
-    # Region heuristics
-    "region_rules": [
-        ("Americas", [r"americas?", r"us\b", r"ny\b", r"mexic", r"latam", r"br[az]il"]),
-        ("APAC",     [r"apac", r"asia", r"india", r"singapore", r"hong\s*kong", r"shanghai", r"prc"]),
-        ("EMEA",     [r"emea", r"london", r"poland", r"huf", r"rub", r"ce3", r"israel", r"hungar"]),
-    ],
-    "top_n": 10,
+    "top_n": 12,
     "sheets": {
         "summary": "Executive Summary",
-        "top95":   "Top Movers 95",
-        "top99":   "Top Movers 99",
+        "drivers95": "Top Drivers 95",
+        "drivers99": "Top Drivers 99",
         "regions": "Regional Roll-up",
-        "raw":     "Raw (trimmed)"
+        "hier": "Hierarchy Roll-up",
+        "raw": "Raw (trimmed)",
+    },
+    # Heuristic region rules
+    "region_rules": [
+        ("Americas", [r"\\bamericas?\\b", r"\\bUS\\b", r"\\bU\\.?S\\.?\\b", r"\\bNY\\b", r"\\bmexic", r"\\bLATAM\\b", r"\\bbr[az]il"]),
+        ("APAC",     [r"\\bAPAC\\b", r"\\bASIA\\b", r"\\bindia\\b", r"\\bsingapore\\b", r"\\bhong\\s*kong\\b", r"\\bshanghai\\b", r"\\bPRC\\b"]),
+        ("EMEA",     [r"\\bEMEA\\b", r"\\blondon\\b", r"\\bpoland\\b", r"\\bhuf\\b", r"\\bruk?b\\b", r"\\bce3\\b", r"\\bisrael\\b", r"\\brub\\b", r"\\bhungar"]),
+    ],
+    # Fuzzy patterns for metric columns
+    "col_patterns": {
+        "limit":        [r"^limit.*amount$", r"^limit$", r"^limitamount$"],
+        "var95":        [r"^mgt.*total.*var.*95$", r"^mgt.*var.*95$", r"^var\\s*95$", r"^var95$"],
+        "var95_t2":     [r"^.*var.*95.*t-?2.*$", r"^var95\\[t-2\\]$"],
+        "deltacovar95": [r"^delta.*co.*var.*95$", r"^delta.*95$", r"^deltacovar95$"],
+        "var99":        [r"^mgt.*total.*var.*99$", r"^mgt.*var.*99$", r"^var\\s*99$", r"^var99$"],
+        "var99_t2":     [r"^.*var.*99.*t-?2.*$", r"^var99\\[t-2\\]$"],
+        "deltacovar99": [r"^delta.*co.*var.*99$", r"^delta.*99$", r"^deltacovar99$"],
     }
 }
 
-# --------------------------- UTILITIES --------------------------------
+# ----------------------------- HELPERS ---------------------------------
+def nrm(s:str) -> str:
+    return str(s).strip()
 
-def normalize_col(col: str) -> str:
-    return str(col).strip()
+def is_hierarchy_col(colname:str) -> Tuple[bool, int]:
+    c = colname.lower().strip()
+    if c.startswith("drilldown"):
+        return True, 999
+    m = re.match(r"^(pl|p|level|lvl)\\s*([0-9]+)$", c)
+    if m:
+        return True, int(m.group(2))
+    m2 = re.match(r"^(pl|p|level|lvl)([0-9]+)$", c)
+    if m2:
+        return True, int(m2.group(2))
+    return False, -1
 
 def pick_first_matching_column(columns: List[str], patterns: List[str]) -> Optional[str]:
-    low_cols = [c.lower() for c in columns]
+    low = [c.lower() for c in columns]
     for pat in patterns:
-        rx = re.compile(pat, flags=re.I)
-        for i, lc in enumerate(low_cols):
+        rx = re.compile(pat, re.I)
+        for i, lc in enumerate(low):
             if rx.search(lc):
                 return columns[i]
     return None
 
 def find_metric_columns(df: pd.DataFrame) -> Dict[str, Optional[str]]:
-    cols = [normalize_col(c) for c in df.columns]
-    mapping = {}
+    cols = [nrm(c) for c in df.columns]
+    out = {}
     for key, pats in CONFIG["col_patterns"].items():
-        mapping[key] = pick_first_matching_column(cols, pats)
-    return mapping
+        out[key] = pick_first_matching_column(cols, pats)
+    return out
 
-def find_name_column(df: pd.DataFrame) -> Optional[str]:
-    cols = [normalize_col(c) for c in df.columns]
-    for candidate in CONFIG["name_columns"]:
-        for c in cols:
-            if candidate.lower() in c.lower():   # <-- substring match
-                return c
-    # fallback: first object column
-    obj_cols = [c for c in df.columns if df[c].dtype == "object"]
-    return obj_cols[0] if obj_cols else None
+def detect_hierarchy_columns(df: pd.DataFrame) -> List[str]:
+    tagged = []
+    for c in df.columns:
+        is_h, order = is_hierarchy_col(str(c))
+        if is_h:
+            tagged.append((order, c))
+    if not tagged:
+        for c in df.columns:
+            if "drill" in str(c).lower():
+                tagged.append((1, c))
+        if not tagged:
+            obj_cols = [c for c in df.columns if df[c].dtype == "object"]
+            return obj_cols[:1] if obj_cols else [df.columns[0]]
+    tagged.sort(key=lambda x: x[0])
+    return [c for _, c in tagged]
 
-def strip_id_prefix(name: str) -> str:
-    if not isinstance(name, str):
-        return str(name)
-    return re.sub(r"^\s*\d+\s*,\s*", "", name.strip())
+def strip_id_prefix(x: str) -> str:
+    if not isinstance(x, str):
+        return str(x)
+    return re.sub(r"^\\s*\\d+\\s*,\\s*", "", x.strip())
+
+def coerce_num(s: pd.Series) -> pd.Series:
+    return pd.to_numeric(s, errors="coerce").fillna(0.0)
 
 def infer_region(name: str) -> str:
     s = name.lower() if isinstance(name, str) else ""
-    for region, patterns in CONFIG["region_rules"]:
-        for pat in patterns:
-            if re.search(pat, s):
+    for region, pats in CONFIG["region_rules"]:
+        for pat in pats:
+            if re.search(pat, s, re.I):
                 return region
     return "Unmapped"
 
-def safe_num(series: pd.Series) -> pd.Series:
-    return pd.to_numeric(series, errors="coerce").fillna(0.0)
-
-# --------------------------- CORE LOGIC --------------------------------
-
-def compute_var_explain(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+# ----------------------------- CORE ------------------------------------
+def compute(df: pd.DataFrame, hier_level:int=2, region_map: Optional[pd.DataFrame]=None) -> Dict[str, pd.DataFrame]:
     df = df.copy()
-    df.columns = [normalize_col(c) for c in df.columns]
+    df.columns = [nrm(c) for c in df.columns]
 
-    name_col = find_name_column(df)
-    if not name_col:
-        raise ValueError("Could not locate a desk/name column (check CONFIG['name_columns']).")
+    hier_cols = detect_hierarchy_columns(df)
+    def build_path(row):
+        parts = []
+        for c in hier_cols:
+            v = str(row[c]).strip()
+            if v and v.lower() not in ("nan", "none"):
+                parts.append(strip_id_prefix(v))
+        return " / ".join(parts)
+    def last_node(row):
+        for c in reversed(hier_cols):
+            v = str(row[c]).strip()
+            if v and v.lower() not in ("nan", "none"):
+                return strip_id_prefix(v)
+        return ""
+    df["DeskPath"] = df.apply(build_path, axis=1)
+    df["Desk"] = df.apply(last_node, axis=1)
 
-    mcols = find_metric_columns(df)
-    keep_cols = [name_col] + [c for c in mcols.values() if c is not None]
-    trimmed = df[keep_cols].copy()
-    trimmed.rename(columns={name_col: "DeskPath"}, inplace=True)
-    trimmed["Desk"] = trimmed["DeskPath"].astype(str).map(strip_id_prefix)
-
-    for k, c in mcols.items():
-        if c is not None:
-            trimmed[k.upper()] = safe_num(trimmed[c])
+    m = find_metric_columns(df)
+    for k in ["var95","var95_t2","deltacovar95","var99","var99_t2","deltacovar99"]:
+        if m.get(k) is None:
+            df[k.upper()] = 0.0
         else:
-            trimmed[k.upper()] = 0.0
+            df[k.upper()] = coerce_num(df[m[k]])
+    df["LIMIT"] = coerce_num(df[m["limit"]]) if m.get("limit") else 0.0
 
-    trimmed["dVaR95"] = trimmed["VAR95"] - trimmed["VAR95_T2"]
-    trimmed["dVaR99"] = trimmed["VAR99"] - trimmed["VAR99_T2"]
-    trimmed["Region"] = trimmed["Desk"].map(infer_region)
+    df["dVaR95"] = df["VAR95"] - df["VAR95_T2"]
+    df["dVaR99"] = df["VAR99"] - df["VAR99_T2"]
+    df["Util95_%"] = np.where(df["LIMIT"]!=0, 100*df["VAR95"]/df["LIMIT"], np.nan)
+    df["Util99_%"] = np.where(df["LIMIT"]!=0, 100*df["VAR99"]/df["LIMIT"], np.nan)
 
-    movers95 = trimmed.sort_values("dVaR95", key=abs, ascending=False)
-    movers99 = trimmed.sort_values("dVaR99", key=abs, ascending=False)
-
-    reg95 = trimmed.groupby("Region", as_index=False).agg(VAR95=("VAR95","sum"),
-                                                          dVaR95=("dVaR95","sum"))
-    reg99 = trimmed.groupby("Region", as_index=False).agg(VAR99=("VAR99","sum"),
-                                                          dVaR99=("dVaR99","sum"))
+    if region_map is not None and set(["Desk","Region"]).issubset(region_map.columns):
+        df = df.merge(region_map[["Desk","Region"]], on="Desk", how="left", suffixes=("", "_map"))
+        df["Region"] = df["Region"].fillna(df["Desk"].map(infer_region))
+    else:
+        df["Region"] = df["Desk"].map(infer_region)
 
     totals = pd.DataFrame([{
-        "VaR95": trimmed["VAR95"].sum(),
-        "VaR95_T2": trimmed["VAR95_T2"].sum(),
-        "ΔVaR95": trimmed["dVaR95"].sum(),
-        "VaR99": trimmed["VAR99"].sum(),
-        "VaR99_T2": trimmed["VAR99_T2"].sum(),
-        "ΔVaR99": trimmed["dVaR99"].sum(),
+        "VaR95": df["VAR95"].sum(),
+        "ΔVaR95": df["dVaR95"].sum(),
+        "DeltaCoVar95": df["DELTACOVAR95"].sum(),
+        "VaR99": df["VAR99"].sum(),
+        "ΔVaR99": df["dVaR99"].sum(),
+        "DeltaCoVar99": df["DELTACOVAR99"].sum(),
     }])
 
-    text = f"""
-EM Macro VaR Summary
-- VaR95: {totals.loc[0,'VaR95']:,.0f} (Δ {totals.loc[0,'ΔVaR95']:,.0f})
-- VaR99: {totals.loc[0,'VaR99']:,.0f} (Δ {totals.loc[0,'ΔVaR99']:,.0f})
-"""
+    def fmt(x): return f"${x:,.0f}"
+    text = (
+        f"EM Macro VaR — Executive Snapshot\n"
+        f"• VaR95: {fmt(totals.loc[0,'VaR95'])}  (Δ {fmt(totals.loc[0,'ΔVaR95'])}, ΔCoVar {fmt(totals.loc[0,'DeltaCoVar95'])})\n"
+        f"• VaR99: {fmt(totals.loc[0,'VaR99'])}  (Δ {fmt(totals.loc[0,'ΔVaR99'])}, ΔCoVar {fmt(totals.loc[0,'DeltaCoVar99'])})\n"
+    )
     summary_text = pd.DataFrame({"Executive_Summary":[text]})
 
-    return {
-        "totals": totals,
-        "movers95": movers95[["Desk","Region","VAR95","dVaR95"]].head(CONFIG["top_n"]),
-        "movers99": movers99[["Desk","Region","VAR99","dVaR99"]].head(CONFIG["top_n"]),
-        "reg95": reg95,
-        "reg99": reg99,
-        "trimmed": trimmed,
-        "summary_text": summary_text
-    }
+    drivers95 = df.sort_values("dVaR95", key=abs, ascending=False).head(CONFIG["top_n"])
+    drivers99 = df.sort_values("dVaR99", key=abs, ascending=False).head(CONFIG["top_n"])
 
-# --------------------------- MAIN --------------------------------
+    reg95 = df.groupby("Region", as_index=False).agg(
+        VaR95=("VAR95","sum"), ΔVaR95=("dVaR95","sum"), DeltaCoVar95=("DELTACOVAR95","sum")
+    ).sort_values("VaR95", ascending=False)
+    reg99 = df.groupby("Region", as_index=False).agg(
+        VaR99=("VAR99","sum"), ΔVaR99=("dVaR99","sum"), DeltaCoVar99=("DELTACOVAR99","sum")
+    ).sort_values("VaR99", ascending=False)
+
+    level_cols = detect_hierarchy_columns(df)[:max(1,hier_level)]
+    hier = df.groupby(level_cols, as_index=False).agg(
+        VaR95=("VAR95","sum"), ΔVaR95=("dVaR95","sum"),
+        VaR99=("VAR99","sum"), ΔVaR99=("dVaR99","sum"),
+        DeltaCoVar95=("DELTACOVAR95","sum"), DeltaCoVar99=("DELTACOVAR99","sum"),
+        Limit=("LIMIT","sum")
+    )
+    hier["Util95_%"] = np.where(hier["Limit"]!=0, 100*hier["VaR95"]/hier["Limit"], np.nan)
+    hier["Util99_%"] = np.where(hier["Limit"]!=0, 100*hier["VaR99"]/hier["Limit"], np.nan)
+
+    trimmed = df[["Desk","Region","DeskPath","VAR95","VAR95_T2","dVaR95","DELTACOVAR95",
+                  "VAR99","VAR99_T2","dVaR99","DELTACOVAR99","LIMIT","Util95_%","Util99_%"]]
+
+    return dict(summary_text=summary_text, totals=totals,
+                drivers95=drivers95, drivers99=drivers99,
+                reg95=reg95, reg99=reg99, hier=hier, trimmed=trimmed)
+
+def read_mapping_csv(path: Optional[str]) -> Optional[pd.DataFrame]:
+    if not path: return None
+    p = Path(path)
+    if not p.exists(): return None
+    try:
+        df = pd.read_csv(p)
+        if not {"Desk","Region"}.issubset(df.columns): return None
+        return df
+    except: return None
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate Executive VaR Explain from Excel.")
-    parser.add_argument("--file", required=True, help="Path to Excel file exported from the VaR drilldown.")
-    parser.add_argument("--sheet", default=None, help="Sheet name (optional).")
-    parser.add_argument("--out", default="VaR_Explain_Summary.xlsx", help="Output Excel filename.")
-    args = parser.parse_args()
+    ap = argparse.ArgumentParser(description="VaR Explain — Final Executive Generator")
+    ap.add_argument("--file", required=True)
+    ap.add_argument("--sheet", default=None)
+    ap.add_argument("--out", default="VaR_Explain.xlsx")
+    ap.add_argument("--map", default=None)
+    ap.add_argument("--hier_level", type=int, default=2)
+    args = ap.parse_args()
 
     xls = pd.ExcelFile(args.file)
     sheet = args.sheet or xls.sheet_names[0]
     df = pd.read_excel(xls, sheet_name=sheet, header=0)
 
-    results = compute_var_explain(df)
+    mapping = read_mapping_csv(args.map)
+    res = compute(df, hier_level=args.hier_level, region_map=mapping)
 
     out_path = Path(args.out)
     with pd.ExcelWriter(out_path, engine="xlsxwriter") as writer:
-        results["summary_text"].to_excel(writer, sheet_name=CONFIG["sheets"]["summary"], index=False)
-        results["totals"].to_excel(writer, sheet_name=CONFIG["sheets"]["summary"], index=False, startrow=3)
-        results["movers95"].to_excel(writer, sheet_name=CONFIG["sheets"]["top95"], index=False)
-        results["movers99"].to_excel(writer, sheet_name=CONFIG["sheets"]["top99"], index=False)
-        results["reg95"].to_excel(writer, sheet_name=CONFIG["sheets"]["regions"], index=False)
-        results["reg99"].to_excel(writer, sheet_name=CONFIG["sheets"]["regions"], index=False, startrow=len(results["reg95"])+3)
-        results["trimmed"].to_excel(writer, sheet_name=CONFIG["sheets"]["raw"], index=False)
-
-    print(f"[OK] Wrote executive summary to: {out_path.resolve()}")
+        res["summary_text"].to_excel(writer, CONFIG["sheets"]["summary"], index=False)
+        res["totals"].to_excel(writer, CONFIG["sheets"]["summary"], index=False, startrow=3)
+        res["drivers95"].to_excel(writer, CONFIG["sheets"]["drivers95"], index=False)
+        res["drivers99"].to_excel(writer, CONFIG["sheets"]["drivers99"], index=False)
+        res["reg95"].to_excel(writer, CONFIG["sheets"]["regions"], index=False)
+        res["reg99"].to_excel(writer, CONFIG["sheets"]["regions"], index=False, startrow=len(res["reg95"])+3)
+        res["hier"].to_excel(writer, CONFIG["sheets"]["hier"], index=False)
+        res["trimmed"].to_excel(writer, CONFIG["sheets"]["raw"], index=False)
+    print(f"[OK] Wrote: {out_path.resolve()}")
 
 if __name__ == "__main__":
     main()
