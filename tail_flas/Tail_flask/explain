@@ -419,85 +419,86 @@ if __name__ == "__main__":
 
 
 
+📊 Executive Summary — EM Macro (Node 1373254)
 
+Headline Totals (from parent row EM Macro)
 
+VaR95: £5,841,018
 
+Change vs T-2: +£187,803
 
+Delta CoVar95: –£19,376
 
+VaR99: £9,129,529
 
+Change vs T-2: +£468,224
 
-📊 High-Level EM Macro VaR
+Delta CoVar99: –£166,651
 
-Total EM Macro VaR95 (current): ~$15.84m
+Limit: £15,000,000
 
-Change vs T-2: +$587k
+Utilization: ~39% (VaR95) / ~61% (VaR99)
 
-Total EM Macro VaR99 (current): ~$19.13m
+🌍 Regional Drivers
 
-Change vs T-2: +$468k
+Americas (Node 1373184)
 
-So, overall risk is up modestly at both the 95% and 99% levels. This indicates increased portfolio sensitivity to market moves.
+VaR95: ~£2.43m | ΔVaR95: +£134k
 
-🌎 Regional Drivers
-1. EM Macro Americas
+Key movers:
 
-VaR95: ~$12.43m (up ~$653k vs T-2)
+EM Rates – NY: ΔVaR95 +£191k (offset by ΔCoVar –£13.6k)
 
-Biggest Contributors:
+EM FX Forwards & NDF – US: ΔVaR95 +£269k
 
-EM Rates – NY: +$269k jump at 95% VaR
+APAC (Node 1373186)
 
-EM FX Forwards & NDF – US: +$215k
+VaR95: ~£3.99m | ΔVaR95: +£609k
 
-EM Rates – Mexico: +$293k (with 99% also rising ~+293k)
+Key movers:
 
-📌 Americas is the largest driver of the total increase, especially from Rates desks (NY, Mexico) and FX Forwards US.
+EM Macro – India: ΔVaR95 +£76k
 
-2. EM Macro APAC
+EM Macro – Hong Kong: ΔVaR95 +£56k
 
-VaR95: ~$3.99m (up ~$609k)
+EM FX Forwards & NDF – Asia: ΔVaR95 –£50k (negative contribution)
 
-Key Movers:
+EMEA (Node 1373242, 1373244)
 
-EM Rates – India: +$76k increase (95%), with big rise in 99% VaR +$165k.
+VaR95: ~£1.21m | ΔVaR95: –£619k (largest negative swing)
 
-EM Rates – Singapore: +$130k (95%), +$534k (99%)
+Drivers:
 
-EM Macro – Hong Kong: +$50k to 95%, but 99% shows +$217k
+EM FX Forwards & NDF – Europe: ΔVaR95 –£615k
 
-📌 APAC rise mainly from India and Singapore Rates.
-99% tails are especially heavy in Singapore and India, suggesting rate curve shocks were key in stress moves.
+London Rates sub-desks showing ΔVaR95 –£227k
 
-3. EM Macro EMEA
+🔎 Top Drivers of Change
 
-VaR95: ~$2.12m (up ~$615k)
+Upside Contributors (ΔVaR95 +):
 
-Top Contributors:
+EM FX Forwards & NDF – US: +£269k
 
-EM Rates – Israel: +$52k at 95%, +$27k at 99%
+EM Rates – NY: +£191k
 
-EM Rates – London: +$208k (95%), +$286k (99%) – largest jump in EMEA
+EM Macro – India: +£76k
 
-HUF Rates & Poland Rates: smaller but notable adds (+91k & +61k at 95%)
+Downside Contributors (ΔVaR95 –):
 
-📌 EMEA was driven by London Rates (CE3, RUB, HUF, Poland) – clearly a rates-heavy shock day in CEE.
+EM FX Forwards & NDF – Europe: –£615k
 
-🔑 Top Risk Drivers Across the Book
+London Rates desks (various): –£227k
 
-Americas Rates (NY, Mexico) – biggest increases across both 95% and 99%.
+EM FX Forwards & NDF – Asia: –£50k
 
-APAC (India + Singapore Rates) – both show significant 99% tails.
+📝 Narrative for Management
 
-EMEA (London Rates, CE3 block, RUB/HUF) – strong moves in CEEMEA yield curves.
+The headline EM Macro risk is stable within limits — VaR95 at £5.8m vs a £15m limit (39% utilization).
 
-FX Forwards (US + Asia) – moderate but broad-based adds.
+Americas added risk, particularly from US NDFs and NY rates.
 
-🎯 Interpretation
+APAC showed moderate increases, with India and Hong Kong pushing VaR higher.
 
-The risk increase is geographically diversified: Americas (Rates), APAC (India/Singapore), and EMEA (London/CEE).
+EMEA was the key offset, with Europe FX Forwards/NDFs driving a –£615k ΔVaR95.
 
-Rates desks dominate the move – suggests underlying yield curve shocks, rate vol upticks, or basis shifts across EM curves.
-
-FX Forwards/NDFs add moderate support, possibly linked to hedging flows or currency volatility spillovers.
-
-The deltaCoVar (red numbers) highlights correlation effects – some desks added diversification (negative deltas), others concentrated risk (positive deltas).
+Overall effect: Net ΔVaR95 +£188k with correlation effects (ΔCoVar –£19k) dampening the increase.
