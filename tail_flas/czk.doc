@@ -13,24 +13,14 @@ Spolu Regains Power (Unexpected)	Surprising electoral upset; market favors conti
 
 
 
-
 =LET(
- x,$AC$49:$AG$49,               /* pillars: {2,5,10,15,20} (years) */
- y,$AC$50:$AG$50,               /* pillar shocks */
- T,AI49:BB49,                   /* target tenors ON→70Y, in YEARS */
- yk, XLOOKUP(T,x,y,"",0),       /* exact-match shocks if header equals a pillar */
+ x,$AC$49:$AG$49,
+ y,$AC$50:$AG$50,
+ T,AI49:BB49,
  x1,INDEX(x,1), x2,INDEX(x,2), y1,INDEX(y,1), y2,INDEX(y,2),
- xn,INDEX(x,COLUMNS(x)), xnm1,INDEX(x,COLUMNS(x)-1),
- yn,INDEX(y,COLUMNS(y)), ynm1,INDEX(y,COLUMNS(y)-1),
- lo, XLOOKUP(T,x,x,,-1), hi, XLOOKUP(T,x,x,,1),
- ylo, XLOOKUP(lo,x,y), yhi, XLOOKUP(hi,x,y),
- interp,
-   IF(T<=x1,
-      y1 + (T-x1)*(y2-y1)/(x2-x1),                         /* left extrapolation */
-      IF(T>=xn,
-         yn + (T-xn)*(yn-ynm1)/(xn-xnm1),                  /* right extrapolation */
-         ylo + (T-lo)*(yhi-ylo)/(hi-lo)                    /* linear interp */
-      )
-   ),
- IF(yk<>"", yk, interp)        /* keep given shocks at 2,5,10,15,20 */
+ xn,INDEX(x,COLUMNS(x)), xnm1,INDEX(x,COLUMNS(x)-1), yn,INDEX(y,COLUMNS(y)), ynm1,INDEX(y,COLUMNS(y)-1),
+ lo,XLOOKUP(T,x,x,,-1), hi,XLOOKUP(T,x,x,,1),
+ ylo,XLOOKUP(lo,x,y), yhi,XLOOKUP(hi,x,y),
+ interp,IF(T<=x1,y1+(T-x1)*(y2-y1)/(x2-x1),IF(T>=xn,yn+(T-xn)*(yn-ynm1)/(xn-xnm1),ylo+(T-lo)*(yhi-ylo)/(hi-lo))),
+ interp
 )
