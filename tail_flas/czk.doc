@@ -40,3 +40,9 @@ ylo,XLOOKUP(lo,x,y),yhi,XLOOKUP(hi,x,y),
 interp,IF(T<=x1,y1+(T-x1)*(y2-y1)/(x2-x1),IF(T>=xn,yn+(T-xn)*(yn-ynm1)/(xn-xnm1),ylo+(T-lo)*(yhi-ylo)/(hi-lo))),
 IF(yk<>"",yk,interp)
 )
+
+
+=LET(x,$AC$49:$AG$49,y,$AC$50:$AG$50,T,AI49:BB49,n,COLUMNS(x),
+k,IFERROR(MATCH(T,x,1),IF(T<INDEX(x,1,1),1,n-1)),
+x1,INDEX(x,1,k),x2,INDEX(x,1,k+1),y1,INDEX(y,1,k),y2,INDEX(y,1,k+1),
+y1+(T-x1)*(y2-y1)/(x2-x1))
