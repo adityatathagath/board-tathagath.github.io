@@ -1,54 +1,228 @@
-Spolu Regains Power (Unexpected Outcome)
-Rationale:
-Despite polls favoring ANO, an unexpected electoral outcome gives the centre-right Spolu coalition a surprise victory. Markets welcome the return of a moderate, fiscally disciplined government closely aligned with the EU.
-Expected Reaction:
-Likely rally as political uncertainty fades and market confidence improves. CZK bonds and currency strengthen, yields may tighten modestly, reflecting reduced risk of populist policies.
-
-Scenario	Rationale Summary	Rally or Selloff
-ANO + Centre-Right	Fiscal discipline, moderate policy, stable EU ties	Rally / Stability
-ANO + Far-Right/Far-Left	Populist spending, riskier policies, inflation fears	Selloff
-Presidential Block/Constitutional Crisis	Legal/political standoff; temporary risk premium	Selloff / Rebound
-Coalition Delay (Hung Parliament)	Uncertainty, unclear reforms, short-term selling	Moderate Selloff
-Spolu Regains Power (Unexpected)	Surprising electoral upset; market favors continuity	Rally
-
-
-
-=LET(
- x,$AC$49:$AG$49,
- y,$AC$50:$AG$50,
- T,AI49:BB49,
- x1,INDEX(x,1), x2,INDEX(x,2), y1,INDEX(y,1), y2,INDEX(y,2),
- xn,INDEX(x,COLUMNS(x)), xnm1,INDEX(x,COLUMNS(x)-1), yn,INDEX(y,COLUMNS(y)), ynm1,INDEX(y,COLUMNS(y)-1),
- lo,XLOOKUP(T,x,x,,-1), hi,XLOOKUP(T,x,x,,1),
- ylo,XLOOKUP(lo,x,y), yhi,XLOOKUP(hi,x,y),
- interp,IF(T<=x1,y1+(T-x1)*(y2-y1)/(x2-x1),IF(T>=xn,yn+(T-xn)*(yn-ynm1)/(xn-xnm1),ylo+(T-lo)*(yhi-ylo)/(hi-lo))),
- interp
-)
+Election Results & Government Formation
+Election Outcome
+•	Results came roughly in line with expectations, with no major surprises[amazonaws]
+•	ANO party performed 4-5 percentage points higher than polls predicted[amazonaws]
+•	SPD party performed 4-5 percentage points lower than expected[amazonaws]
+•	These variations did not change the baseline scenario for post-election outlook[amazonaws]
+Coalition Formation Requirements
+•	Simple majority requires 101 MPs out of 200 total in parliament[amazonaws]
+•	Expected coalition: ANO + Motorists + SPD[amazonaws]
+•	President confirmed on Monday this coalition is likely[amazonaws]
+Coalition Seat Distribution
+•	ANO: 80 MPs[amazonaws]
+•	Motorists: 13 MPs[amazonaws]
+•	SPD: 15 MPs[amazonaws]
+•	Total: 108 MPs (above the 101 threshold)[amazonaws]
+•	SPD has 4 MPs from different parties, but even without them, coalition would have 104 MPs[amazonaws]
+Timeline for Government Formation
+•	President Pavel may give mandate in early November[amazonaws]
+•	Coalition talks expected over the next three weeks[amazonaws]
+•	Government starts working after receiving mandate without vote of confidence (per constitution)[amazonaws]
+•	Vote of confidence required within 30 days of receiving mandate[amazonaws]
+•	Official confirmation expected by late November or early December if negotiations proceed positively
 
 
+Potential Coalition Challenges
+Ministry Distribution Issues
+•	SPD (ultra-left party) reportedly wants Interior and Justice ministries (two critical positions)[amazonaws]
+•	This demand is likely to be rejected by ANO and Babiš[amazonaws]
+EU and NATO Membership Concerns
+•	SPD supported the idea of leaving EU and NATO during election campaign[amazonaws]
+•	ANO and Motorists support EU and NATO membership[amazonaws]
+•	SPD received much less than polls predicted (slightly less than 8%), suggesting they will not be in strong position to press unorthodox views[amazonaws]
+•	Unlikely to change coalition direction on NATO and EU membership[amazonaws]
+•	ANO party has extensive past experience managing smaller parties/political fractions in coalition governments[amazonaws]
 
 
-=LET(
-x,$AC$49:$AG$49,
-y,$AC$50:$AG$50,
-T,AI49:BB49,
-yk,XLOOKUP(T,x,y,"",0),
-x1,INDEX(x,1,1),x2,INDEX(x,1,2),y1,INDEX(y,1,1),y2,INDEX(y,1,2),
-xn,INDEX(x,1,COLUMNS(x)),xnm1,INDEX(x,1,COLUMNS(x)-1),yn,INDEX(y,1,COLUMNS(y)),ynm1,INDEX(y,1,COLUMNS(y)-1),
-lo,XLOOKUP(T,x,x,,-1),hi,XLOOKUP(T,x,x,,1),
-ylo,XLOOKUP(lo,x,y),yhi,XLOOKUP(hi,x,y),
-interp,IF(T<=x1,y1+(T-x1)*(y2-y1)/(x2-x1),IF(T>=xn,yn+(T-xn)*(yn-ynm1)/(xn-xnm1),ylo+(T-lo)*(yhi-ylo)/(hi-lo))),
-IF(yk<>"",yk,interp)
-)
+Fiscal Policy Outlook
+ANO Party’s Three Main Promises
+1.	Revise indexation of pension salaries[amazonaws]
+2.	Reduce corporate tax by 2 percentage points[amazonaws]
+3.	Provide energy subsidies to low-income families[amazonaws]
+Other Proposed Measures (Early Stage)
+•	Subsidized mortgages for first-time buyers[amazonaws]
+•	Public support to some SMEs and professions[amazonaws]
+•	Many election promises typically revised after election[amazonaws]
+•	Limited clarity on which measures will actually be adopted[amazonaws]
+Budget Deficit Analysis
+Historical and Current Levels
+•	2024: Budget deficit at 2.3% of GDP[amazonaws]
+•	2025: Expected at approximately 2.3% of GDP based on current trend[amazonaws]
+•	As of September, 12-month trailing budget deficit very close to targeted 241 billion CZK[amazonaws]
+2026 Projections
+•	Pre-election preliminary target: 281 billion CZK (up from 241 billion CZK for 2025)[amazonaws]
+•	Increase partly due to military spending and one-off expenditures[amazonaws]
+•	Babiš signaled intention to increase budget deficit by additional 60 billion CZK for infrastructure spending[amazonaws]
+Deficit Scenarios
+•	Without new measures: Budget deficit likely at approximately 3.4% next year[amazonaws]
+•	Expected outcome: Government will attempt to keep deficit below 3% to comply with EU rules and Maastricht criteria[amazonaws]
+Proposed Revenue/Expenditure Measures (Uncertain Implementation)
+•	Improve tax collection from shadow economy[amazonaws]
+•	Cut support to Ukraine[amazonaws]
+•	Fiscal impact unclear - not factored into deficit projections[amazonaws]
+•	ANO also proposed to decrease military spending relative to initial proposals[amazonaws]
 
 
-=LET(x,$AC$49:$AG$49,y,$AC$50:$AG$50,T,AI49:BB49,n,COLUMNS(x),
-k,IFERROR(MATCH(T,x,1),IF(T<INDEX(x,1,1),1,n-1)),
-x1,INDEX(x,1,k),x2,INDEX(x,1,k+1),y1,INDEX(y,1,k),y2,INDEX(y,1,k+1),
-y1+(T-x1)*(y2-y1)/(x2-x1))
+Monetary Policy Outlook
+Central Bank Stance Drivers
+•	Sticky services CPI highlighted by Central Bank[amazonaws]
+•	September preliminary print showed no improvement on services inflation[amazonaws]
+•	High real wage growth - one of the highest in the region[amazonaws]
+•	Strong domestic economic activity expected to continue through remainder of 2025 and into 2026[amazonaws]
+•	Expansionary fiscal policy/positive fiscal impulse adds another reason for Central Bank caution[amazonaws]
+Base Case Forecast
+•	Central Bank expected to remain on hold for remainder of 2025[amazonaws]
+•	Expected to remain on hold through end of 2026[amazonaws]
+•	Additional spending signals by Babiš support this view[amazonaws]
+Risk Assessment
+•	Primary risk direction: Clearly to the downside (potential for cuts, not hikes)[amazonaws]
+•	Headline CPI likely to trend around or below 2.5% (in line with Central Bank’s inflation target)[amazonaws]
+Downside Risk Factors
+1.	Energy subsidies: Could create additional 1-1.5% downward pressure on headline inflation (per ANO proposal)[amazonaws]
+2.	Potential changes in MPC member rhetoric/reaction function after government change (observed in many EM and DM countries)[amazonaws]
+3.	Structural inflation factors: Some inflationary pressures (services, housing rents) driven by structural reasons rather than monetary policy[amazonaws]
+4.	MPC signaling: Central Bank already indicated it’s not appropriate to hike rates to address structural inflation factors[amazonaws]
+Upside Risk Factors (Very Limited)
+•	Only major external risk factors (e.g., major jump in energy prices) could trigger hikes[amazonaws]
+•	Hikes considered very unlikely[amazonaws]
+Probability Assessment
+•	Potential for one or two 25 basis point cuts represents the risk scenario[amazonaws]
 
 
-=IFERROR(
-  XLOOKUP(AI49,$AC$49:$AG$49,$AC$50:$AG$50,,0),
-  FORECAST.LINEAR(AI49,$AC$50:$AG$50,$AC$49:$AG$49)
-)
+Strategy View (Marik’s Analysis)
+Pre-Election Price Action Analysis
+Rates Market Behavior
+•	Initial move driven by more resilient inflation than expected and more hawkish Central Bank[amazonaws]
+•	Market went too far at some point[amazonaws]
+•	Market started pricing terminal rate 50 basis points above current rate (implying potential future hikes)[amazonaws]
+•	Market then focused on ANO’s fiscal expansion proposals[amazonaws]
+Fiscal Risk Premium Assessment
+•	30 basis point increase in 10-year rate would imply expectation of 1.5 percentage point deterioration in fiscal position[amazonaws]
+•	Actual expected deterioration: approximately 0.9 percentage points even with full spending agenda[amazonaws]
+•	Considering ANO’s intent to decrease military spending, target should be around 3% deficit[amazonaws]
+•	This represents 0.5 percentage point deterioration from original plan[amazonaws]
+•	Appropriate market pricing: only 10 basis points increase in back-end curve[amazonaws]
+•	Conclusion: Market has gone too far, especially on rates side[amazonaws]
+•	Market now fading these moves with momentum and room to continue[amazonaws]
+FX Market Behavior
+Pre-Election Positioning
+•	FX went into election trading with zero premium despite tail risks[amazonaws]
+•	FX was very robust, mainly driven by hawkish Central Bank communication[amazonaws]
+•	Election outcome exactly in line with surveys - nothing surprising for FX to react to[amazonaws]
+Tail Risk Assessment
+•	FX should reflect tail risk more than it currently does[amazonaws]
+•	Primary tail risk: Babiš and ANO policies with SPD shift toward more Erdogan-style or Hungarian path[amazonaws]
+•	This has not been in nature of Babiš and ANO party historically[amazonaws]
+•	Tail risk would most likely manifest during government formation, particularly regarding SPD and Motorists influence[amazonaws]
+Base Case vs. Tail Risk Summary
+•	Base case: Currency should not move (no premium currently reflected)[amazonaws]
+•	Rates: Should fade pre-election pressures[amazonaws]
+•	Tail risk scenario (speculation of Czech exit policies): Pressure should be more in currency space rather than rates (rates already embedded significant premium)[amazonaws]
+Recommended Trade Strategy
+Trade Sequence Priority
+First Trade - Back-End Compression:
+•	Position: Long Czech government bonds (back-end)[amazonaws]
+•	Rationale: Market should fade fiscal risk premium once fiscal proposition becomes clear[amazonaws]
+•	Babiš highlighted scope for deficit increase but only up to EU limits (3%)[amazonaws]
+Second Trade - Front-End Positioning:
+•	Position: Receive Czech 2-year 1-year versus Polish rates[amazonaws]
+•	Rationale: Spread of terminal rates is mispriced[amazonaws]
+•	Czech terminal rate should be significantly lower than Polish due to:
+1.	50 basis points lower inflation target[amazonaws]
+2.	Lower potential growth of Czech economy versus Poland[amazonaws]
+3.	Very different and divergent fiscal positions between the two countries[amazonaws]
+Currency Strategy
+•	Outlook: More boring/subdued[amazonaws]
+•	Corona has appreciated significantly over recent months[amazonaws]
+•	Likely some follow-through in medium term[amazonaws]
+•	Currently has no premium for tail risk[amazonaws]
+•	Not the right time to build long Corona positions[amazonaws]
+•	Wait for curve reaction first before considering FX positioning
+
+
+
+Trading Desk View (Bruno’s Analysis)
+FX Positioning
+Current Market Setup
+•	Market is pretty long Czech, short EUR/CZK[amazonaws]
+•	Positioning reflective of C3 region as a whole where carry plays have worked well since start of year[amazonaws]
+•	EUR/CZK is now a few percent below Central Bank’s forecast[amazonaws]
+•	This is starting to feed through into inflation[amazonaws]
+•	Currency has had a pretty good run[amazonaws]
+Post-Election Behavior
+•	No real position reduction post-election[amazonaws]
+•	Marik has view for EUR/CZK going higher with definite tail risk[amazonaws]
+•	However, entire C3 region trades so well on FX side that it’s hard to fight against[amazonaws]
+•	EUR/HUF sell-off yesterday was quickly faded today, everything continuing to grind back lower[amazonaws]
+Trading Recommendation - FX
+•	No massive trade opportunity currently[amazonaws]
+•	Positioning is fairly high[amazonaws]
+•	No huge value in trying to fade the move higher at the moment[amazonaws]
+•	Babiš seems to be behaving himself[amazonaws]
+•	No tails materializing expected in next couple of months[amazonaws]
+Rates Positioning
+Curve Dynamics
+•	Not much premium in back-end duration[amazonaws]
+•	Move has been outright story - entire curve has shifted higher[amazonaws]
+•	Five-to-tens curve measures (3-year 2-year, 5-year 5-year, steepness and term premium measures) have compressed significantly from highs at start of year[amazonaws]
+•	Compression trend continued during election period[amazonaws]
+•	Outright levels have moved significantly higher while curve has flattened[amazonaws]
+Positioning Details
+•	Large payer positions from model accounts (CTA)[amazonaws]
+•	Large discretionary payer positions from a couple of large names[amazonaws]
+•	These positions have dominated market for last few months[amazonaws]
+Positioning Stability Analysis
+•	CTA model positions: Not going to stop out, won’t move dynamically[amazonaws]
+•	Discretionary pay positions: Not from fast money names that chop around[amazonaws]
+•	Conclusion: These are not marginal market movers at the moment[amazonaws]
+Post-Election Activity
+•	Fair amount of duration receivers adding positions, especially in the belly[amazonaws]
+•	Continental real money has been active[amazonaws]
+•	Several hundred thousand in belly receiving put through this week[amazonaws]
+•	Fast money coming into 5-year 5-year[amazonaws]
+Specific Trade Recommendations - Rates
+Preferred Positioning
+•	Best place to play: Front-end (1-year 1-year, 2-year 1-year area)[amazonaws]
+•	Rationale: Steepness in 1-to-3-year sector[amazonaws]
+•	This view was flagged heading into election[amazonaws]
+Recent Performance Validation
+•	5-year 5-year went higher on Monday[amazonaws]
+•	Front-end moved lower at some points[amazonaws]
+•	Front-end positioning has performed very well to start the week[amazonaws]
+Positioning Concerns - 5-Year 5-Year
+•	Much more positioned than 2-year and 3-year[amazonaws]
+•	Holders are smaller pod names (fast money)[amazonaws]
+•	These traders will take profit and chop around quickly[amazonaws]
+•	Will pay the dip quite quickly to make quick 10 basis points and move on[amazonaws]
+•	Limited value given not much premium in the curve[amazonaws]
+Alternative Front-End Entry Points
+•	2-year 2-year: Reached 405 basis points at some points last week[amazonaws]
+•	Represents much better outright level to enter positions[amazonaws]
+Energy Subsidy Impact (Tail Consideration)
+Potential Inflation Impact
+•	Energy subsidies proposed by ANO estimated at 1-1.5% reduction on headline inflation[amazonaws]
+•	If headline inflation collapses due to subsidies, very hard for curve to keep current shape[amazonaws]
+•	Significant pressure on CNB with real rates at 2-2.5% to cut and bring policy rate down[amazonaws]
+Political Pressure Factors
+•	Babiš expressed strong desire to bring down inflation and cost of living[amazonaws]
+•	SPD also talking extensively about reducing cost of living[amazonaws]
+Overall Risk Assessment
+•	Most value: Further in the curve (front-end)[amazonaws]
+•	No real trigger for hikes coming from Babiš’s policies in short run[amazonaws]
+•	Tail risk is skewed lower in 1-year 1-year and 2-year 1-year[amazonaws]
+
+
+Consensus Summary
+Key Agreements Across Speakers
+1.	Fiscal expansion less severe than priced: Expected deficit around 3% (0.5pp deterioration from original plan) versus market pricing implying 1.5pp deterioration[amazonaws]
+2.	Rates market overreacted: Pre-election rate sell-off excessive relative to actual fiscal risk[amazonaws +1]
+3.	Central Bank to remain on hold: Base case through end of 2026[amazonaws]
+4.	Risks skewed to rate cuts: One or two 25bp cuts represent the risk scenario, not hikes[amazonaws]
+5.	FX tail risk underpriced: Currency reflects zero premium despite political tail risks[amazonaws]
+6.	Risk-reward favors fixed income: Despite fiscal intentions, downside risks to rates and skew of policy risks favor receivers[amazonaws]
+7.	FX weaker of two asset classes: If downside risks from policy/macro materialize, FX more vulnerable than rates[amazonaws]
+Strategic Positioning Summary
+•	Rates: Fade the sell-off, receive duration particularly in front-end
+•	FX: Wait for more clarity, no immediate value in fighting carry dynamics
+•	Curve: Front-end offers better value than 5y5y; 2y1y vs Poland preferred expression
+•	Risk management: Monitor government formation process, particularly SPD influence and any signals toward EU/NATO skepticism
