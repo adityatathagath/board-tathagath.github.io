@@ -639,3 +639,14 @@ The committee showed continued division over rate policy direction and pace, but
 The minutes confirmed high market expectations for two additional quarter-point rate cuts this year (October and December). The lack of fresh data (especially jobs and CPI, delayed by the government shutdown) complicated the policy debate, but the Fed indicated flexibility and readiness to take further action if economic conditions deteriorate. Policy guidance emphasized a “meeting-by-meeting” approach and ongoing monitoring of labor market weakness, trade war effects, and inflation developments.​
 
 These points will strengthen slides conveying the Fed’s dovish pivot, policy uncertainty from missing data, and the evolving risk assessment in the current macro environment.
+
+
+The image shows a decision tree mapping the French budget approval process. At the top, the government must secure support for its budget (A). If successful, we move to budget adoption. If not, two branches emerge:
+
+The first branch (B) outlines scenarios where the budget faces uncertain adoption, including special laws and last-minute measures to ensure continued tax collection.
+
+The second branch (D) covers agreements with the Socialist Party, which could result in compromises like suspending pension reforms or raising taxes. These are shown as further split into scenarios for broad fiscal laws (C), Socialist fiscal demands (E), and the risk of early elections (F).
+
+For special laws (C), fiscal flexibility is lost and the deficit remains elevated. Under Socialist agreement (E), some tax hikes and pension suspensions occur, but deficit reduction is limited. If neither path succeeds (F), early legislative elections — with a 20 to 40-day window — are likely, increasing political and market risk.
+
+In short, the flowchart highlights how every scenario ultimately risks budget rigidity or political instability, both of which matter significantly for French market risk this year."
