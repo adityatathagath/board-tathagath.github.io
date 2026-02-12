@@ -1,91 +1,33 @@
-Top-line takeaways (one paragraph)
+Friday Commentary
 
-Markets rallied on growing signs the U.S. government shutdown is ending and on stronger odds of Fed easing; however, the macro picture is mixed — central banks (BoE/ECB/Fed) are divided, energy & geopolitics (Middle East, Russia sanctions) remain upside risks for oil, and India posted a record low inflation print that changes EM policy calculus.  ￼
-
-⸻
-
-1) United States — policy, data, market reaction
-	•	Shutdown progress: Senate/House moves this week put an end to the longest U.S. shutdown within sight. Markets priced relief and rotation into risk assets as data flow is restored. Equity indices hit multi-week highs on the move.  ￼
-	•	Fed & policy path: Reuters poll / market pricing shows ~80%+ odds of another Fed rate cut in December (25bp is now the modal view), but FOMC members remain divided publicly. That increases volatility around incoming data.  ￼
-	•	Market implications: Short-term funding and term-premium dynamics matter more than headline Fed path. Treat long-end yields as vulnerable to risk premia re-pricing if the data surprise to the upside or if fiscal issuance ramps after shutdown end.
-
-Immediate desk actions: reduce naked long-duration exposure; increase hedges for a volatile re-pricing of term premium; monitor Treasury supply calendar once appropriation bill is signed.
-
-⸻
-
-2) Europe & UK — BoE, ECB, trade politics
-	•	BoE: Held rates at 4.0% in a narrow vote but signalled a likely move down in December if disinflation continues. Market pricing heavily leans to a December cut.  ￼
-	•	ECB: Remains on hold after earlier cuts; staff projections show inflation around target and cuts are increasingly viewed as less likely in the near term. That keeps the euro relatively stable vs. G10 peers.  ￼
-	•	Trade/political: EU–U.S. trade framework and political scrutiny continue to create execution risk for firms with cross-Atlantic supply chains. Ratification risk remains a headline driver for Euro cyclical assets.
-
-Immediate desk actions: price BoE-linked gilt moves into December; keep European cyclicals hedged for headline-driven gap risk around trade policy.
-
-⸻
-
-3) Asia — China, Japan, India, Korea
-	•	China: Ongoing soft spots in manufacturing, mixed signals from PMIs and exports. Risk premium remains around demand sensitivity to global trade.
-	•	Japan: Political/election noise continues to matter for JPY/JGB curves; watch issuer demand and auction results for JGB curve moves.
-	•	India: Retail inflation slowed to a record low (Oct: 0.25% YoY) — a big datapoint that materially eases domestic inflation pressure and gives RBI optionality on policy (tilted toward being more neutral/dovish over horizon). This shifts EM relative-value.  ￼
-	•	S. Korea/ASEAN: Export volatility from tariff & supply-chain uncertainty persists; central banks show mixed paths (some easing bias in Asia EM, others cautious).
-
-Immediate desk actions: overweight rate-sensitive EM duration where CPI is below target (India is now a candidate); shorten JPY exposures vs USD until political clarity on leadership and BOJ guidance.
-
-⸻
-
-4) Middle East, Russia sanctions & commodities
-	•	Oil: Prices little changed but sensitive. Brent ~$65–66/bbl as markets watch US shutdown resolution, OPEC+ signals, and Russia sanctions flow-through (sanctions on Lukoil/Rosneft affect Chinese buying patterns). Any escalation in Mideast military action would be an immediate upside shock.  ￼
-	•	Geopolitics: Iran-related plots and ongoing Israel tensions keep tail-risk for energy and regional credit spreads. Recent intelligence reports and public arrests/plots have been noted by markets as source of episodic risk.  ￼
-
-Immediate desk actions: maintain directional oil hedges (put/call flys) and protect portfolios with tactical duration or cross-asset tail hedges. Keep Mideast credit exposure size-limited.
-
-⸻
-
-5) Latin America & Africa — policy divergence
-	•	LatAm: Central banks remain split — some (Mexico) on gradual cuts, Brazil still restrictive. Fiscal headlines and commodity price moves (oil, metals) drive sovereign spread volatility.
-	•	Africa: South Africa and Nigeria retain inflation/remittance risks; monitor currency intervention signals.
-
-Immediate desk actions: asymmetric positioning — selective carry in defensive LatAm (where inflation is stabilizing), avoid levered exposure to commodity exporters until OPEC+ clarity.
-
-⸻
-
-6) Systemic & structural risks your CRO should care about
-	•	Policy uncertainty remains the top systemic risk. Fed internal divisions + political fiscal events (shutdown resolution, upcoming budgets) amplify tail risk.  ￼
-	•	Geopolitical shock risk (Iran/Israel, Russia energy sanctions) is elevated and fat-tails the oil and EM credit distributions.  ￼
-	•	Data gaps/quality — the shutdown delayed/altered U.S. data releases earlier; resumes now but expect noisy prints and revisions. Treat immediate data as higher-variance.
-
-⸻
-
-7) 7-day watchlist (priority)
-	1.	U.S. House vote & President signature to end shutdown — direct effect on risk sentiment, Treasury flows, and upcoming data releases. (Today / next 24–48 hours).  ￼
-	2.	Fed communications and Reuters poll updates — pricing for a Dec cut vs. later. Markets react intraday to any sign of split.  ￼
-	3.	Oil inventory/EIA weekly and OPEC+ commentary — upside tail if sanctions tighten or cuts are delayed.  ￼
-	4.	India inflation follow-through and RBI commentary — record low inflation changes EM positioning.  ￼
-	5.	BoE and ECB speeches and UK Budget (Nov 26) — political/fiscal interactions that may alter the rate path in GBP/EUR.  ￼
-	6.	Mideast security incidents — any operational escalation that threatens shipping or regional supply.
+US–India Trade Deal: Tariff Cuts and Changes in Key Fact Sheet
+“Starting with the big trade story of the week: the US–India interim trade deal announced on 6 February. The headline is a massive tariff reduction—down to 18% from 50%—unlocking a US$500 billion purchase framework over five years. But what’s interesting is how the White House fact sheet has evolved in the last 72 hours.
+Initially, the language suggested India was ‘committed to purchase’ US$500 billion of US goods and services, but after pushback from New Delhi, that’s been softened to ‘intends to buy,’ giving India much more flexibility and reducing the risk of rigid fiscal commitments.
+On the agricultural side, pulses have been quietly removed from the tariff‑cut examples in the updated fact sheet—so India retains more negotiating room on sensitive food items. And finally, references to India ‘ending’ its digital services tax and dismantling ‘discriminatory measures’ have been diluted or dropped entirely.
+In short, the deal is still a material win—it improves market access, supports India’s export sectors like textiles, pharma, and tech, and has already lifted sovereign credit commentary to ‘stable.’ But the revised language shows this is a balanced framework, not a one‑sided concession, and it leaves India with policy flexibility on agriculture and digital taxation.”
 
 
-The most relevant themes from Bank of England MPC member Megan Greene’s recent speeches that matter to markets include her cautious stance on monetary policy, concerns over inflation persistence, and the increased importance of supply-side shocks.
-
-Cautious Approach to Rate Cuts
-Greene has advocated for a more cautious pace regarding interest rate cuts. She warns that there are considerable risks inflation could turn out stronger than the Bank’s forecasts, mainly because of continued supply-side pressures and lingering effects of recent global shocks (pandemic, energy prices linked to Russia’s invasion of Ukraine). As such, Greene is not convinced that monetary policy is “meaningfully restrictive” yet and argues that rate cuts should not proceed as quickly as markets might anticipate.​
-
-Inflation Risks and Second-Round Effects
-She often highlights the risk of inflation persistence, emphasizing that inflation expectations among households are still elevated. This remains a critical factor for policy, as high expectations can feed into wage and price-setting, potentially entrenching higher inflation. While recent wage data was softer than expected, survey data suggest next year’s wage settlements could remain uncomfortably high. Greene is concerned that temporary price jumps, such as in regulated bills (e.g., water), could trigger more enduring price and wage increases.​
-
-Supply-Side Shocks and Policy Changes
-A recurring theme in Greene’s speeches is that central banks should pay much more attention to supply-side developments. She argues that the frequency and importance of supply shocks—like those from climate change or geopolitical developments—are increasing, which means that the era of “looking through” such disruptions has ended. The Bank of England is now reforming its approach, increasingly relying on scenario analysis to better understand and respond to these shocks.​
-
-Markets’ Takeaways
-Expectations for UK rate cuts are being pushed back; investors now see the next possible reduction only by March 2026.​
-
-The Bank of England is increasingly data-dependent, putting emphasis on incoming inflation and labor market data which are having bigger market effects than before.​
-
-Markets are sensitive to the risk of second-round effects from shocks, especially where price and wage-setting might shift more rapidly than in the past.​
-
-In sum, Greene’s speeches signal that UK monetary policy is likely to remain cautious, with persistent inflation risks, more weight on supply-side shocks, and an enhanced role for scenario analysis and risk management. These are critical for market participants in interpreting the Bank of England’s evolving stance.
+US Data Releases
+“Moving to the US data cluster that dropped in the last hour: we got the delayed January payrolls at +130,000—well above the consensus of 55k to 70k—and the unemployment rate fell unexpectedly to 4.3% from 4.4% in December. December payrolls were revised slightly down to 48,000 from 51,000, but the headline strength here is clear: the US labour market is still adding jobs at a healthy pace, with health care again leading the gains.
+Markets have rallied on this—equities are up, and the broader read is that this supports the Fed’s decision to extend its pause. We’re not seeing a collapsing labour market, so there’s no urgency to restart cuts in the near term.
+On the consumer side, December retail sales came in flat at 0.0% month‑on‑month, versus consensus of +0.1% and November’s +0.6%. So we’re seeing a clear slowdown in consumer spending momentum into year‑end, which flags that the economy is on a slower growth trajectory as we move into 2026. The retail sales number keeps the door open for eventual Fed easing, but today’s jobs print means that door stays firmly shut for the next few meetings.”
 
 
+Central Bank Meeting This Week
+“And finally on India: the RBI held its repo rate at 5.25% at the 4–6 February MPC meeting, with a unanimous vote and a neutral stance retained. Governor Malhotra’s message was very clear—‘the economy remains resilient, inflation and growth outlooks are positive, and policy is now in wait‑and‑watch mode’ after 125 basis points of cuts since early 2025.
+The focus now is on liquidity management and transmission—the RBI is watching bond‑market hardening closely and may step in with more active operations if term premia rise too sharply. External conditions are described as volatile, but not yet sufficient to derail India’s baseline growth path. And with the trade deal tailwinds now in place, the RBI has even less urgency to ease aggressively in the near term.”
 
 
+Japan just delivered a historic political outcome, with Prime Minister Sanae Takaichi’s LDP winning 316 of 465 seats and securing a two‑thirds supermajority with its coalition partner. Markets have read this as a strong mandate for tax cuts and higher defence spending, JGB yields have nudged higher and the yen strengthened vs USD as markets priced a slightly higher probability of eventual BoJ normalization alongside stronger domestic growth..
+
+China’s financial regulators have told local banks to limit their US Treasury exposure, asking them to curb new purchases and trim large positions, citing concentration and market volatility risks. Importantly, this guidance excludes China’s official FX reserves, so it’s not a sovereign sell‑off, but it does reinforce the multi‑year trend of China steadily reducing its Treasury holdings—down from a $1.3 trillion peak to around $770 billion today. Markets saw a modest reaction, with 10‑year yields rising 3 to 5 basis points to around 4.25% and the dollar softer on the headlines, but the real significance is structural: as Chinese demand steps back, US debt will need to find new buyers or compensate with higher term premia, adding another layer of geopolitical risk to the Treasury market over the medium term.
 
 
+In the UK, Prime Minister Keir Starmer has just come through a serious internal revolt over the Peter Mandelson–Epstein scandal, with Scottish Labour openly calling for his resignation, cabinet rallying around him, and Starmer insisting he ‘will never walk away’ from his mandate. Markets have been pricing a political risk premium: gilts underperformed earlier this week, 10‑year yields briefly spiked above 4.6% and the pound and UK equities came under pressure as investors weighed the risk of a leadership change and looser fiscal policy under any successor.
+
+
+Dollar july rate cut expected wpi remains pretty mich unchanged 
+
+Gbp rate cut expected in june meeting
+
+Jpy rate hike expected in june
